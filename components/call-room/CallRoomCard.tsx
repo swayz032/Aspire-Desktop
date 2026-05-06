@@ -1,5 +1,5 @@
 // components/call-room/CallRoomCard.tsx
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Image, Platform, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { CallState, ClientContext, VoiceState } from './types';
@@ -9,8 +9,33 @@ import { KeypadPanel } from './KeypadPanel';
 import { TransferPanel } from './TransferPanel';
 import { ContactsPanel } from './ContactsPanel';
 import { CallRoomControls } from './CallRoomControls';
-import { useCardTilt } from './hooks/useCardTilt';
+import { useCardTilt, TILT_AMPLITUDE } from './hooks/useCardTilt';
+import { useBreakpoint } from '../../lib/useDesktop';
 import type { TimeOfDayState } from './types';
+
+/**
+ * Responsive sizing per viewport tier. Desktop (>=1280) is the canary-
+ * approved baseline ("looks great on desktop") — DO NOT shrink it.
+ * Laptop and tablet shrink so the card reads as a card, not a flat
+ * full-bleed screen.
+ *
+ * Tiers follow the user's spec (not the legacy useBreakpoint cuts):
+ *   width >= 1280  -> desktop  (no change)
+ *   1024 <= w<1280 -> laptop   (~17% shrink)
+ *   768  <= w<1024 -> tablet   (~28% shrink)
+ *   < 768          -> out of scope (mobile permanently removed)
+ */
+const CARD_SIZING = {
+  desktop: { maxWidth: 1200, minHeight: 640, tilt: TILT_AMPLITUDE.desktop },
+  laptop: { maxWidth: 1000, minHeight: 560, tilt: TILT_AMPLITUDE.laptop },
+  tablet: { maxWidth: 860, minHeight: 520, tilt: TILT_AMPLITUDE.tablet },
+} as const;
+
+function pickSizing(width: number): typeof CARD_SIZING.desktop {
+  if (width >= 1280) return CARD_SIZING.desktop;
+  if (width >= 1024) return CARD_SIZING.laptop;
+  return CARD_SIZING.tablet;
+}
 
 type RightPanel = 'ai-assist' | 'keypad' | 'transfer' | 'contacts';
 
@@ -43,7 +68,9 @@ export function CallRoomCard({
   onHold,
   onSendDigit,
 }: CallRoomCardProps): React.ReactElement {
-  const tilt = useCardTilt(2);
+  const { width } = useBreakpoint();
+  const sizing = useMemo(() => pickSizing(width), [width]);
+  const tilt = useCardTilt(sizing.tilt);
   const isWeb = Platform.OS === 'web';
   const [rightPanel, setRightPanel] = useState<RightPanel>('ai-assist');
 
@@ -51,20 +78,39 @@ export function CallRoomCard({
     setRightPanel((current) => (current === panel ? 'ai-assist' : panel));
   const backToAssist = () => setRightPanel('ai-assist');
 
-  // Web-only: subtle card tilt for depth (no cursor light tracking).
+  // Web-only: 3D card tilt for depth.
+  // NOTE: perspective is applied on the PARENT (CallRoom.cardWrap), not
+  // baked into this transform string. Safari refuses to honor a
+  // perspective() on the same element that paints backdrop-filter — that
+  // is what made the tilt look "barely moving" in canary. Keeping the
+  // transform here as pure rotateX/rotateY with the parent providing
+  // perspective is the canonical fix and works in Safari, Chrome, FF.
   const dynamicCardStyle =
     isWeb
       ? ({
-          transform: `perspective(1400px) rotateX(${tilt.rotateX.toFixed(
-            2,
-          )}deg) rotateY(${tilt.rotateY.toFixed(2)}deg)`,
+          transform: `rotateX(${tilt.rotateX.toFixed(2)}deg) rotateY(${tilt.rotateY.toFixed(2)}deg)`,
+          WebkitTransform: `rotateX(${tilt.rotateX.toFixed(2)}deg) rotateY(${tilt.rotateY.toFixed(2)}deg)`,
           transformStyle: 'preserve-3d',
-          transition: 'transform 220ms ease-out',
+          WebkitTransformStyle: 'preserve-3d',
+          backfaceVisibility: 'hidden',
+          WebkitBackfaceVisibility: 'hidden',
+          // GPU compositor hint — keeps the card on its own layer so
+          // transform updates don't repaint the page.
+          willChange: 'transform',
+          transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
         } as object)
       : undefined;
 
+  const responsiveCardStyle = {
+    maxWidth: sizing.maxWidth,
+    minHeight: sizing.minHeight,
+  };
+
   return (
-    <View style={[styles.card, dynamicCardStyle]} testID="call-room-card">
+    <View
+      style={[styles.card, responsiveCardStyle, dynamicCardStyle]}
+      testID="call-room-card"
+    >
       {/* Edge highlight + refraction (web-only premium glass layers) */}
       {isWeb && (
         <>
@@ -300,8 +346,8 @@ function formatPhoneE164(e164: string): string {
 const styles = StyleSheet.create({
   card: {
     width: '100%',
-    maxWidth: 1200,
-    minHeight: 640,
+    // maxWidth + minHeight are applied dynamically per breakpoint
+    // (see CARD_SIZING / responsiveCardStyle). Do not hard-code here.
     backgroundColor: GLASS_BG,
     borderRadius: 18,
     borderWidth: 1,

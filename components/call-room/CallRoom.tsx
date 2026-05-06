@@ -95,6 +95,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 32,
+    // 3D perspective MUST live on the parent of the rotating element.
+    // Safari ignores `transform: perspective(...)` baked into a child
+    // transform string when the same element also paints `backdrop-filter`
+    // (it forces a separate compositor layer that flattens children).
+    // Putting perspective here on the wrapper is the canonical fix and
+    // also makes the tilt feel deeper because the perspective origin is
+    // the viewport center, not the card's own center.
+    ...(Platform.OS === 'web'
+      ? ({
+          perspective: '1400px',
+          WebkitPerspective: '1400px',
+          perspectiveOrigin: '50% 50%',
+          WebkitPerspectiveOrigin: '50% 50%',
+          transformStyle: 'preserve-3d',
+          WebkitTransformStyle: 'preserve-3d',
+        } as object)
+      : {}),
   },
   errorBanner: {
     position: 'absolute',

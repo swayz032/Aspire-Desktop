@@ -120,26 +120,32 @@ const RECEPTIONIST_FALLBACK: SarahStatus = {
 // Wire-format adapters (versioned API ↔ frontend type)
 // ---------------------------------------------------------------------------
 
-const AFTER_HOURS_WIRE_TO_FE: Record<ApiAfterHoursMode, AfterHoursMode> = {
-  take_message: 'TAKE_MESSAGE',
-  ask_callback_window: 'ASK_CALLBACK_WINDOW',
-  try_transfer_then_message: 'TRY_TRANSFER_THEN_MESSAGE',
+// After backend migration 111 the wire format and FE format are identical
+// (both UPPERCASE). These adapters used to translate between legacy lowercase
+// wire and UPPERCASE FE — now they're identity functions kept for forward-
+// compatibility (and to defend against any stale lowercase rows the server
+// migration normalizer might have missed).
+const _normalizeAfterHours = (v: string | null | undefined): AfterHoursMode => {
+  const upper = (v || '').toUpperCase();
+  if (upper === 'TAKE_MESSAGE' || upper === 'ASK_CALLBACK_WINDOW' || upper === 'TRY_TRANSFER_THEN_MESSAGE') {
+    return upper;
+  }
+  // Tolerate legacy lowercase or the older 'callback_window' (no 'ask_' prefix)
+  if (upper === 'CALLBACK_WINDOW') return 'ASK_CALLBACK_WINDOW';
+  return 'TAKE_MESSAGE';
 };
-const AFTER_HOURS_FE_TO_WIRE: Record<AfterHoursMode, ApiAfterHoursMode> = {
-  TAKE_MESSAGE: 'take_message',
-  ASK_CALLBACK_WINDOW: 'ask_callback_window',
-  TRY_TRANSFER_THEN_MESSAGE: 'try_transfer_then_message',
+const _normalizeBusy = (v: string | null | undefined): BusyMode => {
+  const upper = (v || '').toUpperCase();
+  if (upper === 'TAKE_MESSAGE' || upper === 'ASK_CALLBACK_WINDOW' || upper === 'TRY_TRANSFER_THEN_MESSAGE') {
+    return upper;
+  }
+  if (upper === 'CALLBACK_WINDOW') return 'ASK_CALLBACK_WINDOW';
+  return 'TAKE_MESSAGE';
 };
-const BUSY_WIRE_TO_FE: Record<ApiBusyMode, BusyMode> = {
-  take_message: 'TAKE_MESSAGE',
-  ask_callback_window: 'ASK_CALLBACK_WINDOW',
-  try_transfer_then_message: 'TRY_TRANSFER_THEN_MESSAGE',
-};
-const BUSY_FE_TO_WIRE: Record<BusyMode, ApiBusyMode> = {
-  TAKE_MESSAGE: 'take_message',
-  ASK_CALLBACK_WINDOW: 'ask_callback_window',
-  TRY_TRANSFER_THEN_MESSAGE: 'try_transfer_then_message',
-};
+const AFTER_HOURS_WIRE_TO_FE = (v: ApiAfterHoursMode | string | null | undefined): AfterHoursMode => _normalizeAfterHours(v);
+const AFTER_HOURS_FE_TO_WIRE = (v: AfterHoursMode): ApiAfterHoursMode => v;
+const BUSY_WIRE_TO_FE = (v: ApiBusyMode | string | null | undefined): BusyMode => _normalizeBusy(v);
+const BUSY_FE_TO_WIRE = (v: BusyMode): ApiBusyMode => v;
 
 /**
  * Project a server-shaped `RoutingContactRow` into the local `RoutingContact`
@@ -250,12 +256,12 @@ function hydrateFromVersionedConfig(
     businessHours: {
       ...base.businessHours,
       days: hydratedDays,
-      afterHoursMode: AFTER_HOURS_WIRE_TO_FE[row.after_hours_mode] ?? 'TAKE_MESSAGE',
+      afterHoursMode: AFTER_HOURS_WIRE_TO_FE(row.after_hours_mode),
       pronunciationOverride: row.pronunciation_override || base.businessHours.pronunciationOverride,
       timezone: row.timezone || base.businessHours.timezone,
       voicemailEmail: voicemailEmail ?? base.businessHours.voicemailEmail,
     },
-    busy: { mode: BUSY_WIRE_TO_FE[row.busy_mode] ?? 'TAKE_MESSAGE' },
+    busy: { mode: BUSY_WIRE_TO_FE(row.busy_mode) },
     routingContacts: (routingContacts ?? []).map(mapWireToContact),
     forwarding,
     receptionistPersona,
@@ -282,8 +288,8 @@ function buildPatchBody(config: FrontDeskConfig): FrontDeskConfigPatchPartial {
   const patch: FrontDeskConfigPatchPartial = {
     public_number_mode: config.publicNumber.mode,
     catch_mode: config.catch.mode,
-    after_hours_mode: AFTER_HOURS_FE_TO_WIRE[config.businessHours.afterHoursMode],
-    busy_mode: BUSY_FE_TO_WIRE[config.busy.mode],
+    after_hours_mode: AFTER_HOURS_FE_TO_WIRE(config.businessHours.afterHoursMode),
+    busy_mode: BUSY_FE_TO_WIRE(config.busy.mode),
     pronunciation_override: config.businessHours.pronunciationOverride ?? '',
     business_hours: businessHoursWire,
     receptionist_persona: config.receptionistPersona,

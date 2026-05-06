@@ -10,6 +10,7 @@ export default function FounderHubLayout() {
       <Stack.Screen name="studio" />
       <Stack.Screen name="notes" />
       <Stack.Screen name="saved" />
+      <Stack.Screen name="calls-messages" />
     </Stack>
   );
 }

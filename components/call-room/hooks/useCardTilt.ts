@@ -1,4 +1,6 @@
 // components/call-room/hooks/useCardTilt.ts
+import { useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 import { useCursor, type CursorPosition, type ViewportSize } from './useParallax';
 
 export interface CardTilt {
@@ -9,7 +11,24 @@ export interface CardTilt {
 }
 
 /**
- * Compute a subtle 3D tilt for the card based on cursor position relative
+ * Default max tilt amplitudes per device class. Pointer-precise surfaces
+ * (desktop/laptop) get the full agency-grade ±14° swing; touch surfaces
+ * (tablet via DeviceOrientation) get a softer ±9° so phone-style wobble
+ * doesn't read as nausea-inducing.
+ *
+ * The legacy ±2° default produced a "card barely moves" complaint from
+ * canary testing on Safari — boosted across the board, not just for
+ * Safari, since the under-amplitude was global.
+ */
+export const TILT_AMPLITUDE = {
+  desktop: 14,
+  laptop: 14,
+  tablet: 9,
+  reducedMotion: 0,
+} as const;
+
+/**
+ * Compute a 3D tilt for the card based on cursor position relative
  * to viewport center. The card itself rotates ±maxDeg degrees on each axis.
  *
  * Math:
@@ -23,7 +42,7 @@ export interface CardTilt {
 export function computeTilt(
   cursor: CursorPosition,
   viewport: ViewportSize,
-  maxDeg: number = 2,
+  maxDeg: number = TILT_AMPLITUDE.desktop,
 ): CardTilt {
   if (viewport.width === 0 || viewport.height === 0) {
     return { rotateX: 0, rotateY: 0 };
@@ -39,10 +58,46 @@ export function computeTilt(
 }
 
 /**
- * React hook returning the current card tilt for the cursor frame.
- * SSR-safe (useCursor returns viewport={0,0} on the server, which yields zero tilt).
+ * Tracks `prefers-reduced-motion: reduce`. When true we collapse tilt to
+ * zero so motion-sensitive users get a static card. SSR-safe.
  */
-export function useCardTilt(maxDeg: number = 2): CardTilt {
+function useReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.matchMedia) {
+      return;
+    }
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setReduced(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setReduced(e.matches);
+    // addEventListener is the modern API; older Safari uses addListener.
+    if (typeof mq.addEventListener === 'function') {
+      mq.addEventListener('change', handler);
+      return () => mq.removeEventListener('change', handler);
+    }
+    // @ts-expect-error - legacy Safari fallback
+    mq.addListener(handler);
+    return () => {
+      // @ts-expect-error - legacy Safari fallback
+      mq.removeListener(handler);
+    };
+  }, []);
+
+  return reduced;
+}
+
+/**
+ * React hook returning the current card tilt for the cursor frame.
+ * - SSR-safe (useCursor returns viewport={0,0} on the server, which yields zero tilt).
+ * - Honors `prefers-reduced-motion: reduce` (returns zero tilt).
+ *
+ * `maxDeg` defaults to the desktop amplitude; callers should pass a
+ * device-appropriate value from `TILT_AMPLITUDE`.
+ */
+export function useCardTilt(maxDeg: number = TILT_AMPLITUDE.desktop): CardTilt {
   const { cursor, viewport } = useCursor();
-  return computeTilt(cursor, viewport, maxDeg);
+  const reducedMotion = useReducedMotion();
+  const effectiveMax = reducedMotion ? TILT_AMPLITUDE.reducedMotion : maxDeg;
+  return computeTilt(cursor, viewport, effectiveMax);
 }

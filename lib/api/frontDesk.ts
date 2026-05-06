@@ -72,8 +72,10 @@ export type PublicNumberMode =
   | 'FORWARD_EXISTING'
   | 'PORT_IN';
 export type CatchMode = 'APP_ONLY' | 'PHONE_ONLY' | 'APP_AND_PHONE_SIMUL_RING';
-export type AfterHoursMode = 'take_message' | 'ask_callback_window' | 'try_transfer_then_message';
-export type BusyMode = 'take_message' | 'ask_callback_window' | 'try_transfer_then_message';
+// Wire format aligned with backend migration 111 — UPPERCASE only.
+// Lowercase is the legacy v0 shape that's been migrated server-side.
+export type AfterHoursMode = 'TAKE_MESSAGE' | 'ASK_CALLBACK_WINDOW' | 'TRY_TRANSFER_THEN_MESSAGE';
+export type BusyMode = 'TAKE_MESSAGE' | 'ASK_CALLBACK_WINDOW' | 'TRY_TRANSFER_THEN_MESSAGE';
 export type ForwardingStatus = 'NOT_CONFIGURED' | 'PENDING' | 'VERIFIED' | 'LAST_TEST_FAILED';
 
 /**
