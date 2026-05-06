@@ -5055,6 +5055,38 @@ router.get('/api/anam/persona-health', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/anam/iframe-page — serves the Anam Ava iframe HTML directly,
+// instead of injecting it via React's srcDoc attribute. srcDoc was failing
+// to execute scripts in production browsers (likely a combination of COEP
+// credentialless on the parent + dynamic import() restrictions in srcDoc
+// contexts). Serving the iframe as a normal same-origin document
+// eliminates every srcDoc-related browser quirk.
+//
+// Token + profile come from query params. The token is a short-lived (1hr)
+// Anam JWT and the route is internal — acceptable tradeoff vs the
+// complexity of a token-cache layer with session IDs. Future hardening:
+// switch to a postMessage handshake where iframe sends 'iframe_ready' and
+// parent posts the token via window.postMessage so it never appears in
+// URLs or server logs.
+router.get('/api/anam/iframe-page', (req: Request, res: Response) => {
+  const token = String(req.query.token || '');
+  if (!token) {
+    return res.status(400).type('text/plain').send('Missing token query parameter');
+  }
+  let profile: any = {};
+  try { profile = JSON.parse(String(req.query.profile || '{}')); } catch { profile = {}; }
+  // Lazy import to avoid a startup-time penalty for routes that don't use it.
+  // The path resolves via tsconfig paths because tsx honors them at runtime.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { buildAvaVideoFrameDoc } = require('../lib/anam-iframe');
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.set('X-Frame-Options', 'SAMEORIGIN');
+  res.set('Cross-Origin-Resource-Policy', 'same-origin');
+  res.set('Cross-Origin-Embedder-Policy', 'credentialless');
+  res.send(buildAvaVideoFrameDoc(token, profile));
+});
+
 router.post('/api/anam/session', async (req: Request, res: Response) => {
   try {
     // Law #3: Fail Closed — require authenticated user for avatar sessions
