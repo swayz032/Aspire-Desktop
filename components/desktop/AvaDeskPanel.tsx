@@ -191,7 +191,11 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
     <div id="status"><div class="spinner"></div><div id="status-text">Connecting to Ava...</div></div>
     <div id="resume-hint">Tap anywhere to hear Ava</div>
     
-    <script type="module">
+    <script>
+      // Classic <script> (was type="module"). The script only uses dynamic
+      // import() (not static "import x from"), which works in both contexts.
+      // Classic scripts have less strict loading policies under COEP
+      // credentialless and srcDoc iframes than module scripts do.
       // Liveness beacon — fires synchronously the moment the script begins
       // executing, BEFORE any imports or async work. If the parent's outer
       // 40s timeout fires without ever receiving 'iframe_alive', the
@@ -1302,6 +1306,16 @@ function AvaDeskPanelInner() {
                   title="Ava video"
                   srcDoc={avaVideoFrameDoc || undefined}
                   allow="microphone; camera; autoplay; display-capture; encrypted-media"
+                  // The parent document sets Cross-Origin-Embedder-Policy:
+                  // credentialless (server/index.ts:449) to unlock SharedArrayBuffer
+                  // for Zoom video. Under that policy, srcDoc iframes that load
+                  // module scripts or dynamic imports are blocked unless the
+                  // iframe itself opts into credentialless mode. Without this
+                  // attribute, the iframe's <script> never executes — the
+                  // root cause behind every "video did not start within 40s"
+                  // hang where iframe_alive never fires.
+                  // Spec: https://wicg.github.io/anonymous-iframe/
+                  {...({ credentialless: 'true' } as any)}
                   style={{
                     width: '100%', height: '100%', border: '0', display: 'block', backgroundColor: '#000',
                     opacity: videoState === 'connected' ? 1 : 0,
