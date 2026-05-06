@@ -192,6 +192,24 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
     <div id="resume-hint">Tap anywhere to hear Ava</div>
     
     <script type="module">
+      // Liveness beacon — fires synchronously the moment the script begins
+      // executing, BEFORE any imports or async work. If the parent's outer
+      // 40s timeout fires without ever receiving 'iframe_alive', the
+      // iframe's JavaScript never ran (CSP block, COEP isolation, sandbox
+      // attribute, srcDoc parse failure). This eliminates a major
+      // visibility gap that previously surfaced as a silent 40s hang.
+      try { window.parent.postMessage({ source: 'ava-anam-frame', type: 'iframe_alive', ts: Date.now() }, '*'); } catch (e) { /* parent may be cross-origin in some contexts */ }
+      // Top-level error hook — anything thrown synchronously during module
+      // parse/eval that escapes start()'s try/catch (e.g., a syntax error
+      // in a downstream import, or a CSP violation on the dynamic import)
+      // is captured here and forwarded to the parent so the UI can show
+      // the real reason instead of the generic 40s timeout.
+      window.addEventListener('error', (ev) => {
+        try { window.parent.postMessage({ source: 'ava-anam-frame', type: 'error', stage: 'window_error', message: (ev?.error?.message || ev?.message || 'window error') + (ev?.filename ? ' @ ' + ev.filename : '') }, '*'); } catch (e) {}
+      });
+      window.addEventListener('unhandledrejection', (ev) => {
+        try { window.parent.postMessage({ source: 'ava-anam-frame', type: 'error', stage: 'unhandled_rejection', message: (ev?.reason?.message || String(ev?.reason || 'unhandled rejection')) }, '*'); } catch (e) {}
+      });
       const sessionToken = ${encodedSessionToken};
       const profile = ${encodedProfile};
       const statusEl = document.getElementById('status');
@@ -1020,7 +1038,15 @@ function AvaDeskPanelInner() {
       if (!data.sessionToken) throw new Error('No session token returned');
       setAnamSessionToken(data.sessionToken);
       setConnectionStatus('Starting Ava video...');
+      const ironTokenTs = Date.now();
       connectionTimeouts.current.push(setTimeout(() => {
+        // 40s outer timeout. By now we should have heard:
+        //   1. 'iframe_alive' (script started)  → confirms iframe runs JS
+        //   2. 'connected' OR 'error'           → confirms SDK reached terminal state
+        // If neither, something deeper is wrong (CSP/COEP/sandbox, dynamic
+        // import blocked, postMessage isolation, etc.). Log for diagnosis.
+        // eslint-disable-next-line no-console
+        console.error('[AvaDeskPanel] 40s connect timeout — iframe never reached connected/error state. Check console for [AvaIframe] logs and iframe_alive beacon.', { tokenAgeMs: Date.now() - ironTokenTs });
         setAnamSessionToken(null);
         setVideoState('idle');
         setConnectionStatus('Connect failed: video did not start within 40s');
@@ -1041,6 +1067,13 @@ function AvaDeskPanelInner() {
 
     const handleMessage = (event: MessageEvent) => {
       if (!event.data || event.data.source !== 'ava-anam-frame') return;
+      if (event.data.type === 'iframe_alive') {
+        // Diagnostic only — confirms iframe script started executing.
+        // Logged so we can prove the script ran if a hang occurs after.
+        // eslint-disable-next-line no-console
+        console.log('[AvaDeskPanel] iframe_alive received', event.data.ts);
+        return;
+      }
       if (event.data.type === 'connected') {
         clearConnectionTimeouts();
         setVideoState('connected');
