@@ -685,6 +685,16 @@ async function main() {
         buildPersonaPutPayload(persona, {
           toolIds: finalToolIds,
           ...(prompt ? { systemPrompt: prompt } : {}),
+          // 2026-05-06: force skipGreeting=true so Anam does NOT auto-greet.
+          // The desktop iframe (lib/anam-iframe.ts) explicitly calls
+          // client.triggerGreeting() on SESSION_READY with the personalized
+          // {{salutation}} {{last_name}} context. Anam's auto-greeting + the
+          // client trigger were both firing — producing the double greeting
+          // ("Good morning, Mr. Scott." then "Good evening, Mr. Scott." 3s
+          // later) reported in transcript 55a4e294. With skipGreeting=true,
+          // ONLY the client-driven greeting fires, and the time_of_day comes
+          // from addContext (correct local time) — not Anam's stale default.
+          skipGreeting: true,
         }),
       ),
     });
@@ -701,6 +711,16 @@ async function main() {
         buildPersonaPutPayload(persona, {
           toolIds: finalToolIds,
           ...(prompt ? { systemPrompt: prompt } : {}),
+          // 2026-05-06: force skipGreeting=true so Anam does NOT auto-greet.
+          // The desktop iframe (lib/anam-iframe.ts) explicitly calls
+          // client.triggerGreeting() on SESSION_READY with the personalized
+          // {{salutation}} {{last_name}} context. Anam's auto-greeting + the
+          // client trigger were both firing — producing the double greeting
+          // ("Good morning, Mr. Scott." then "Good evening, Mr. Scott." 3s
+          // later) reported in transcript 55a4e294. With skipGreeting=true,
+          // ONLY the client-driven greeting fires, and the time_of_day comes
+          // from addContext (correct local time) — not Anam's stale default.
+          skipGreeting: true,
         }),
       ),
     });
