@@ -199,8 +199,10 @@ function ZoomVideoView({
           htmlChild.style.setProperty('object-fit', 'cover', 'important');
           htmlChild.style.setProperty('object-position', 'center', 'important');
           
-          // Counteract SDK's internal centering/letterboxing logic (e.g. translate, padding)
-          htmlChild.style.setProperty('transform', isLocal ? 'scaleX(-1) scale(1.005)' : 'scale(1.005)', 'important');
+          // Counteract SDK's internal centering/letterboxing logic (e.g. translate, padding).
+          // 1.04 (4%) eliminates Zoom's residual letterbox bars without visible cropping
+          // at normal aspect ratios. 1.005 was empirically too small at 1080p.
+          htmlChild.style.setProperty('transform', isLocal ? 'scaleX(-1) scale(1.04)' : 'scale(1.04)', 'important');
           htmlChild.style.setProperty('padding', '0', 'important');
           htmlChild.style.setProperty('margin', '0', 'important');
           htmlChild.style.setProperty('top', '0', 'important');

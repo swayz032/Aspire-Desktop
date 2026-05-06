@@ -4,10 +4,17 @@
 // /vendor/anam/4.12.0/index.js (built by scripts/build-anam-sdk.mjs).
 
 /* eslint-disable */
-export 
-function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
+export
+function buildAvaVideoFrameDoc(sessionToken: string, profile: any, suiteId?: string, toolSecret?: string) {
   const encodedSessionToken = JSON.stringify(sessionToken);
   const encodedProfile = JSON.stringify(profile);
+  // suiteId and toolSecret are injected as JS constants, NOT URL params, so
+  // they never appear in browser history, server access logs, or network HAR
+  // captures. The iframe is same-origin only (X-Frame-Options: SAMEORIGIN).
+  // Law #9: toolSecret is redacted from all receipts/logs — only used here to
+  // authenticate the pending-cards poll from within the iframe.
+  const encodedSuiteId = JSON.stringify(suiteId || '');
+  const encodedToolSecret = JSON.stringify(toolSecret || '');
   
   return `<!DOCTYPE html>
 <html lang="en">
@@ -107,9 +114,79 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
       });
       const sessionToken = ${encodedSessionToken};
       const profile = ${encodedProfile};
+      // suiteId and toolSecret are injected at render time by the server-side
+      // GET /api/anam/iframe-page route. Never in URL params — Law #9.
+      const _suiteId = ${encodedSuiteId};
+      const _toolSecret = ${encodedToolSecret};
       const statusEl = document.getElementById('status');
       const hintEl = document.getElementById('resume-hint');
       const post = (payload) => window.parent.postMessage({ source: 'ava-anam-frame', ...payload }, '*');
+      // ── show_cards dedupe map (Wave 3) ──────────────────────────────────────
+      // Prevents double-render when both the brain AND the server auto-emit
+      // fire within the 3s dedupe window. Key: _card_cache_id, value: timestamp.
+      // Evict at 30s so memory doesn't leak across a full session.
+      var _showCardsSeen = new Map();
+      var SHOW_CARDS_DEDUPE_MS = 3000;
+      var SHOW_CARDS_EVICT_MS = 30000;
+      function _evictShowCardsSeen() {
+        var now = Date.now();
+        for (var _sce of _showCardsSeen.entries()) {
+          if (now - _sce[1] > SHOW_CARDS_EVICT_MS) _showCardsSeen.delete(_sce[0]);
+        }
+      }
+      // Returns true if this cacheId was seen within the dedupe window (duplicate).
+      function _isDuplicateShowCards(cacheId, source) {
+        _evictShowCardsSeen();
+        if (!cacheId) {
+          // M-3: telemetry for missing cacheId — if non-zero in production the
+          // upstream invoke_adam response is dropping _card_cache_id. The render
+          // is still allowed (return false) but we want visibility.
+          post({ type: 'show_cards_no_cache_id', payload: { source: source } });
+          return false;
+        }
+        if (_showCardsSeen.has(cacheId)) {
+          var firstSeen = _showCardsSeen.get(cacheId);
+          if (Date.now() - firstSeen < SHOW_CARDS_DEDUPE_MS) {
+            post({ type: 'show_cards_deduped', payload: { cacheId: cacheId, source: source } });
+            return true;
+          }
+        }
+        _showCardsSeen.set(cacheId, Date.now());
+        return false;
+      }
+      // Polls GET /api/agent-tools/pending-cards after invoke_adam completes.
+      // If the brain already emitted show_cards, _isDuplicateShowCards guards.
+      // Auth: x-aspire-tool-secret injected by server at iframe render time.
+      async function _pollPendingCards() {
+        if (!_suiteId) return;
+        try {
+          var resp = await fetch(
+            '/api/agent-tools/pending-cards?suite_id=' + encodeURIComponent(_suiteId),
+            {
+              method: 'GET',
+              headers: _toolSecret ? { 'x-aspire-tool-secret': _toolSecret } : {},
+            },
+          );
+          if (!resp.ok || resp.status === 204) return; // 204 = no pending card
+          var data = await resp.json();
+          if (!data || !Array.isArray(data.records) || data.records.length === 0) return;
+          var cacheId = data._card_cache_id || '';
+          if (_isDuplicateShowCards(cacheId, 'server')) return; // brain already rendered
+          post({
+            type: 'show_cards',
+            payload: {
+              artifact_type: data.artifact_type || '',
+              records: data.records,
+              summary: data.summary || '',
+              _card_cache_id: cacheId,
+              source: 'server',
+            },
+          });
+        } catch (e) {
+          // Best-effort — never block session on polling failure.
+          console.warn('[AvaIframe] pending-cards poll error', e);
+        }
+      }
       const statusTextEl = document.getElementById('status-text');
       const setStatus = (message) => {
         if (statusTextEl) statusTextEl.textContent = message;
@@ -183,7 +260,12 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
             client.registerToolCallHandler('show_cards', {
               onStart: async (payload) => {
                 const args = payload?.arguments || {};
-                post({ type: 'show_cards', payload: args });
+                // Dedupe: if the server auto-emit already fired this cacheId
+                // within the 3s window, skip the brain-emitted duplicate.
+                var _cacheId = args._card_cache_id || args.card_cache_id || '';
+                if (!_isDuplicateShowCards(_cacheId, 'brain')) {
+                  post({ type: 'show_cards', payload: { ...args, source: 'brain' } });
+                }
                 return 'Cards displayed.';
               },
             });
@@ -254,6 +336,41 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
             "Just another sec, close now.",
             "Pulling it together, almost there."
           ];
+          // 2026-05-06: tool-error recovery pool. Production transcript
+          // 51eb43c3 showed a 34-second silence after invoke_adam returned
+          // an error — the brain failed the prompt's 5-second voice rule.
+          // This pool fires deterministically 1.5s after TOOL_CALL_FAILED
+          // unless the brain spoke in the last 1500ms (suppression window
+          // matches the preamble pattern). Keys are tool names; falls back
+          // to the generic line.
+          var TOOL_ERROR_RECOVERY_POOL = {
+            invoke_adam: [
+              "Hmm, that didn't pull anything. Want me to try without the apartment number?",
+              "Didn't come back with results. Try again with a simpler address?",
+              "Got an empty result. Different address or different angle?"
+            ],
+            invoke_quinn: [
+              "That didn't go through. Want me to retry?",
+              "Hit a snag on that one. Try again?"
+            ],
+            invoke_tec: [
+              "Document didn't come through. Want to retry?"
+            ],
+            invoke_clara: [
+              "Didn't get a response on that. Try again?"
+            ],
+            generic: [
+              "Got an error on that. Want me to retry?",
+              "That didn't come through. One more try?"
+            ]
+          };
+          var errorRecoveryIdxRefs = {
+            invoke_adam: { idx: -1 },
+            invoke_quinn: { idx: -1 },
+            invoke_tec: { idx: -1 },
+            invoke_clara: { idx: -1 },
+            generic: { idx: -1 }
+          };
           function pickFromPool(pool, lastIdxRef) {
             if (!pool.length) return null;
             var idx = Math.floor(Math.random() * pool.length);
@@ -277,7 +394,10 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
             try {
               if (typeof client.talk === 'function') {
                 client.talk(text);
-                post({ type: kind === 'preamble' ? 'tool_preamble' : 'mid_tool_filler', payload: { text: text, kind: kind } });
+                var msgType = 'mid_tool_filler';
+                if (kind === 'preamble') msgType = 'tool_preamble';
+                else if (kind === 'tool_error_recovery') msgType = 'tool_error_recovery';
+                post({ type: msgType, payload: { text: text, kind: kind } });
               }
             } catch (e) {
               // SDK or session closed — swallow; no observable side-effect.
@@ -327,18 +447,79 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
           });
           client.addListener(AnamEvent.TOOL_CALL_COMPLETED, function (event) {
             clearMidToolTimers();
-            post({ type: 'tool_call_completed', payload: { toolName: event && event.toolName, executionTime: event && event.executionTime } });
+            var completedToolName = (event && event.toolName) || '';
+            post({ type: 'tool_call_completed', payload: { toolName: completedToolName, executionTime: event && event.executionTime } });
+            // Wave 3: after invoke_adam completes, poll the server's pending-cards
+            // endpoint. If the brain already emitted show_cards, _isDuplicateShowCards
+            // guards against a double render. If the brain forgot (the bug), this
+            // fires the render deterministically (server-side backstop).
+            // Delay 300ms — gives the brain's show_cards CLIENT call time to arrive
+            // via CLIENT_TOOL_EVENT_RECEIVED before the poll consumes the pending entry.
+            if (completedToolName === 'invoke_adam') {
+              setTimeout(_pollPendingCards, 300);
+            }
           });
           client.addListener(AnamEvent.TOOL_CALL_FAILED, function (event) {
             clearMidToolTimers();
-            post({ type: 'tool_call_failed', payload: { toolName: event && event.toolName, errorMessage: event && event.errorMessage } });
+            var failedToolName = (event && event.toolName) || '';
+            post({ type: 'tool_call_failed', payload: { toolName: failedToolName, errorMessage: event && event.errorMessage } });
+            // P0 voice rule: speak within 5s of any tool result (success
+            // or error). Production transcript 51eb43c3 showed Ava silent
+            // for 34 seconds after invoke_adam returned an empty-result
+            // error. Fix: schedule a deterministic recovery line at 2.5s
+            // post-error, suppressed if the brain already spoke in the
+            // last 2500ms (it occasionally recovers on its own).
+            //
+            // M-2: raised from 1.5s → 2.5s because the brain takes 2-4s to
+            // compose a recovery turn when LLM inference is loaded. The 1.5s
+            // window caused double-talk: brain + iframe spoke simultaneously.
+            var tErrorStart = Date.now();
+            setTimeout(function () {
+              var nowTs = Date.now();
+              // Re-check lastPersonaSpeechAt at speak time (not just at scheduling
+              // time) to catch post-error TTS chunks the brain streams back.
+              var personaSpokeRecently = (lastPersonaSpeechAt >= tErrorStart - 200) && (lastPersonaSpeechAt <= nowTs);
+              if (personaSpokeRecently) {
+                post({ type: 'tool_error_recovery_skipped', payload: { reason: 'persona_speaking', toolName: failedToolName } });
+                return;
+              }
+              var pool = TOOL_ERROR_RECOVERY_POOL[failedToolName] || TOOL_ERROR_RECOVERY_POOL.generic;
+              var idxRef = errorRecoveryIdxRefs[failedToolName] || errorRecoveryIdxRefs.generic;
+              speakNarration(pickFromPool(pool, idxRef), 'tool_error_recovery');
+            }, 2500);
           });
           if (AnamEvent.CLIENT_TOOL_EVENT_RECEIVED) {
             client.addListener(AnamEvent.CLIENT_TOOL_EVENT_RECEIVED, (event) => {
               const toolName = event?.eventName || event?.toolName;
               const args = event?.eventData || event?.arguments || {};
               if (toolName === 'show_cards') {
-                post({ type: 'show_cards', payload: args });
+                var _cteId = (args && (args._card_cache_id || args.card_cache_id)) || '';
+                if (!_isDuplicateShowCards(_cteId, 'brain')) {
+                  post({ type: 'show_cards', payload: { ...args, source: 'brain' } });
+                  // P0-3 (Law #2): fire-and-forget receipt for brain-sourced renders.
+                  // Without this, the majority of card renders (LLM-compliant sessions)
+                  // produce zero receipts. Wrapped in try/catch so a receipt POST
+                  // failure NEVER blocks or delays the card render.
+                  if (_suiteId) {
+                    var _brainRecordCount = Array.isArray(args.records) ? args.records.length : 0;
+                    fetch('/api/agent-tools/show-cards-rendered', {
+                      method: 'POST',
+                      headers: Object.assign(
+                        { 'Content-Type': 'application/json' },
+                        _toolSecret ? { 'x-aspire-tool-secret': _toolSecret } : {},
+                      ),
+                      body: JSON.stringify({
+                        suite_id: _suiteId,
+                        cacheId: _cteId || null,
+                        artifact_type: (args && args.artifact_type) || 'unknown',
+                        record_count: _brainRecordCount,
+                      }),
+                    }).catch(function (e) {
+                      // Best-effort — receipt POST failure must never interrupt render.
+                      console.warn('[AvaIframe] brain-render receipt POST failed', e);
+                    });
+                  }
+                }
               }
             });
           }

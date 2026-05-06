@@ -270,8 +270,12 @@ function AvaDeskPanelInner() {
     if (!anamSessionToken) return null;
     const tokenParam = encodeURIComponent(anamSessionToken);
     const profileParam = encodeURIComponent(JSON.stringify(avaProfileFallback || {}));
-    return `/api/anam/iframe-page?token=${tokenParam}&profile=${profileParam}`;
-  }, [anamSessionToken, avaProfileFallback]);
+    // Wave 3: pass suite_id so the server can embed it in the iframe HTML for
+    // the pending-cards poll (server-side show_cards backstop). suite_id is a
+    // non-secret UUID — safe to include in the URL query string.
+    const suiteParam = suiteId ? `&suite_id=${encodeURIComponent(suiteId)}` : '';
+    return `/api/anam/iframe-page?token=${tokenParam}&profile=${profileParam}${suiteParam}`;
+  }, [anamSessionToken, avaProfileFallback, suiteId]);
 
   // Kept temporarily for any legacy references; new path uses src= above.
   const avaVideoFrameDoc = useMemo(
@@ -564,8 +568,29 @@ function AvaDeskPanelInner() {
     connectionTimeouts.current = [];
   }, []);
 
+  // Stable key for the Anam iframe — generated once per connect attempt and reset on
+  // disconnect. Prevents the iframe from remounting when anamSessionToken is re-minted
+  // mid-session (e.g. after a profile change or token refresh) — Bug 1 fix.
+  const anamConnectionIdRef = useRef<string | null>(null);
+
+  // Centralised Ava disconnect — resets connectionId so the next connect
+  // mints a fresh iframe key, while the current session's mid-session token
+  // re-mints never caused a remount (connectionId was stable).
+  const disconnectAva = useCallback((status?: string) => {
+    clearConnectionTimeouts();
+    anamConnectionIdRef.current = null;
+    setAnamSessionToken(null);
+    setVideoState('idle');
+    if (status !== undefined) setConnectionStatus(status);
+  }, [clearConnectionTimeouts]);
+
   const handleConnectToAva = useCallback(async () => {
     if (videoState !== 'idle') return;
+    // Mint a stable connection ID for this session lifecycle.
+    // Remains constant even if anamSessionToken is refreshed internally.
+    anamConnectionIdRef.current = typeof crypto !== 'undefined'
+      ? crypto.randomUUID()
+      : `conn-${Date.now()}`;
     trackInteraction('agent_connect', 'ava-desk-panel', { mode: 'video', agent: 'ava' });
     clearConnectionTimeouts();
     setVideoState('connecting');
@@ -609,20 +634,15 @@ function AvaDeskPanelInner() {
         // import blocked, postMessage isolation, etc.). Log for diagnosis.
         // eslint-disable-next-line no-console
         console.error('[AvaDeskPanel] 40s connect timeout — iframe never reached connected/error state. Check console for [AvaIframe] logs and iframe_alive beacon.', { tokenAgeMs: Date.now() - ironTokenTs });
-        setAnamSessionToken(null);
-        setVideoState('idle');
-        setConnectionStatus('Connect failed: video did not start within 40s');
+        disconnectAva('Connect failed: video did not start within 40s');
       }, 40000));
     } catch (err) {
-      clearConnectionTimeouts();
-      setAnamSessionToken(null);
-      setVideoState('idle');
       const reason = err instanceof Error
         ? (err.name === 'TimeoutError' ? 'session mint timed out (15s)' : err.message)
         : 'unknown error';
-      setConnectionStatus(`Connect failed: ${reason}`);
+      disconnectAva(`Connect failed: ${reason}`);
     }
-  }, [avaProfileFallback, clearConnectionTimeouts, videoState, session?.access_token]);
+  }, [avaProfileFallback, clearConnectionTimeouts, disconnectAva, videoState, session?.access_token]);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
@@ -644,20 +664,14 @@ function AvaDeskPanelInner() {
         return;
       }
       if (event.data.type === 'error') {
-        clearConnectionTimeouts();
-        setAnamSessionToken(null);
-        setVideoState('idle');
         const stage = event.data.stage ? ` [${event.data.stage}]` : '';
         const msg = event.data.message ? `: ${event.data.message}` : '';
-        setConnectionStatus(`Connect failed${stage}${msg}`.slice(0, 240));
+        disconnectAva(`Connect failed${stage}${msg}`.slice(0, 240));
         return;
       }
       if (event.data.type === 'closed') {
-        clearConnectionTimeouts();
-        setAnamSessionToken(null);
-        setVideoState('idle');
         const label = event.data.codeLabel || event.data.code;
-        setConnectionStatus(label ? `Session ended (${label})` : 'Session ended');
+        disconnectAva(label ? `Session ended (${label})` : 'Session ended');
         return;
       }
       // Voice-driven end_session: Ava called the client tool because the
@@ -667,21 +681,28 @@ function AvaDeskPanelInner() {
       // the subsequent CONNECTION_CLOSED postMessage will be a no-op.
       if (event.data.type === 'end_session_requested') {
         trackInteraction('agent_disconnect', 'ava-desk-panel', { agent: 'ava', reason: event.data.payload?.reason || 'user_voice' });
-        clearConnectionTimeouts();
-        setAnamSessionToken(null);
-        setVideoState('idle');
-        setConnectionStatus('');
+        disconnectAva('');
         return;
       }
       if (event.data.type === 'show_cards') {
         const payload = event.data.payload || {};
         if (payload && typeof payload === 'object') {
+          // Wave 3: source field distinguishes server-auto-emit from brain-emitted.
+          // Both paths route through handleStructuredCards identically — the source
+          // is logged for telemetry only (Law #1: no decision logic here).
+          const renderSource: string = typeof payload.source === 'string' ? payload.source : 'brain';
+          console.info('[AvaDeskPanel] show_cards received', {
+            source: renderSource,
+            artifact_type: String(payload.artifact_type || ''),
+            record_count: Array.isArray(payload.records) ? payload.records.length : 0,
+            cache_id: payload._card_cache_id || payload.card_cache_id || '',
+          });
           handleStructuredCards({
             artifact_type: String(payload.artifact_type || ''),
             records: Array.isArray(payload.records) ? payload.records : [],
             summary: String(payload.summary || ''),
             confidence: payload.confidence,
-            card_cache_id: payload.card_cache_id,
+            card_cache_id: payload.card_cache_id || payload._card_cache_id,
           });
         }
         return;
@@ -696,15 +717,12 @@ function AvaDeskPanelInner() {
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [clearConnectionTimeouts, handleStructuredCards, showVoiceError]);
+  }, [clearConnectionTimeouts, disconnectAva, handleStructuredCards, showVoiceError]);
 
   const handleEndSession = useCallback(() => {
     trackInteraction('agent_disconnect', 'ava-desk-panel', { agent: 'ava' });
-    clearConnectionTimeouts();
-    setAnamSessionToken(null);
-    setVideoState('idle');
-    setConnectionStatus('');
-  }, [clearConnectionTimeouts]);
+    disconnectAva('');
+  }, [disconnectAva]);
 
   const voiceStatusLabel = useMemo(() => {
     if (!isSessionActive) return companyPillLabel || 'Tap to start';
@@ -860,7 +878,7 @@ function AvaDeskPanelInner() {
                 overflow: 'hidden', borderRadius: 12,
               } as any}>
                 <iframe
-                  key={anamSessionToken}
+                  key={anamConnectionIdRef.current ?? anamSessionToken}
                   title="Ava video"
                   src={avaVideoFrameSrc || undefined}
                   allow="microphone; camera; autoplay; display-capture; encrypted-media"

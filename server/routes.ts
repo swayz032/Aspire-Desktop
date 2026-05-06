@@ -243,6 +243,7 @@ function validateRequiredSchemaFields(
 function validateAnamAvaPromptAndConfig(prompt: string, personaId: string): string[] {
   const errors: string[] = [];
   const normalizedPrompt = String(prompt || '').toLowerCase();
+  const rawPrompt = String(prompt || '');
 
   const enforceCanonicalPersonaId = process.env.ANAM_ENFORCE_CANONICAL_PERSONA_ID === 'true';
   if (enforceCanonicalPersonaId && personaId !== CANONICAL_ANAM_AVA_PERSONA_ID) {
@@ -259,6 +260,53 @@ function validateAnamAvaPromptAndConfig(prompt: string, personaId: string): stri
   }
   if (normalizedPrompt.includes('switch to voice mode')) {
     errors.push('Anam Ava prompt contains voice-mode handoff language incompatible with Anam routing.');
+  }
+
+  // ── Wave 3 validator additions ───────────────────────────────────────────────
+
+  // Check 1: English-only language lock. Production transcript 51eb43c3 showed
+  // Ava drifting to Spanish on greet when this instruction was absent.
+  const hasLanguageLock = /American English only|Always respond in English/i.test(rawPrompt);
+  if (!hasLanguageLock) {
+    errors.push(
+      'Anam Ava prompt missing language lock (expected "American English only" or "Always respond in English").',
+    );
+  }
+
+  // Check 2: show_cards mandate near the top of the prompt (within first 3500 chars).
+  // Verifies the instruction exists where the LLM sees it early in context.
+  const promptHead = rawPrompt.slice(0, 3500);
+  const hasShowCardsMandate =
+    promptHead.includes('show_cards is required after invoke_adam') ||
+    promptHead.includes('## CRITICAL — show_cards is required');
+  if (!hasShowCardsMandate) {
+    errors.push(
+      'Anam Ava prompt missing show_cards mandate in first 3500 chars ' +
+      '(expected "show_cards is required after invoke_adam" or "## CRITICAL — show_cards is required").',
+    );
+  }
+
+  // Check 3: NEVER SAY block. Prevents Ava from leaking model identity or
+  // technical internals (governance requirement, Law #9).
+  const hasNeverSayBlock = rawPrompt.includes('## NEVER SAY');
+  if (!hasNeverSayBlock) {
+    errors.push('Anam Ava prompt missing "## NEVER SAY" block.');
+  }
+
+  // Check 4: Token budget estimate. Each token is ~4 chars. Warn above 7500
+  // tokens (30000 chars) and error above 8000 tokens (32000 chars) to prevent
+  // context-window overflow that silently drops the tail of the prompt.
+  const estimatedTokens = Math.floor(rawPrompt.length / 4);
+  if (estimatedTokens > 8000) {
+    errors.push(
+      `Anam Ava prompt estimated token count ${estimatedTokens} exceeds hard limit of 8000. ` +
+      'Trim the prompt to prevent context overflow.',
+    );
+  } else if (estimatedTokens > 7500) {
+    errors.push(
+      `Anam Ava prompt estimated token count ${estimatedTokens} is above the 7500-token warning threshold. ` +
+      'Consider trimming to ensure tail instructions are not truncated.',
+    );
   }
 
   return errors;
@@ -5075,6 +5123,13 @@ router.get('/api/anam/iframe-page', (req: Request, res: Response) => {
   }
   let profile: any = {};
   try { profile = JSON.parse(String(req.query.profile || '{}')); } catch { profile = {}; }
+  // Wave 3: pass suite_id and tool_secret so the iframe can poll
+  // /api/agent-tools/pending-cards for the server-side show_cards backstop.
+  // suite_id comes from the authenticated request context (Law #6: tenant isolation).
+  // toolSecret is the shared secret from env — injected into the iframe HTML
+  // body (not URL params) so it never appears in server access logs (Law #9).
+  const iframeSuiteId = String(req.query.suite_id || '');
+  const iframeToolSecret = collectAcceptedSecrets()[0] || '';
   // Lazy import to avoid a startup-time penalty for routes that don't use it.
   // The path resolves via tsconfig paths because tsx honors them at runtime.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -5084,7 +5139,7 @@ router.get('/api/anam/iframe-page', (req: Request, res: Response) => {
   res.set('X-Frame-Options', 'SAMEORIGIN');
   res.set('Cross-Origin-Resource-Policy', 'same-origin');
   res.set('Cross-Origin-Embedder-Policy', 'credentialless');
-  res.send(buildAvaVideoFrameDoc(token, profile));
+  res.send(buildAvaVideoFrameDoc(token, profile, iframeSuiteId, iframeToolSecret));
 });
 
 router.post('/api/anam/session', async (req: Request, res: Response) => {
@@ -5170,7 +5225,7 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       .replace(/\{\{last_name\}\}/g, lastName)
       .replace(/\{\{first_name\}\}/g, firstName)
       .replace(/\{\{owner_name\}\}/g, ownerName)
-      .replace(/\{\{gender\}\}/g, gender || 'unknown')
+      .replace(/\{\{gender\}\}/g, gender || '')
       .replace(/\{\{industry\}\}/g, industry || 'General')
       .replace(/\{\{date\}\}/g, fullDate)
       .replace(/\{\{has_camera\}\}/g, hasCamera ? 'true' : 'false')
@@ -5186,7 +5241,15 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       voiceId: req.body?.voiceId || DEFAULT_ANAM_AVA_VOICE_ID,
       llmId: ANAM_AVA_LLM_ID,
       systemPrompt: videoPrompt,
-      skipGreeting: false,
+      // 2026-05-06: skipGreeting=true. Was false. With false, Anam's
+      // hosted brain emits an autonomous opener BEFORE our system prompt's
+      // language lock and addressing rule have full effect — production
+      // transcript 51eb43c3 showed Ava drifting to Spanish on the greet.
+      // With true, the iframe's SESSION_READY handler explicitly fires
+      // client.triggerGreeting() so the greeting routes through the
+      // language-locked prompt deterministically (English-only, formal
+      // salutation form per Aspire addressing rule).
+      skipGreeting: true,
       maxSessionLengthSeconds: 1800,
       voiceDetectionOptions: {
         // 2026-05-06: lowered from 0.7 → 0.4 after a session transcript

@@ -37,6 +37,75 @@ const chosenStoreIdBySuite = new Map<string, { storeId: string; timestamp: numbe
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes — card cache lifetime
 const STORE_PICK_TTL_MS = 90 * 1000; // 90s — voice session disambiguation memory
 
+// ─── Auto-Emit Pending Cards (Wave 3: server-side show_cards backstop) ───────
+// When invoke_adam returns renderable records the server writes a pending card
+// payload here. The iframe polls GET /api/agent-tools/pending-cards immediately
+// after TOOL_CALL_COMPLETED fires for invoke_adam. If the brain already emitted
+// show_cards (brain path), the iframe dedupes on _card_cache_id and discards
+// the server-side duplicate. If the brain forgot (the bug), the server payload
+// triggers the render deterministically.
+//
+// Law #1: This is a render assist — the brain still owns narration. No decision
+//         logic here; the server only caches what the brain already returned.
+// Law #6: Keyed by suite_id — zero cross-tenant leakage.
+// TTL: 10s — long enough to survive a slow TOOL_CALL_COMPLETED roundtrip;
+//      short enough to never replay stale cards on a new query.
+const PENDING_AUTO_EMIT_TTL_MS = 10_000;
+
+// Full set of artifact types that have a registered card component.
+// Source of truth: CardRegistry.ts — keep in sync when new cards are added.
+const RENDERABLE_ARTIFACT_TYPES = new Set([
+  'HotelShortlist',
+  'PriceComparison',
+  'EstimateResearchPack',
+  'VendorShortlist',
+  'ProspectList',
+  'CompetitorBrief',
+  'StoreDisambiguation',
+  'LandlordPropertyPack',
+  'PropertyFactPack',
+  'RentCompPack',
+  'PermitContextPack',
+  'NeighborhoodDemandBrief',
+  'ScreeningComplianceBrief',
+  'InvestmentOpportunityPack',
+  'FlightShortlist',
+  'RestaurantShortlist',
+  'ServiceComparison',
+  'GenericResearch',
+]);
+
+interface PendingAutoEmit {
+  artifactType: string;
+  records: unknown[];
+  summary: string;
+  cacheId: string;
+  suiteId: string;
+  timestamp: number;
+}
+// M-1: Changed from Map<string, PendingAutoEmit> to Map<string, PendingAutoEmit[]> so
+// multiple concurrent windows/tabs on the same suite each queue their own pending entry
+// rather than the second window overwriting the first.
+//
+// Keying by anamSessionId would be ideal (guarantees per-tab isolation) but the
+// invoke_adam handler does not receive a session ID in the current request schema.
+// TODO: when Anam SDK exposes a stable session_id in the CLIENT_TOOL_EVENT_RECEIVED
+// payload, thread it through invoke_adam → pendingAutoEmitBySuite key so isolation
+// is per-tab rather than per-suite. Tracked: Law #6 multi-window edge case.
+const pendingAutoEmitBySuite = new Map<string, PendingAutoEmit[]>();
+
+function cleanPendingAutoEmit(): void {
+  const now = Date.now();
+  for (const [key, entries] of pendingAutoEmitBySuite) {
+    const live = entries.filter(e => now - e.timestamp <= PENDING_AUTO_EMIT_TTL_MS);
+    if (live.length === 0) {
+      pendingAutoEmitBySuite.delete(key);
+    } else {
+      pendingAutoEmitBySuite.set(key, live);
+    }
+  }
+}
+
 function chosenStoreKey(suiteId: string, actorId: string): string {
   const safeActor = actorId && typeof actorId === 'string' ? actorId.trim() : '';
   return `${suiteId}:${safeActor || 'suite'}`;
@@ -1838,6 +1907,48 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
       };
     }
 
+    // ── Auto-Emit: server-side show_cards backstop (Wave 3) ──────────────────
+    // Write a pending card payload so the iframe can deterministically render
+    // cards even if the brain forgets to emit show_cards. The iframe polls
+    // GET /api/agent-tools/pending-cards immediately after TOOL_CALL_COMPLETED
+    // fires for invoke_adam.
+    //
+    // Trigger condition: Adam returned renderable records (non-empty AND
+    // artifact_type in RENDERABLE_ARTIFACT_TYPES). The cacheId is the
+    // correlationId used throughout this request — the iframe passes it back
+    // for dedupe so a brain-emitted show_cards with the same cacheId is
+    // silently discarded (Law #1: no double render).
+    if (
+      resolvedAgent === 'adam' &&
+      responseData !== null &&
+      typeof responseData === 'object' &&
+      Array.isArray((responseData as any).records) &&
+      (responseData as any).records.length > 0 &&
+      RENDERABLE_ARTIFACT_TYPES.has(String((responseData as any).artifact_type || ''))
+    ) {
+      const pendingCacheId = String((responseData as any)._card_cache_id || correlationId);
+      cleanPendingAutoEmit();
+      // M-1: push onto the per-suite array rather than overwriting, so multiple
+      // concurrent browser windows on the same suite each get their entry served.
+      const existingEntries = pendingAutoEmitBySuite.get(safeSuiteId) || [];
+      existingEntries.push({
+        artifactType: String((responseData as any).artifact_type),
+        records: (responseData as any).records as unknown[],
+        summary: String((responseData as any).summary || a2aResult.result || ''),
+        cacheId: pendingCacheId,
+        suiteId: safeSuiteId,
+        timestamp: Date.now(),
+      });
+      pendingAutoEmitBySuite.set(safeSuiteId, existingEntries);
+      logger.info('ava.auto_emit.queued', {
+        artifact_type: String((responseData as any).artifact_type),
+        record_count: ((responseData as any).records as unknown[]).length,
+        cache_id: pendingCacheId,
+        suite_id: safeSuiteId,
+        queue_depth: existingEntries.length,
+      });
+    }
+
     return res.json({
       agent: resolvedAgent,
       task: effectiveTask,
@@ -2332,7 +2443,15 @@ async function emitShowCardsReceipt(opts: {
   cacheId?: string;
   artifactType: string;
   recordCount: number;
-  outcome: 'CACHE_HIT' | 'REHYDRATED' | 'PASSTHROUGH' | 'CROSS_TENANT_REFUSED' | 'CACHE_MISS';
+  outcome: 'CACHE_HIT' | 'REHYDRATED' | 'PASSTHROUGH' | 'CROSS_TENANT_REFUSED' | 'CACHE_MISS' | 'BRAIN_RENDER';
+  // P0-2: upstream invoke_adam correlation_id for receipt chain continuity.
+  // When provided this becomes correlation_id so the receipt traces back to
+  // the invoke_adam call that produced the records. A locally-minted id is
+  // used only when no upstream id is available (e.g. direct brain emit with
+  // no prior invoke_adam in scope).
+  upstreamCorrelationId?: string;
+  // P1-2: capability token scoping the invoke_adam call that triggered this render.
+  capabilityTokenId?: string;
 }): Promise<void> {
   try {
     const { createClient } = await import('@supabase/supabase-js');
@@ -2340,15 +2459,25 @@ async function emitShowCardsReceipt(opts: {
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
     if (!supabaseUrl || !supabaseKey || !opts.suiteId) return;
     const supabase = createClient(supabaseUrl, supabaseKey);
-    const correlationId = `corr-show-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    // P0-2: prefer the upstream (invoke_adam) correlation_id so the receipt
+    // chain is traceable end-to-end. Fall back to a locally-minted id only
+    // when no upstream id is available (rare: direct brain emit without a
+    // preceding invoke_adam call in this session).
+    const upstreamCorrelationId = opts.upstreamCorrelationId || opts.cacheId;
+    const correlationId = upstreamCorrelationId
+      || `corr-show-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const status = opts.outcome === 'CROSS_TENANT_REFUSED' ? 'DENIED'
       : opts.outcome === 'CACHE_MISS' ? 'FAILED'
       : 'SUCCEEDED';
+    // P1-3: suite_id is the tenant unit in this schema — suites.tenant_id and
+    // suites.office_id are not separate columns (confirmed: suites table uses
+    // suite_id as the primary tenant discriminator). Documented explicitly so
+    // a future migration to a normalized tenant model is trackable.
     await supabase.from('receipts').insert({
       receipt_id: `rcpt-show-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       suite_id: opts.suiteId,
-      tenant_id: opts.suiteId,
-      office_id: opts.suiteId,
+      tenant_id: opts.suiteId,   // intentional: suite IS the tenant unit (see P1-3 above)
+      office_id: opts.suiteId,   // intentional: same reason
       receipt_type: 'show_cards',
       status,
       correlation_id: correlationId,
@@ -2361,6 +2490,10 @@ async function emitShowCardsReceipt(opts: {
         reason_code: opts.outcome,
         source: opts.source,
         cache_id: opts.cacheId || null,
+        // P0-2: preserve chain even when correlationId was locally minted.
+        parent_correlation_id: upstreamCorrelationId || null,
+        // P1-2: capability token from the scoped invoke_adam request.
+        capability_token_id: opts.capabilityTokenId || null,
       },
       result: {
         artifact_type: opts.artifactType,
@@ -2511,6 +2644,112 @@ router.post('/v1/tools/show-cards', (req: Request, res: Response) => {
     summary: incomingSummary,
     source: 'client',
   });
+});
+
+// ─── Pending Auto-Emit Cards Endpoint (Wave 3) ───────────────────────────────
+// Polled by the iframe immediately after TOOL_CALL_COMPLETED fires for
+// invoke_adam. If the brain already emitted show_cards, the iframe dedupes on
+// _card_cache_id. If the brain forgot, this response triggers the render.
+//
+// Auth: x-aspire-tool-secret (same as all /v1/tools/* routes — the iframe
+//       already has this secret embedded via the server-rendered iframe page).
+// Tenant isolation (Law #6): pending entry is only served when the request's
+//   suite_id matches the cached entry's suite_id.
+// Receipt (Law #2): emitted fire-and-forget so voice latency is unaffected.
+router.get('/api/agent-tools/pending-cards', cardDataRateLimit, async (req: Request, res: Response) => {
+  if (!verifySecret(req, res)) return;
+
+  const querySuiteId = typeof req.query.suite_id === 'string' ? req.query.suite_id.trim() : '';
+  const suiteId = normalizeUuid(querySuiteId) || normalizeUuid(getDefaultSuiteId());
+  if (!suiteId) {
+    return res.status(400).json({ error: 'MISSING_SUITE_ID', message: 'suite_id query param is required.' });
+  }
+
+  cleanPendingAutoEmit();
+  // M-1: pull from the per-suite queue. Shift the oldest entry (FIFO) so each
+  // poll serves one pending card payload and leaves the rest for other windows.
+  const suiteQueue = pendingAutoEmitBySuite.get(suiteId);
+  const pending = suiteQueue && suiteQueue.length > 0 ? suiteQueue[0] : undefined;
+
+  if (!pending || pending.suiteId !== suiteId) {
+    // No renderable payload queued — brain likely already emitted show_cards.
+    return res.status(204).send();
+  }
+
+  // Consume the pending entry (one-shot: prevents double-emit if poll retries).
+  // Remove only the entry just served; leave any remaining entries for other polls.
+  const remaining = suiteQueue!.slice(1);
+  if (remaining.length === 0) {
+    pendingAutoEmitBySuite.delete(suiteId);
+  } else {
+    pendingAutoEmitBySuite.set(suiteId, remaining);
+  }
+
+  logger.info('ava.card_render', {
+    source: 'server',
+    artifact_type: pending.artifactType,
+    record_count: pending.records.length,
+    cache_id: pending.cacheId,
+    suite_id: suiteId,
+  });
+
+  // Fire-and-forget receipt (Law #2). source='server' distinguishes this from
+  // brain-emitted renders in the audit trail.
+  // P0-2: pending.cacheId IS the upstream invoke_adam correlationId (set at
+  // line ~1917 as `const pendingCacheId = _card_cache_id || correlationId`),
+  // so passing it as both cacheId and upstreamCorrelationId threads the chain.
+  void emitShowCardsReceipt({
+    suiteId,
+    source: 'server',
+    cacheId: pending.cacheId,
+    upstreamCorrelationId: pending.cacheId,
+    artifactType: pending.artifactType,
+    recordCount: pending.records.length,
+    outcome: 'CACHE_HIT',
+  });
+
+  return res.json({
+    artifact_type: pending.artifactType,
+    records: pending.records,
+    summary: pending.summary,
+    _card_cache_id: pending.cacheId,
+    source: 'server',
+  });
+});
+
+// ─── Brain-Render Receipt Endpoint (P0-3) ────────────────────────────────────
+// When Anam's brain emits show_cards via CLIENT_TOOL_EVENT_RECEIVED, the iframe
+// fire-and-forgets a POST here so we get a receipt for EVERY card render —
+// including the pure-brain path that never hits the pending-cards poll endpoint.
+//
+// Law #2: without this, brain-sourced renders (the majority in sessions where
+//         the LLM is compliant) produce zero receipts. This closes the gap.
+// Law #3: authenticated with x-aspire-tool-secret; missing body fields are
+//         ignored gracefully (receipt still emits with available data).
+// Law #1: this endpoint is passive observation only. It NEVER triggers any
+//         downstream action or decision.
+router.post('/api/agent-tools/show-cards-rendered', cardDataRateLimit, async (req: Request, res: Response) => {
+  if (!verifySecret(req, res)) return;
+  const body = getRequestBody(req);
+  const { suiteId } = normalizeSuiteContext(body);
+  if (!suiteId) {
+    return res.status(400).json({ error: 'MISSING_SUITE_ID', message: 'suite_id is required.' });
+  }
+  const cacheId = typeof body.cacheId === 'string' ? body.cacheId.trim() : '';
+  const artifactType = typeof body.artifact_type === 'string' ? body.artifact_type : 'unknown';
+  const recordCount = typeof body.record_count === 'number' ? body.record_count : 0;
+  // Fire receipt; never block the caller's render on this.
+  void emitShowCardsReceipt({
+    suiteId,
+    source: 'brain',
+    cacheId: cacheId || undefined,
+    upstreamCorrelationId: cacheId || undefined,
+    artifactType,
+    recordCount,
+    outcome: 'BRAIN_RENDER',
+  });
+  // Always 204 — the iframe ignores the body.
+  return res.status(204).send();
 });
 
 router.get('/api/card-data/:id', cardDataRateLimit, (req: Request, res: Response) => {

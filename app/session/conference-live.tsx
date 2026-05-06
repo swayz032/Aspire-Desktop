@@ -11,7 +11,7 @@
  * Keyboard shortcuts: Alt+M (mic), Alt+V (camera), Alt+S (share),
  * Alt+R (record), Alt+H (chat), Alt+P (people), Alt+L (view layout).
  */
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -34,6 +34,7 @@ import { trackInteraction } from '@/lib/interactionTelemetry';
 import { useKeepAwake } from '@/hooks/useKeepAwake';
 import { readSSEStream, extractResponseText } from '@/lib/sseStream';
 import { injectZoomStyles } from '@/lib/zoom-styles';
+import { supabase } from '@/lib/supabase';
 
 // Zoom SDK components
 import {
@@ -88,6 +89,185 @@ interface AuthorityItem {
   requestedBy: string;
   recipients?: string[];
   timestamp: Date;
+}
+
+// ---------------------------------------------------------------------------
+// ScreenShareView — production-grade remote-share renderer.
+//
+// Renders a remote participant's shared screen via Zoom Video SDK
+// `stream.startShareView(canvas, userId)`. The Zoom SDK has three documented
+// quirks this component handles:
+//
+//   1. Canvas must be IN THE DOM and PAINTED before startShareView is called.
+//      A bare useEffect runs synchronously after commit but before paint —
+//      Zoom's WebGL capture surface acquisition can fail silently if the
+//      canvas hasn't rendered. We defer via requestAnimationFrame to
+//      guarantee one paint cycle has completed.
+//
+//   2. Canvas needs explicit `width` / `height` HTML attributes (not just
+//      CSS) — these set the backing-store resolution. CSS-only sizing
+//      gives the SDK a 0×0 backing store and the share appears blank.
+//      We size to the device pixel ratio for crisp HD rendering and
+//      observe the container with ResizeObserver to keep the backing
+//      store in sync with the rendered area on window resize.
+//
+//   3. startShareView occasionally rejects with a transient SDK error
+//      ("operation timeout", "share not started yet") on the very first
+//      attempt when the active-share-change event has fired but the
+//      remote MediaStreamTrack hasn't fully attached. We retry with
+//      exponential backoff (250ms, 500ms, 1s) before surfacing failure.
+//
+// Unmount: parent removes us when `screenShareUserId` flips to null on the
+// active-share-change → Inactive event. We call stopShareView so the SDK
+// releases the remote track promptly (no waiting for canvas GC).
+// ---------------------------------------------------------------------------
+
+// Stream surface mirrors the subset of ZoomContextValue['stream'] we need.
+// Kept inline so this file doesn't depend on the SDK's full type surface.
+type ScreenShareStream = {
+  startShareView: (canvas: HTMLCanvasElement, userId: number) => Promise<void>;
+  stopShareView?: () => Promise<void>;
+};
+
+const SCREEN_SHARE_RETRY_DELAYS_MS = [250, 500, 1000];
+
+function ScreenShareView({ stream, userId }: { stream: ScreenShareStream; userId: number }) {
+  const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
+    let cancelled = false;
+    let rafHandle = 0;
+    const retryTimers: ReturnType<typeof setTimeout>[] = [];
+    let resizeObserver: ResizeObserver | null = null;
+    let attached = false;
+
+    // Quirk #2: size the canvas backing store to the actual pixel area.
+    // Use device pixel ratio for HD-crisp rendering, capped at 2 to avoid
+    // memory blowups on Retina displays sharing a 4K screen.
+    const sizeCanvas = () => {
+      const rect = container.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const targetW = Math.max(1, Math.round(rect.width * dpr));
+      const targetH = Math.max(1, Math.round(rect.height * dpr));
+      if (canvas.width !== targetW) canvas.width = targetW;
+      if (canvas.height !== targetH) canvas.height = targetH;
+    };
+
+    const tryAttach = (attemptIdx: number) => {
+      if (cancelled) return;
+      sizeCanvas();
+      stream.startShareView(canvas, userId)
+        .then(() => {
+          if (cancelled) return;
+          attached = true;
+          setError(null);
+        })
+        .catch((err: unknown) => {
+          if (cancelled) return;
+          // Quirk #3: retry transient failures with exponential backoff.
+          if (attemptIdx < SCREEN_SHARE_RETRY_DELAYS_MS.length) {
+            const t = setTimeout(() => tryAttach(attemptIdx + 1), SCREEN_SHARE_RETRY_DELAYS_MS[attemptIdx]);
+            retryTimers.push(t);
+            return;
+          }
+          // All retries exhausted — surface to user. Most common cause:
+          // sharer ended their share between active-share-change and our
+          // attach. Parent will unmount us when the Inactive event fires.
+          const msg = err instanceof Error ? err.message : 'Unable to display screen share';
+          setError(msg);
+          // Sentry breadcrumb so post-incident triage can find the cause.
+          try {
+            // Lazy import to avoid a hard dep in this file.
+            // @ts-ignore — Sentry may not be globally typed in this scope
+            (globalThis as any).Sentry?.addBreadcrumb?.({
+              category: 'conference',
+              level: 'warning',
+              message: 'startShareView failed after retries',
+              data: { userId, error: msg, attempts: SCREEN_SHARE_RETRY_DELAYS_MS.length + 1 },
+            });
+          } catch { /* noop */ }
+        });
+    };
+
+    // Quirk #1: defer one frame so the canvas has been painted.
+    rafHandle = window.requestAnimationFrame(() => {
+      if (cancelled) return;
+      tryAttach(0);
+    });
+
+    // Keep backing-store dimensions current on container resize.
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        if (!cancelled && attached) sizeCanvas();
+      });
+      resizeObserver.observe(container);
+    }
+
+    return () => {
+      cancelled = true;
+      if (rafHandle) window.cancelAnimationFrame(rafHandle);
+      retryTimers.forEach(t => clearTimeout(t));
+      if (resizeObserver) {
+        try { resizeObserver.disconnect(); } catch { /* noop */ }
+      }
+      // Tell the SDK to release the remote track immediately. Optional
+      // method on older SDK versions — guarded.
+      if (attached && typeof stream.stopShareView === 'function') {
+        stream.stopShareView().catch(() => { /* SDK already torn down — noop */ });
+      }
+    };
+  }, [stream, userId]);
+
+  if (Platform.OS !== 'web') return null;
+
+  return (
+    <View
+      // @ts-ignore — ref<View> on web maps to HTMLDivElement at runtime
+      ref={containerRef as any}
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 10,
+        backgroundColor: '#0a0a0c',
+        overflow: 'hidden',
+      }}
+      accessibilityLabel="Screen share in progress"
+    >
+      <canvas
+        ref={canvasRef as React.RefObject<HTMLCanvasElement>}
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'contain',  // screen share preserves aspect ratio (letterbox is intentional)
+          display: 'block',
+        } as React.CSSProperties}
+      />
+      <View style={{ position: 'absolute', top: 8, right: 8 }}>
+        <View style={{ backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 }}>
+          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '500' }}>Screen Share</Text>
+        </View>
+      </View>
+      {error ? (
+        <View style={{ position: 'absolute', bottom: 12, left: 12, right: 12, alignItems: 'center' }}>
+          <View style={{ backgroundColor: 'rgba(220, 38, 38, 0.85)', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
+            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>
+              Screen share unavailable. The presenter may have stopped sharing.
+            </Text>
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -298,6 +478,12 @@ function ConferenceContent({
       />
 
       <View style={styles.gridContainer}>
+        {/* Bug 4 fix: screen share overlay — rendered on top of the video grid when
+            a remote participant is sharing. Uses startShareView(canvas, userId) to
+            pull the shared stream into a visible canvas element. */}
+        {screenShareUserId !== null && stream && (
+          <ScreenShareView stream={stream} userId={screenShareUserId} />
+        )}
         {renderGrid()}
         <ConferenceCaptions entries={transcriptEntries} visible={isTranscribing} />
       </View>
@@ -404,31 +590,59 @@ function ConferenceLive() {
   // Nora voice
   const [avaState, setAvaState] = useState<RoomAvaState>('idle');
 
-  const noraVoice = useVoice({
-    agent: 'nora',
-    suiteId: suiteId ?? undefined,
-    accessToken: session?.access_token,
-    userProfile: tenant ? {
+  // 2026-05-06: callback + userProfile identity stability fix.
+  // Previously these were inline literals — every parent render created
+  // fresh function/object references. The ElevenLabs SDK's useConversation
+  // hook chained underneath useVoice → useElevenLabsAgent saw the unstable
+  // refs and tore down the WebSocket mid-utterance, causing Nora to be
+  // cut off ~3-5s into her first response. Memoizing here pins the refs
+  // across re-renders triggered by avaState, chat messages, participant
+  // list updates, etc. Audio survives unrelated state changes.
+  const noraUserProfile = useMemo(
+    () => (tenant ? {
       ownerName: tenant.ownerName,
       businessName: tenant.businessName,
       industry: tenant.industry ?? undefined,
       teamSize: tenant.teamSize ?? undefined,
-    } : undefined,
-    onStatusChange: (voiceStatus) => {
-      if (voiceStatus === 'speaking') setAvaState('speaking');
-      else if (voiceStatus === 'listening') setAvaState('listening');
-      else if (voiceStatus === 'thinking') setAvaState('thinking');
-      else setAvaState('idle');
-    },
-    onResponse: () => {},
-    onError: () => { setAvaState('idle'); },
+    } : undefined),
+    [tenant?.ownerName, tenant?.businessName, tenant?.industry, tenant?.teamSize],
+  );
+
+  const handleNoraStatusChange = useCallback((voiceStatus: 'idle' | 'listening' | 'thinking' | 'speaking' | string) => {
+    if (voiceStatus === 'speaking') setAvaState('speaking');
+    else if (voiceStatus === 'listening') setAvaState('listening');
+    else if (voiceStatus === 'thinking') setAvaState('thinking');
+    else setAvaState('idle');
+  }, []);
+
+  const handleNoraResponse = useCallback(() => {}, []);
+
+  const handleNoraError = useCallback(() => { setAvaState('idle'); }, []);
+
+  const noraVoice = useVoice({
+    agent: 'nora',
+    suiteId: suiteId ?? undefined,
+    accessToken: session?.access_token,
+    userProfile: noraUserProfile,
+    onStatusChange: handleNoraStatusChange,
+    onResponse: handleNoraResponse,
+    onError: handleNoraError,
   });
 
   const isNoraSpeaking = noraVoice.status === 'speaking';
 
+  // 401 circuit breaker for best-effort Nora state broadcast (Bug 1 fix).
+  // After ~1hr the Supabase JWT expires. Without this, every avaState/isNoraSpeaking
+  // change would fire a 401 fetch, causing cascading WebSocket drops that tear down
+  // Nora's ElevenLabs connection. The broadcast is informational (guest viewers only);
+  // host audio must never depend on it.
+  const noraBroadcastDisabledRef = useRef(false);
+  const noraBroadcastRetryRef = useRef(false);
+
   // Broadcast Nora state to guest clients via SSE endpoint
   useEffect(() => {
     if (!session?.access_token || !roomName) return;
+    if (noraBroadcastDisabledRef.current && !noraBroadcastRetryRef.current) return;
     const controller = new AbortController();
     fetch('/api/conference/nora-state/' + encodeURIComponent(roomName), {
       method: 'POST',
@@ -438,6 +652,27 @@ function ConferenceLive() {
       },
       body: JSON.stringify({ state: avaState, isSpeaking: isNoraSpeaking }),
       signal: controller.signal,
+    }).then((res) => {
+      if (res.status === 401) {
+        if (noraBroadcastRetryRef.current) {
+          // Second consecutive 401 after attempted refresh — disable permanently
+          noraBroadcastDisabledRef.current = true;
+          noraBroadcastRetryRef.current = false;
+        } else {
+          // First 401 — mark disabled, schedule one retry after token refresh
+          noraBroadcastDisabledRef.current = true;
+          noraBroadcastRetryRef.current = false;
+          supabase.auth.refreshSession().then(() => {
+            // Allow exactly one retry on next state change
+            noraBroadcastDisabledRef.current = false;
+            noraBroadcastRetryRef.current = true;
+          }).catch(() => { /* refresh failed — stay disabled */ });
+        }
+      } else {
+        // Successful broadcast — clear disabled/retry flags
+        noraBroadcastDisabledRef.current = false;
+        noraBroadcastRetryRef.current = false;
+      }
     }).catch(() => { /* Best-effort broadcast — guest sees stale state if this fails */ });
     return () => controller.abort();
   }, [avaState, isNoraSpeaking, roomName, session?.access_token]);
@@ -719,8 +954,10 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   videoTileWrapper: {
-    // Height computed from row count, width from col count
-    // Both set inline in renderGrid
+    // Height computed from row count, width from col count — both set inline in renderGrid.
+    // overflow:hidden + position:relative clip the 4% scale-up in ZoomVideoTile (Bug 2 fix).
+    overflow: 'hidden',
+    position: 'relative',
   },
   grid1: { padding: 8 },
   grid2: { padding: 4 },

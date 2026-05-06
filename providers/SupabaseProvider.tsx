@@ -126,6 +126,41 @@ export function SupabaseProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [session]);
 
+  // Proactive interval-based token refresh (Bug 1 fix).
+  // Checks every 60s — if the token expires within 5 minutes, refreshes proactively.
+  // This prevents the nora-state broadcast from accumulating 401s due to a
+  // silently-expired JWT after ~1 hour of continuous session.
+  useEffect(() => {
+    if (DEV_BYPASS_AUTH || Platform.OS !== 'web') return;
+
+    const REFRESH_INTERVAL_MS = 60_000;
+    const REFRESH_AHEAD_MS = 5 * 60 * 1000; // refresh if expiry < 5 min away
+
+    const intervalId = setInterval(async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const s = data.session;
+        if (!s) return; // Not signed in — nothing to refresh
+        const expiresAt = (s as any).expires_at as number | undefined;
+        if (typeof expiresAt === 'number') {
+          const msUntilExpiry = expiresAt * 1000 - Date.now();
+          if (msUntilExpiry < REFRESH_AHEAD_MS) {
+            const { data: refreshed } = await supabase.auth.refreshSession();
+            if (refreshed.session) {
+              lastValidSessionRef.current = Date.now();
+              setSession(refreshed.session);
+            }
+          }
+        }
+      } catch {
+        // Best-effort — auth state listener will catch hard failures
+      }
+    }, REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(intervalId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const suiteId = session?.user?.user_metadata?.suite_id ?? null;
 
   const signOut = async () => {
