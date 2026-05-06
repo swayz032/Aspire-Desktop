@@ -231,7 +231,7 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
           // the same line.
           // CRITICAL: this entire script runs as plain JavaScript inside an
           // HTML <script type="module"> tag — it is NOT compiled by TypeScript.
-          // Any TS-only syntax (type annotations, `as` casts, generics) will
+          // Any TS-only syntax (type annotations, \`as\` casts, generics) will
           // throw "Unexpected token" at parse time and brick the spinner.
           // Keep this block in pure JS.
           var midToolTimers = [];
