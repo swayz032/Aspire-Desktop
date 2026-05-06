@@ -479,7 +479,11 @@ function scoreCanonicalToolCandidate(
   const expectedPath = expectedWebhookPathByTool[name];
 
   let score = 0;
-  if (name === 'show_cards') {
+  // Client-side tools (no webhook). show_cards has required schema fields;
+  // end_session has none. Both are scored on type + (optional) schema check
+  // rather than the server-webhook criteria below, which would always fail.
+  const CLIENT_ONLY_TOOLS = new Set(['show_cards', 'end_session']);
+  if (CLIENT_ONLY_TOOLS.has(name)) {
     if (type.includes('client')) score += 6;
     if (parameters && typeof parameters === 'object') score += 2;
     const schemaIssues = validateRequiredSchemaFields(name, parameters);
@@ -513,7 +517,9 @@ function isStrictCanonicalToolCandidate(
   const parameters = getToolParameters(tool);
   const schemaIssues = validateRequiredSchemaFields(name, parameters);
 
-  if (name === 'show_cards') {
+  // Client-side tools — strict match on CLIENT type + clean schema.
+  const CLIENT_ONLY_TOOLS = new Set(['show_cards', 'end_session']);
+  if (CLIENT_ONLY_TOOLS.has(name)) {
     return type.includes('client') && schemaIssues.length === 0;
   }
 
