@@ -188,7 +188,7 @@ interface GlobeProps {
   initAngle: number;
 }
 
-function GlobeCanvas({ accent, accentRgb, landColor, initAngle }: GlobeProps) {
+function GlobeCanvas({ accent, accentRgb, landColor, initAngle, isActive = true }: GlobeProps & { isActive?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
   const angleRef = useRef(initAngle);
@@ -201,6 +201,13 @@ function GlobeCanvas({ accent, accentRgb, landColor, initAngle }: GlobeProps) {
   }, [initAngle]);
 
   useEffect(() => {
+    // Pause the rAF loop when this globe is not the active card. Three globes
+    // each running their own paint loop (~thousands of land points + 87 cities
+    // with createRadialGradient per frame) was the dominant frame-budget
+    // killer on the login page — Safari and Chrome both stuttered, and the
+    // outer keyframe shake compounded the visible jank. Inactive cards are
+    // opacity:0 anyway so their paints are invisible. Cuts globe CPU ~66%.
+    if (!isActive) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -269,7 +276,7 @@ function GlobeCanvas({ accent, accentRgb, landColor, initAngle }: GlobeProps) {
 
     draw();
     return () => cancelAnimationFrame(rafRef.current);
-  }, [accentRgb, landColor]);
+  }, [accentRgb, landColor, isActive]);
 
   return (
     <canvas
@@ -309,16 +316,33 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
   const cardRef = useRef<HTMLDivElement>(null);
   const title = useScramble(consoleDef.title, isActive);
 
+  // Throttle mousemove tilt to one update per animation frame. Without this
+  // the active card re-renders on every mousemove event (~120Hz on modern
+  // mice), each rerender re-running the perspective/rotateY/rotateX
+  // transform AND the child globe canvas. The visual difference of
+  // 60fps vs 120fps tilt is imperceptible; the perf saving is large.
+  const tiltFrameRef = useRef<number | null>(null);
+  const tiltPendingRef = useRef<{ x: number; y: number } | null>(null);
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!isActive) return;
     const el = cardRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    setTilt({
+    tiltPendingRef.current = {
       x: -((e.clientY - (r.top + r.height / 2)) / (r.height / 2)) * 3.5,
       y: ((e.clientX - (r.left + r.width / 2)) / (r.width / 2)) * 5,
+    };
+    if (tiltFrameRef.current !== null) return;
+    tiltFrameRef.current = requestAnimationFrame(() => {
+      tiltFrameRef.current = null;
+      const next = tiltPendingRef.current;
+      if (next) setTilt(next);
     });
   }, [isActive]);
+
+  useEffect(() => () => {
+    if (tiltFrameRef.current !== null) cancelAnimationFrame(tiltFrameRef.current);
+  }, []);
 
   const handleMouseLeave = useCallback(() => setTilt({ x: 0, y: 0 }), []);
 
@@ -622,6 +646,7 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
           accentRgb={consoleDef.accentRgb}
           landColor={consoleDef.globeLandColor}
           initAngle={consoleDef.globeInitAngle}
+          isActive={isActive}
         />
       </div>
 
@@ -681,11 +706,14 @@ function WebLoginScreen() {
               style={{ height: 140, objectFit: 'contain', display: 'block' } as React.CSSProperties}
             />
           </div>
-          {/* Float wrapper — makes all cards gently float together */}
-          <div style={{
-            position: 'absolute', inset: 0,
-            animation: 'floatCards 6s ease-in-out infinite',
-          } as React.CSSProperties}>
+          {/* Float wrapper REMOVED 2026-05-06 — was causing the visible
+              "shake" on Chrome+Safari by stacking a translateY keyframe on
+              top of each card's perspective+rotateY+rotateX transform AND
+              the globe's own floatGlobe keyframe. Three composited
+              transforms with backdrop-filter blur fighting on every frame
+              produced jitter. Per-card animation (perspective, tilt) and
+              the globe's own floatGlobe still provide motion. */}
+          <div style={{ position: 'absolute', inset: 0 } as React.CSSProperties}>
             {CONSOLES.map((c, i) => (
               <ConsoleCard key={c.id} consoleDef={c} index={i} activeIndex={activeIndex} onSetActive={setActiveIndex} />
             ))}
@@ -849,13 +877,54 @@ function NativeLoginScreen() {
             </>
           )}
           <Text style={nStyles.label}>Email</Text>
-          <TextInput style={nStyles.input} placeholder="you@company.com" placeholderTextColor="#555" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} value={email} onChangeText={setEmail} editable={!loading} />
+          <TextInput
+            style={nStyles.input}
+            placeholder="you@company.com"
+            placeholderTextColor="#555"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            value={email}
+            onChangeText={setEmail}
+            editable={!loading}
+            // Browser autofill — Chrome/Safari recognize "username" + "current-password"
+            // as a sign-in pair; "email" + "new-password" for signup. textContentType is
+            // for iOS native; autoComplete is the React Native Web spec attribute that
+            // maps to the HTML input autocomplete attribute on the rendered <input>.
+            textContentType={mode === 'signup' ? 'emailAddress' : 'username'}
+            autoComplete={mode === 'signup' ? 'email' : 'username'}
+            {...({ name: 'email', id: 'aspire-login-email' } as any)}
+          />
           <Text style={nStyles.label}>Password</Text>
-          <TextInput style={nStyles.input} placeholder={mode === 'signup' ? 'Min. 8 characters' : 'Enter your password'} placeholderTextColor="#555" secureTextEntry value={password} onChangeText={setPassword} editable={!loading} onSubmitEditing={mode === 'signin' ? handleSignIn : undefined} />
+          <TextInput
+            style={nStyles.input}
+            placeholder={mode === 'signup' ? 'Min. 8 characters' : 'Enter your password'}
+            placeholderTextColor="#555"
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+            editable={!loading}
+            onSubmitEditing={mode === 'signin' ? handleSignIn : undefined}
+            textContentType={mode === 'signup' ? 'newPassword' : 'password'}
+            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+            {...({ name: 'password', id: 'aspire-login-password' } as any)}
+          />
           {mode === 'signup' && (
             <>
               <Text style={nStyles.label}>Confirm Password</Text>
-              <TextInput style={nStyles.input} placeholder="Re-enter your password" placeholderTextColor="#555" secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} editable={!loading} onSubmitEditing={handleSignUp} />
+              <TextInput
+                style={nStyles.input}
+                placeholder="Re-enter your password"
+                placeholderTextColor="#555"
+                secureTextEntry
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                editable={!loading}
+                onSubmitEditing={handleSignUp}
+                textContentType="newPassword"
+                autoComplete="new-password"
+                {...({ name: 'confirm-password', id: 'aspire-login-confirm-password' } as any)}
+              />
             </>
           )}
           <TouchableOpacity

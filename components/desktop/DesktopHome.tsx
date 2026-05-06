@@ -12,6 +12,7 @@ import { DocumentPreviewModal } from '@/components/DocumentPreviewModal';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { Colors, Spacing, BorderRadius, Canvas } from '@/constants/tokens';
 import { ImmersionLayer } from '@/components/canvas/ImmersionLayer';
 import { VignetteOverlay } from '@/components/canvas/VignetteOverlay';
@@ -104,6 +105,7 @@ function DesktopHomeInner() {
   useGlobalKeyboard();
   const { tenant } = useTenant();
   const { session, suiteId } = useSupabase();
+  const { authenticatedFetch } = useAuthFetch();
   const [liveCashData, setLiveCashData] = useState<CashPosition>(() => readCachedCash() || EMPTY_CASH);
   const [planItems, setPlanItems] = useState<any[]>([]);
   const [pipelineStages, setPipelineStages] = useState<any[]>([]);
@@ -187,15 +189,17 @@ function DesktopHomeInner() {
     if (isLocalSyntheticAuthBypass()) return;
     if (!session?.access_token) return;
 
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${session.access_token}`,
-    };
-
-    // Fetch live cash position from ops-snapshot
+    // Fetch live cash position from ops-snapshot via authenticatedFetch — the
+    // wrapper auto-refreshes the JWT and retries once on 401, instead of
+    // immediately redirecting to /login mid-workflow (the prior raw `fetch`
+    // + `router.replace` chain was the cause of "random logouts mid-click"
+    // — Supabase auto-refresh races with the page render, the first call
+    // hits a transiently expired token, and the redirect fires before the
+    // refresh completes). useAuthGate in app/_layout.tsx is the canonical
+    // redirect path; we no longer duplicate it here.
     (async () => {
       try {
-        const res = await fetch('/api/ops-snapshot', { headers });
-        if (res.status === 401) { router.replace('/(auth)/login' as any); return; }
+        const res = await authenticatedFetch('/api/ops-snapshot');
         if (res.ok) {
           const data = await res.json();
           const cp = data.cashPosition;
@@ -247,7 +251,14 @@ function DesktopHomeInner() {
           .subscribe()
       : null;
 
-    // Fetch Today's Plan: merge all 5 data sources
+    // Fetch Today's Plan: merge all 5 data sources. Local `headers` here
+    // is scoped to this block — these calls each have their own .catch(()
+    // => null) and don't redirect on 401, so they don't trigger the
+    // "random logout" bug. Migrating them to authenticatedFetch is a
+    // separate cleanup; for now keep the raw fetch with explicit headers.
+    const headers: Record<string, string> = session?.access_token
+      ? { Authorization: `Bearer ${session.access_token}` }
+      : {};
     (async () => {
       try {
         const [calRes, authItemsFromApi, callsRes, inboxRes] = await Promise.all([

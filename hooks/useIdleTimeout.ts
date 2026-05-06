@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSupabase } from '@/providers';
+import { supabase } from '@/lib/supabase';
 
 const ACTIVITY_EVENTS = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click', 'wheel'] as const;
 const WARNING_BEFORE_MS = 60_000; // Show warning 60s before timeout
@@ -44,7 +45,22 @@ export function useIdleTimeout(timeoutMs = 15 * 60_000) {
     router.replace('/(auth)/login' as any);
   }, [signOut, router, clearAllTimers]);
 
+  const refreshInFlightRef = useRef(false);
+
   const resetTimer = useCallback(() => {
+    // If the warning was visible (user just clicked "Continue Session"),
+    // refresh the Supabase JWT too. Otherwise the idle clock resets but
+    // the JWT itself can still be seconds away from expiry — the user
+    // would click Continue, do nothing, and still get logged out by a
+    // 401 on the next request. Guard with an in-flight ref so rapid
+    // activity doesn't queue duplicate refresh calls (Supabase de-dupes
+    // internally too, but an extra layer is cheap).
+    if (showWarningRef.current && !refreshInFlightRef.current) {
+      refreshInFlightRef.current = true;
+      void supabase.auth.refreshSession().finally(() => {
+        refreshInFlightRef.current = false;
+      });
+    }
     clearAllTimers();
     showWarningRef.current = false;
     setShowWarning(false);
