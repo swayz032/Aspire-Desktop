@@ -5403,8 +5403,16 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
         similarityBoost: 0.75,
       },
     };
+    // Validate the SOURCE template (before {{salutation}} {{last_name}}
+    // substitution), NOT the rendered AVA_CONFIG.systemPrompt. After
+    // substitution, the user's actual name (e.g. "Mr. Scott", "Tonio")
+    // appears in the prompt and would falsely trip the F-1 hardcoded-name
+    // guard. The contract is about the source structure — does it have
+    // hardcoded EXAMPLES? The substituted instance is per-tenant data, not
+    // a contract violation. Discovered 2026-05-09 when strict mode 503'd
+    // every session for the actual user named Mr. Scott.
     const avaConfigValidationErrors = validateAnamAvaPromptAndConfig(
-      AVA_CONFIG.systemPrompt,
+      baseAvaPromptTemplate,
       CONFIGURED_ANAM_AVA_PERSONA_ID,
     );
     if (avaConfigValidationErrors.length > 0) {
