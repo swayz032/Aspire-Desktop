@@ -293,20 +293,148 @@ function validateAnamAvaPromptAndConfig(prompt: string, personaId: string): stri
     errors.push('Anam Ava prompt missing "## NEVER SAY" block.');
   }
 
-  // Check 4: Token budget estimate. Each token is ~4 chars. Warn above 7500
-  // tokens (30000 chars) and error above 8000 tokens (32000 chars) to prevent
-  // context-window overflow that silently drops the tail of the prompt.
+  // Check 4: Token budget estimate. Each token is ~4 chars. Contract caps at
+  // 4000 (heavy workflows must live in KB, not prompt). Warn at 3500.
+  // See ANAM_AVA_PROMPT_CONTRACT.md S-3.
   const estimatedTokens = Math.floor(rawPrompt.length / 4);
-  if (estimatedTokens > 8000) {
+  if (estimatedTokens > 4000) {
     errors.push(
-      `Anam Ava prompt estimated token count ${estimatedTokens} exceeds hard limit of 8000. ` +
-      'Trim the prompt to prevent context overflow.',
+      `Anam Ava prompt estimated token count ${estimatedTokens} exceeds contract limit of 4000. ` +
+      'Move heavy workflow content into KB docs (Ava_Voice_Rules_v6, Tools_and_Cards_v6, Strategic_Playbook_v6, Invoicing_and_Quotes_v6).',
     );
-  } else if (estimatedTokens > 7500) {
+  } else if (estimatedTokens > 3500) {
     errors.push(
-      `Anam Ava prompt estimated token count ${estimatedTokens} is above the 7500-token warning threshold. ` +
-      'Consider trimming to ensure tail instructions are not truncated.',
+      `Anam Ava prompt estimated token count ${estimatedTokens} is above the 3500-token warning threshold (contract S-3). ` +
+      'Consider trimming or moving content to KB.',
     );
+  }
+
+  // ── Wave 4.2 contract enforcement (ANAM_AVA_PROMPT_CONTRACT.md) ─────────────
+
+  // Helper: extract a block by its H1 header. Block ends at the next `# ` H1
+  // or end of file. Used by per-block placement checks.
+  const extractBlock = (header: string): string => {
+    const re = new RegExp(`^# ${header}\\s*$`, 'm');
+    const start = rawPrompt.search(re);
+    if (start === -1) return '';
+    const after = rawPrompt.slice(start + 1);
+    const nextH1 = after.search(/^# [A-Z]/m);
+    return nextH1 === -1 ? rawPrompt.slice(start) : rawPrompt.slice(start, start + 1 + nextH1);
+  };
+
+  const personalityBlock = extractBlock('Personality');
+  const environmentBlock = extractBlock('Environment');
+  const toneBlock = extractBlock('Tone');
+  const goalBlock = extractBlock('Goal');
+  const guardrailsBlock = extractBlock('Guardrails');
+
+  // Contract S-1: Five blocks present in canonical order
+  for (const [name, block] of [
+    ['Personality', personalityBlock],
+    ['Environment', environmentBlock],
+    ['Tone', toneBlock],
+    ['Goal', goalBlock],
+    ['Guardrails', guardrailsBlock],
+  ] as const) {
+    if (!block) errors.push(`Contract S-1: missing required block "# ${name}"`);
+  }
+
+  // Contract F-1: ZERO hardcoded user names. Banned literal strings inside
+  // rule prose. Substantive {{...}} placeholders are exempt because the
+  // server `.replace()` substitutes them per-tenant; literal "Mr. Scott" /
+  // "Tonio" leaks across tenants and was the root cause of multi-tenant
+  // pollution observed pre-2026-05-07.
+  const HARDCODED_NAME_PATTERNS: { pattern: RegExp; label: string }[] = [
+    { pattern: /\bMr\.\s*Scott\b/, label: 'Mr. Scott' },
+    { pattern: /\bMrs\.\s*McCoy\b/, label: 'Mrs. McCoy' },
+    { pattern: /\bMr\.\s*Cory\b/, label: 'Mr. Cory' },
+    { pattern: /\bTonio\b/, label: 'Tonio' },
+    { pattern: /\bTony\b/, label: 'Tony' },
+    { pattern: /\bMcCoy\b/, label: 'McCoy' },
+  ];
+  for (const { pattern, label } of HARDCODED_NAME_PATTERNS) {
+    if (pattern.test(rawPrompt)) {
+      errors.push(
+        `Contract F-1: hardcoded user name "${label}" found in prompt. ` +
+        'User identity flows ONLY through {{salutation}}/{{last_name}}/{{first_name}} placeholders ' +
+        'substituted at routes.ts:5167-5177. NEVER hardcode example names in rule descriptions.',
+      );
+    }
+  }
+
+  // Contract F-2: No unresolved injection placeholders that should have been
+  // stripped at session-mint time.
+  if (rawPrompt.includes('{{voiceHandoffBrief}}')) {
+    errors.push('Contract F-2: unresolved {{voiceHandoffBrief}} placeholder found in prompt.');
+  }
+  if (rawPrompt.includes('[VOICE HANDOFF CONTEXT]')) {
+    errors.push('Contract F-2: literal "[VOICE HANDOFF CONTEXT]" block found — should not appear in prompt body.');
+  }
+
+  // Contract P-1: Language lock is the FIRST non-empty content line of
+  // Personality (within first 200 chars of block body, after the header).
+  if (personalityBlock) {
+    const personalityHead = personalityBlock.replace(/^# Personality\s*\n+/, '').slice(0, 250);
+    if (!/American English only|Always respond in English/i.test(personalityHead)) {
+      errors.push(
+        'Contract P-1: language lock must be the first content line of the Personality block. ' +
+        'Add "You speak American English only..." at the very top of # Personality.',
+      );
+    }
+  }
+
+  // Contract E-4: length cap MUST NOT appear in Environment block (belongs in
+  // Tone). Catches the misplacement we fixed in 2026-05-07.
+  if (environmentBlock && /Under 40 words|Keep responses? under 40 words/i.test(environmentBlock)) {
+    errors.push(
+      'Contract E-4: length cap rule found in Environment block. ' +
+      'Length cap belongs in the Tone block (T-1), not Environment.',
+    );
+  }
+
+  // Contract T-1: length cap MUST appear in Tone block.
+  if (toneBlock && !/Under 40 words/i.test(toneBlock)) {
+    errors.push(
+      'Contract T-1: Tone block missing length cap. ' +
+      'Expected "Under 40 words. One topic per turn. Maximum 2 sentences." as first rule of # Tone.',
+    );
+  }
+
+  // Contract G-1: WORKFLOW TRIGGER RULE in Goal block first 1500 chars.
+  // Without this, the brain skips Knowledge_Ava and answers from training.
+  if (goalBlock) {
+    const goalHead = goalBlock.slice(0, 1700);
+    if (!/WORKFLOW TRIGGER RULE/i.test(goalHead)) {
+      errors.push(
+        'Contract G-1: Goal block missing WORKFLOW TRIGGER RULE in first 1500 chars. ' +
+        'Add "## WORKFLOW TRIGGER RULE" sub-block forcing Knowledge_Ava call before operational answers.',
+      );
+    }
+  }
+
+  // Contract G-5: KB delegation. Prompt must reference all 4 KB doc names so
+  // the brain knows what's in KB vs what's inline. Missing references mean
+  // the brain treats the prompt as the source of truth and skips the KB.
+  const kbDocNames = ['Ava_Voice_Rules_v6', 'Strategic_Playbook_v6', 'Tools_and_Cards_v6', 'Invoicing_and_Quotes_v6'];
+  const missingKbDocs = kbDocNames.filter((name) => !rawPrompt.includes(name));
+  if (missingKbDocs.length > 1) {
+    // Allow 1 missing reference to give authoring flexibility, but require at least 3 of 4.
+    errors.push(
+      `Contract G-5: prompt references only ${kbDocNames.length - missingKbDocs.length} of 4 KB doc names. ` +
+      `Missing: ${missingKbDocs.join(', ')}. Heavy workflows live in KB — the prompt must point to them by name.`,
+    );
+  }
+
+  // Contract GD-2: AI self-reference rule MUST appear in Guardrails (within
+  // first 1000 chars of block body).
+  if (guardrailsBlock) {
+    const guardrailsHead = guardrailsBlock.slice(0, 1200);
+    if (!/Never discuss being an AI/i.test(guardrailsHead)) {
+      errors.push(
+        'Contract GD-2: Guardrails block missing AI self-reference rule in first 1000 chars. ' +
+        'Add "Never discuss being an AI..." near the top of # Guardrails.',
+      );
+    }
   }
 
   return errors;

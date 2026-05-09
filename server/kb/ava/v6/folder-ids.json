@@ -1,0 +1,31 @@
+{
+  "_comment": "Canonical Anam KB folder IDs for Ava persona. LOCKED — do not rename folders without updating ANAM_AVA_PROMPT_CONTRACT.md and validator. Captured 2026-05-07.",
+  "personaId": "58f82b89-8ae7-43cc-930d-be8def14dff3",
+  "knowledgeToolId": "af247cb8-d1ce-4721-9ebe-d0ec397ba9eb",
+  "knowledgeToolName": "Knowledge_Ava",
+  "folders": {
+    "ava_voice_rules": {
+      "id": "9a611731-5591-4523-b0ba-3bcc69c037a1",
+      "name": "Ava Voice Rules",
+      "description": "Ava persona voice rules: tone, banned phrases, vocabulary, pacing, browse mode, response shapes",
+      "docs": ["Ava_Voice_Rules_v6.txt"]
+    },
+    "ava_tools_and_cards": {
+      "id": "1fc73148-cf54-4499-8095-c5583a73d409",
+      "name": "Ava Tools and Cards",
+      "description": "Adam tool protocols and card display rules",
+      "docs": ["Tools_and_Cards_v6.txt", "Strategic_Playbook_v6.txt"]
+    },
+    "ava_invoicing_and_quotes": {
+      "id": "8ff9e175-537d-43db-9611-7197c3f78311",
+      "name": "Ava Invoicing and Quotes",
+      "description": "Quinn 11-step invoicing workflow and quote variant",
+      "docs": ["Invoicing_and_Quotes_v6.txt"]
+    }
+  },
+  "_oldFolder": {
+    "id": "07c193f4-44ff-411b-b682-40f8c30d8607",
+    "name": "Ava Chief of Staff KB",
+    "_note": "DEPRECATED. Contains 632 bytes of placeholder v5 docs. Keep for 7 days as rollback path, then delete after v6 verified in production."
+  }
+}
