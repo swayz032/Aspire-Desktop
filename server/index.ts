@@ -99,7 +99,13 @@ const PUBLIC_PATHS = [
                                       //  Supabase session cookies; the Anam JWT is what authorizes the
                                       //  SDK's WebRTC connect downstream, so HTML alone has no value
                                       //  without the matching token).
-  // Places API requires auth to prevent quota exhaustion
+  '/api/places/streetview',          // Street View image proxy — must be public because <img src=> cannot
+                                      //  carry a Bearer token. Protected by handler-level input validation:
+                                      //  ASCII-only address whitelist, 200-char cap, numeric lat/lng regex,
+                                      //  size capped at 640×640. Returns binary image bytes only — no
+                                      //  tenant/PII data. Quota-protected by Google's per-key limits + the
+                                      //  bounded URL surface (validated inputs prevent arbitrary upstream calls).
+  // Places autocomplete STILL requires auth to prevent quota exhaustion on free-text input.
 ];
 
 // /v1/ paths that REQUIRE auth (Law #3: Fail Closed — default deny)
@@ -218,6 +224,7 @@ app.use(async (req, res, next) => {
     }
 
     if (!authHeader?.startsWith('Bearer ')) {
+      logger.warn('[auth-debug] AUTH_REQUIRED — no Bearer header', { path: req.path, has_auth_header: !!authHeader });
       return res.status(401).json({
         error: 'AUTH_REQUIRED',
         message: 'Authentication required. Please sign in.',
@@ -228,6 +235,24 @@ app.use(async (req, res, next) => {
     const token = bearerToken;
     const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
     if (error || !user) {
+      // Decode JWT payload (no verification) for diagnostic purposes only — the token is already rejected.
+      let jwtClaims: Record<string, unknown> | null = null;
+      try {
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          jwtClaims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+        }
+      } catch { /* swallow */ }
+      logger.warn('[auth-debug] INVALID_TOKEN', {
+        path: req.path,
+        supabase_error: error?.message ?? 'no_user_returned',
+        token_len: token.length,
+        jwt_iss: jwtClaims?.iss ?? null,
+        jwt_aud: jwtClaims?.aud ?? null,
+        jwt_sub_prefix: typeof jwtClaims?.sub === 'string' ? (jwtClaims.sub as string).slice(0, 8) : null,
+        jwt_exp: jwtClaims?.exp ?? null,
+        jwt_expired: typeof jwtClaims?.exp === 'number' ? (jwtClaims.exp * 1000 < Date.now()) : null,
+      });
       return res.status(401).json({
         error: 'INVALID_TOKEN',
         message: 'Invalid or expired authentication token',
@@ -1013,6 +1038,22 @@ function isTabletUA(userAgent: string): boolean {
   return false;
 }
 
+// Tablet integration meta tags — added so iPad/Android tablets render the
+// page with the Aspire dark background extending into Safari's URL bar
+// area instead of showing the default light gray browser chrome around
+// the app. Without these, tablet users see a Safari background frame
+// around the app even though viewport-fit=cover lets us paint there.
+//   - theme-color colors Safari's URL bar to match #0a0a0a
+//   - apple-mobile-web-app-capable lets the page run as a PWA when added
+//     to the home screen
+//   - apple-mobile-web-app-status-bar-style:black-translucent makes the
+//     iOS status bar transparent overlaying the page background
+const TABLET_INTEGRATION_META =
+  '<meta name="theme-color" content="#0a0a0a" />' +
+  '<meta name="apple-mobile-web-app-capable" content="yes" />' +
+  '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />';
+const VIEWPORT_REPLACE_REGEX = /(<meta\s+name="viewport"\s+content="[^"]*"\s*\/?>)/i;
+
 let _cachedIndexHtmlRaw: { mtimeMs: number; raw: string } | null = null;
 function getIndexHtmlForViewport(viewport: string): string {
   const filePath = path.join(process.cwd(), 'dist', 'index.html');
@@ -1023,9 +1064,11 @@ function getIndexHtmlForViewport(viewport: string): string {
       raw: fs.readFileSync(filePath, 'utf-8'),
     };
   }
+  // Replace the viewport meta and append the tablet integration metas
+  // immediately after. They're idempotent on every render.
   return _cachedIndexHtmlRaw.raw.replace(
-    VIEWPORT_META_REGEX,
-    `<meta name="viewport" content="${viewport}" />`,
+    VIEWPORT_REPLACE_REGEX,
+    `<meta name="viewport" content="${viewport}" />${TABLET_INTEGRATION_META}`,
   );
 }
 
