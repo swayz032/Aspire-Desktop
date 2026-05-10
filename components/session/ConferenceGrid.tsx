@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, Pressable } from 'react-native';
+import React, { useMemo, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, useWindowDimensions, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
+import { Colors, Spacing, BorderRadius } from '@/constants/tokens';
 import { ParticipantTile, ConferenceParticipant } from './ParticipantTile';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { useTabletLayout, useDocumentVisible } from '@/lib/useDesktop';
 
 interface ConferenceGridProps {
   participants: ConferenceParticipant[];
@@ -22,10 +23,18 @@ function ConferenceGridInner({
   onParticipantLongPress,
   onLayoutToggle,
 }: ConferenceGridProps) {
-  const { width: screenWidth } = Dimensions.get('window');
+  // Reactive width — was Dimensions.get('window').width which only snapshots
+  // on first render and never updates on iPad rotation, Stage Manager resize,
+  // or split-view changes. useWindowDimensions re-renders on every change.
+  const { width: screenWidth } = useWindowDimensions();
+  const { isTabletPortrait, isTabletLandscape, isTabletAny } = useTabletLayout();
+  const visible = useDocumentVisible();
+
   const gridPadding = Spacing.md * 2;
   const gap = Spacing.sm;
 
+  // Desktop grid config preserved exactly. On tablet form factors we cap cols
+  // to prevent tile crushing — desktop (>=1280) renders identically to before.
   const getGridConfig = (count: number) => {
     if (count <= 1) return { cols: 1, rows: 1 };
     if (count <= 2) return { cols: 2, rows: 1 };
@@ -35,9 +44,30 @@ function ConferenceGridInner({
     return { cols: 4, rows: 4 };
   };
 
-  const { cols } = getGridConfig(participants.length);
-  const tileWidth = (screenWidth - gridPadding - (gap * (cols - 1))) / cols;
-  const tileHeight = tileWidth * 0.75;
+  const baseConfig = getGridConfig(participants.length);
+  let cols = baseConfig.cols;
+  if (isTabletPortrait) {
+    // Portrait iPad (768-1023): max 2 cols so tiles stay >=320px-ish
+    cols = Math.min(cols, 2);
+  } else if (isTabletLandscape) {
+    // Landscape iPad (1024-1279): max 3 cols
+    cols = Math.min(cols, 3);
+  }
+
+  // Cache last good tile size on tablet — iPadOS 26 PWA backgrounding bug
+  // resizes the webview to card dimensions BEFORE visibilitychange fires.
+  // While invisible, freeze the previous size to avoid permanent degrade.
+  const tileWidthRaw = (screenWidth - gridPadding - (gap * (cols - 1))) / cols;
+  const lastSizeRef = useRef<{ w: number; h: number } | null>(null);
+  const { tileWidth, tileHeight } = useMemo(() => {
+    if (isTabletAny && !visible && lastSizeRef.current) {
+      return { tileWidth: lastSizeRef.current.w, tileHeight: lastSizeRef.current.h };
+    }
+    const w = Math.max(160, tileWidthRaw);
+    const h = w * 0.75;
+    lastSizeRef.current = { w, h };
+    return { tileWidth: w, tileHeight: h };
+  }, [tileWidthRaw, isTabletAny, visible]);
 
   const activeSpeaker = participants.find(p => p.id === activeSpeakerId);
   const otherParticipants = participants.filter(p => p.id !== activeSpeakerId);

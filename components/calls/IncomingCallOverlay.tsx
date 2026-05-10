@@ -684,10 +684,13 @@ const styles = StyleSheet.create({
       : {}),
   },
 
-  /* Card shell — 440x~560 (auto height, capped via maxWidth) */
+  /* Card shell — 440x~560 (auto height, capped via maxWidth).
+   * minWidth ensures Decline + Accept buttons never collapse below the
+   * 48px touch-target floor on narrow split-view tablet windows. */
   card: {
     width: 440,
     maxWidth: '92%',
+    minWidth: 320,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
@@ -1009,7 +1012,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    minHeight: 44, // accessibility tap target
+    // 48px tap target — Apple HIG (44) + Material 3 (48) + WCAG 2.2 floor
+    minHeight: 48,
+    minWidth: 48,
     ...(Platform.OS === 'web'
       ? ({
           transition:
