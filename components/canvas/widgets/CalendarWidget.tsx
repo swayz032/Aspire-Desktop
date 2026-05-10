@@ -194,10 +194,10 @@ const s = StyleSheet.create({
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: Colors.surface.cardBorder,  // #2C2C2E — visible lighter border (2-tone)
-    backgroundColor: Colors.surface.card,    // restore lighter gray fill (was getting eaten by Card style override)
-    borderRadius: 16,
+    borderRadius: 12,
+    backgroundColor: Colors.background.elevated, // #141414 — darker INNER fill; outer frame
+                                                 // (lighter #1C1C1E) lives on the parent
+                                                 // calendarContainer in DesktopHome.
   },
 
   // ── Month nav ─────────────────────────────────────────────────────
