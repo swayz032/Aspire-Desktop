@@ -1079,7 +1079,10 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     backgroundColor: '#1C1C1E',
     flex: 1,
-    height: 840,
+    // Adaptive height: fills parent up to 840 ceiling, with a 560 floor so
+    // tablet viewports (centerColTablet minHeight:560) get a properly-sized
+    // panel without forcing the page to overflow.
+    minHeight: 560,
     maxHeight: 840,
   } as any,
   header: {
