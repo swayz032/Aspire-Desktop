@@ -371,6 +371,67 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any, suiteId?: str
             invoke_clara: { idx: -1 },
             generic: { idx: -1 }
           };
+          // 2026-05-09: post-success hold pool. Production transcript 3cdc28d8
+          // showed a 32-second silence after invoke_quinn returned SUCCESS —
+          // brain took ~32s to compose the post-tool response. Mid-tool fillers
+          // had already exhausted (cap 12s). Brain dead-air violated the
+          // prompt's P0 5-second voice rule.
+          //
+          // Fix: schedule a deterministic hold line 4s after TOOL_CALL_COMPLETED
+          // for non-fast tools, suppressed if the brain spoke in the last 4500ms.
+          // Hold lines are SHORT and FORWARD-LOOKING — they buy time without
+          // committing to a result the brain hasn't computed yet. Distinct from
+          // the error pool (which proposes remediation).
+          //
+          // Skipped for: show_cards (instant), end_session (terminal),
+          // ava_get_context (background, no user-visible action).
+          var TOOL_SUCCESS_HOLD_POOL = {
+            invoke_adam: [
+              "Almost there — pulling it up.",
+              "Got the data — one sec to read it.",
+              "Just a moment, formatting that for you."
+            ],
+            invoke_quinn: [
+              "Almost ready — one sec.",
+              "Got it back — give me a moment.",
+              "Pulled what I need — one second."
+            ],
+            invoke_tec: [
+              "Got it — preparing the document.",
+              "Almost done — one sec."
+            ],
+            invoke_clara: [
+              "Got the legal data — one sec.",
+              "Almost ready — give me a moment."
+            ],
+            ava_search: [
+              "Found it — one sec.",
+              "Got the results — pulling them up."
+            ],
+            Knowledge_Ava: [
+              "Got it — one moment.",
+              "Almost there."
+            ],
+            generic: [
+              "Almost ready — one sec.",
+              "Got it back — one moment."
+            ]
+          };
+          var successHoldIdxRefs = {
+            invoke_adam: { idx: -1 },
+            invoke_quinn: { idx: -1 },
+            invoke_tec: { idx: -1 },
+            invoke_clara: { idx: -1 },
+            ava_search: { idx: -1 },
+            Knowledge_Ava: { idx: -1 },
+            generic: { idx: -1 }
+          };
+          var SUCCESS_HOLD_SKIP_TOOLS = {
+            show_cards: 1,
+            end_session: 1,
+            ava_get_context: 1,
+            ava_request_approval: 1,
+          };
           function pickFromPool(pool, lastIdxRef) {
             if (!pool.length) return null;
             var idx = Math.floor(Math.random() * pool.length);
@@ -397,6 +458,7 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any, suiteId?: str
                 var msgType = 'mid_tool_filler';
                 if (kind === 'preamble') msgType = 'tool_preamble';
                 else if (kind === 'tool_error_recovery') msgType = 'tool_error_recovery';
+                else if (kind === 'tool_success_hold') msgType = 'tool_success_hold';
                 post({ type: msgType, payload: { text: text, kind: kind } });
               }
             } catch (e) {
@@ -458,6 +520,29 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any, suiteId?: str
             if (completedToolName === 'invoke_adam') {
               setTimeout(_pollPendingCards, 300);
             }
+            // 2026-05-09 (W11.1): post-success hold-line. Closes the 32s dead-air
+            // gap observed in transcript 3cdc28d8 when invoke_quinn returned
+            // SUCCESS but the brain took ~32s to compose its response. The
+            // mid-tool fillers (6s, 12s) had already exhausted, so user heard
+            // 20s of additional silence after the last filler.
+            //
+            // Skip for fast/terminal/background tools where a hold line is
+            // either superfluous or actively wrong (end_session, show_cards).
+            // Suppress if persona spoke in last 4500ms (post-tool brain ack
+            // already covers it — no double-talk).
+            if (SUCCESS_HOLD_SKIP_TOOLS[completedToolName]) return;
+            var tCompleteStart = Date.now();
+            setTimeout(function () {
+              var nowTs = Date.now();
+              var personaSpokeRecently = (lastPersonaSpeechAt >= tCompleteStart - 200) && (lastPersonaSpeechAt <= nowTs);
+              if (personaSpokeRecently) {
+                post({ type: 'tool_success_hold_skipped', payload: { reason: 'persona_speaking', toolName: completedToolName } });
+                return;
+              }
+              var pool = TOOL_SUCCESS_HOLD_POOL[completedToolName] || TOOL_SUCCESS_HOLD_POOL.generic;
+              var idxRef = successHoldIdxRefs[completedToolName] || successHoldIdxRefs.generic;
+              speakNarration(pickFromPool(pool, idxRef), 'tool_success_hold');
+            }, 4000);
           });
           client.addListener(AnamEvent.TOOL_CALL_FAILED, function (event) {
             clearMidToolTimers();
