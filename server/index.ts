@@ -984,7 +984,17 @@ const TERMS_HTML = `<!DOCTYPE html>
 //
 // `interactive-widget=resizes-content` keeps content visible when the iPad
 // software keyboard appears (avoids the keyboard occluding inputs).
-const TABLET_VIEWPORT = 'width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content';
+// Tablet viewport: hand Safari width=1280 (the canvas the app is designed
+// for) and let it AUTO-scale to fit each device's real width. No
+// initial-scale, no shrink-to-fit=no — both pin or disable that auto-fit.
+// Result: iPad portrait (768) renders 1280→0.6x, iPad landscape (1024) at
+// 0.8x, iPad mini portrait (744) at 0.58x, iPad Pro 11" landscape (1194)
+// at 0.93x — every tablet sees the full 3-column layout fitted to screen,
+// no horizontal scroll, no cut-off.
+//
+// `interactive-widget=resizes-content` keeps content visible when the iPad
+// software keyboard appears (avoids the keyboard occluding inputs).
+const TABLET_VIEWPORT = 'width=1280, viewport-fit=cover, interactive-widget=resizes-content';
 const DESKTOP_VIEWPORT = 'width=1280, initial-scale=1, minimum-scale=0.5, shrink-to-fit=no';
 const VIEWPORT_META_REGEX = /<meta\s+name="viewport"\s+content="[^"]*"\s*\/?>/i;
 
