@@ -960,13 +960,26 @@ const TERMS_HTML = `<!DOCTYPE html>
 </html>`;
 
 // Per-device viewport meta -- enforced server-side on every served HTML.
-// Tablets (iPad / Android tablet) get width=device-width so the responsive
-// layout can render at the actual screen width. Desktops + laptops keep the
-// legacy width=1280 zoom-up trick the original design relied on, so the
-// desktop "feel" is preserved byte-for-byte. Without the UA split, switching
-// to device-width universally made desktop layouts spread to 1920+ which
-// felt visibly "bigger" than before -- not the goal of the tablet sweep.
-const TABLET_VIEWPORT = 'width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content';
+//
+// Aspire's CSS was originally designed at 1280 CSS px. On a true desktop the
+// browser scales 1280 up to fit the monitor, which is the "feel" the design
+// targets. The original served viewport included `minimum-scale=0.5` which
+// also let users PINCH-ZOOM-OUT and pan -- harmless on a mouse-driven
+// desktop, catastrophic on a tablet (the entire app turned into a draggable
+// image, beta tester reported it as unusable).
+//
+// Tablets now get the same 1280 zoom-up but WITHOUT minimum-scale -- so the
+// layout renders correctly (it was designed for 1280) AND the user can no
+// longer pinch-zoom out and pan the page. viewport-fit=cover added so iPad
+// notch + Android display cutout safe-area insets work.
+//
+// Desktop branch keeps the original string byte-for-byte so desktop is
+// untouched.
+//
+// (A future "real" tablet design would use width=device-width + a CSS grid
+// that gracefully renders at 768-1366 widths. That's a refactor; this is
+// the production-grade fix for shipping today.)
+const TABLET_VIEWPORT = 'width=1280, initial-scale=1, shrink-to-fit=no, viewport-fit=cover';
 const DESKTOP_VIEWPORT = 'width=1280, initial-scale=1, minimum-scale=0.5, shrink-to-fit=no';
 const VIEWPORT_META_REGEX = /<meta\s+name="viewport"\s+content="[^"]*"\s*\/?>/i;
 
