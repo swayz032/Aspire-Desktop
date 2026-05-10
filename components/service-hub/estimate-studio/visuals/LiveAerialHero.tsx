@@ -1,10 +1,26 @@
 /**
- * LiveAerialHero — live 3D aerial view via Maps JS API (hybrid + tilt 45).
+ * LiveAerialHero — Google Aerial View API drone-flyover MP4 player.
  *
- * Smooth tilt-in: starts tilt:0, animates to tilt:45 over ~600ms once the
- * map is ready. Premium reveal — never a hard pop.
+ * Replaces the deprecated Maps JS hybrid+tilt-45 path. Google deprecated
+ * auto-45° satellite imagery in v3.62, so we now consume the Aerial View API
+ * directly via the backend proxy:
  *
- * Aspire Law #7: pure render. Aspire Law #9: never logs coords.
+ *   GET /api/property/aerial-video?address={addr}
+ *     → { status, videoUrl, videoH265Url, thumbnailUrl, message, cachedAt }
+ *
+ * Web-only: native <video> element (RN-Web has no <Video> component, so we
+ * use React.createElement('video', ...) — same pattern the panorama hero uses
+ * for its <div> mount).
+ *
+ * States:
+ *   loading     → SheenBlock skeleton
+ *   processing  → SheenBlock + "Generating drone flyover…" caption (single
+ *                 retry after 3s — never infinite-loop)
+ *   ready       → autoplay muted looping H264 video
+ *   unavailable → soft fallback: "Aerial flyover not available, try Street View"
+ *   error       → cloud-offline error overlay
+ *
+ * Aspire Law #7: pure render. Aspire Law #9: never logs `coords` or `address`.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -17,6 +33,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SheenBlock } from './InsightCardBase';
+import { useProjectAddress } from '@/hooks/useProjectAddress';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
 
 interface Props {
   coords?: { lat: number; lng: number };
@@ -24,93 +42,191 @@ interface Props {
   onReturn?: () => void;
 }
 
-type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
+type AerialVideoStatus = 'ready' | 'processing' | 'unavailable' | 'error';
+
+type AerialVideoResponse = {
+  status: AerialVideoStatus;
+  videoUrl?: string;
+  videoH265Url?: string;
+  thumbnailUrl?: string;
+  message?: string;
+  cachedAt?: string;
+};
+
+type LoadStatus = 'idle' | 'loading' | 'processing' | 'ready' | 'unavailable' | 'error';
+
+const PROCESSING_RETRY_MS = 3000;
 
 export function LiveAerialHero({ coords, loading, onReturn }: Props) {
-  const containerRef = useRef<any>(null);
+  const { address } = useProjectAddress();
+  const { authenticatedFetch } = useAuthFetch();
+
   const [status, setStatus] = useState<LoadStatus>('idle');
+  const [videoUrl, setVideoUrl] = useState<string | undefined>(undefined);
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | undefined>(undefined);
+
+  // Stable refs so the effect dep list stays primitive-only.
+  const fetchRef = useRef(authenticatedFetch);
+  fetchRef.current = authenticatedFetch;
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    if (!coords || !containerRef.current) return;
+    if (!coords || !address) return;
 
     let cancelled = false;
-    let map: any = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let retried = false;
+
     setStatus('loading');
 
-    (async () => {
+    const run = async () => {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const loaderMod = require('@/lib/googleMapsLoader');
-        const loader = loaderMod.loadGoogleMaps ?? loaderMod.default ?? loaderMod;
-        const google = await loader();
-        if (cancelled || !containerRef.current) return;
+        const url = `/api/property/aerial-video?address=${encodeURIComponent(address)}`;
+        const resp = await fetchRef.current(url);
+        if (cancelled) return;
 
-        map = new google.maps.Map(containerRef.current, {
-          center: coords,
-          zoom: 19,
-          mapTypeId: 'hybrid',
-          tilt: 0,
-          heading: 0,
-          disableDefaultUI: true,
-          zoomControl: true,
-          rotateControl: true,
-          gestureHandling: 'greedy',
-          clickableIcons: false,
-        });
-        new google.maps.Marker({ position: coords, map });
+        if (!resp.ok) {
+          setStatus('error');
+          return;
+        }
+        const body = (await resp.json()) as AerialVideoResponse;
+        if (cancelled) return;
 
-        // Tilt-in animation — eight 75ms steps from 0 → 45.
-        const steps = [5, 12, 20, 28, 35, 40, 43, 45];
-        steps.forEach((tilt, i) => {
-          setTimeout(() => {
-            if (!cancelled && map) map.setTilt(tilt);
-          }, 60 + i * 70);
-        });
-
-        setStatus('ready');
+        switch (body.status) {
+          case 'ready': {
+            if (!body.videoUrl) {
+              setStatus('error');
+              return;
+            }
+            setVideoUrl(body.videoUrl);
+            setThumbnailUrl(body.thumbnailUrl);
+            setStatus('ready');
+            return;
+          }
+          case 'processing': {
+            setThumbnailUrl(body.thumbnailUrl);
+            setStatus('processing');
+            // Single retry only — no infinite poll.
+            if (!retried) {
+              retried = true;
+              retryTimer = setTimeout(() => {
+                if (!cancelled) void run();
+              }, PROCESSING_RETRY_MS);
+            } else {
+              // Still processing after one retry → leave the soft skeleton in
+              // place; user can switch back to Street View.
+              setStatus('processing');
+            }
+            return;
+          }
+          case 'unavailable':
+            setStatus('unavailable');
+            return;
+          case 'error':
+          default:
+            setStatus('error');
+            return;
+        }
       } catch {
         if (!cancelled) setStatus('error');
       }
-    })();
+    };
+
+    void run();
 
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [coords]);
+    // Key on primitive lat/lng + address so we don't refire on object identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coords?.lat, coords?.lng, address]);
 
-  if (loading || status === 'loading' || status === 'idle') {
+  if (Platform.OS !== 'web') {
     return (
-      <View style={styles.shell} testID="live-aerial-hero-loading">
-        <SheenBlock width="100%" height={400} radius={12} />
+      <View style={[styles.shell, styles.fallbackShell]}>
+        <Text style={styles.fallbackSubtitle}>Aerial preview is web-only.</Text>
       </View>
     );
   }
 
-  if (status === 'error') {
-    return (
-      <View style={[styles.shell, styles.fallbackShell]} testID="live-aerial-hero-error">
-        <View style={styles.fallbackIcon}>
-          <Ionicons name="cloud-offline-outline" size={28} color="#ff6b6b" />
-        </View>
-        <Text style={styles.fallbackTitle}>Could not load aerial view</Text>
-        <Text style={styles.fallbackSubtitle}>Try Street View instead — we&apos;ll keep retrying in the background.</Text>
-      </View>
-    );
-  }
+  const showSkeleton = loading || status === 'idle' || status === 'loading';
+  const showProcessing = status === 'processing';
+  const showUnavailable = status === 'unavailable';
+  const showError = status === 'error';
+  const hasVideo = Boolean(videoUrl) && status === 'ready';
 
   return (
     <View style={styles.shell} testID="live-aerial-hero">
-      {Platform.OS === 'web' ? (
-        React.createElement('div', {
-          ref: containerRef,
-          style: { width: '100%', height: '100%', borderRadius: 12 },
-        })
-      ) : (
-        <Text style={styles.fallbackSubtitle}>Aerial preview is web-only.</Text>
+      {/* Always-mount the video element once we have a URL — overlays sit on top */}
+      {hasVideo &&
+        React.createElement('video', {
+          src: videoUrl,
+          poster: thumbnailUrl,
+          autoPlay: true,
+          loop: true,
+          muted: true,
+          playsInline: true,
+          preload: 'metadata',
+          style: {
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            borderRadius: 12,
+            backgroundColor: '#0F0F12',
+          },
+        })}
+
+      {/* Loading skeleton */}
+      {showSkeleton && (
+        <View style={styles.overlayFill} pointerEvents="none" testID="live-aerial-hero-loading">
+          <SheenBlock width="100%" height="100%" radius={12} />
+        </View>
       )}
 
-      {/* Return-to-Street-View pill — top-right */}
+      {/* Processing — soft pulse + caption */}
+      {showProcessing && (
+        <View style={styles.overlayFill} pointerEvents="none" testID="live-aerial-hero-processing">
+          <SheenBlock width="100%" height="100%" radius={12} />
+          <View style={styles.processingCaption}>
+            <Ionicons name="videocam-outline" size={14} color="#fbbf24" />
+            <Text style={styles.processingText}>Generating drone flyover…</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Unavailable — soft fallback, suggest Street View */}
+      {showUnavailable && (
+        <View
+          style={[styles.overlayFill, styles.fallbackShell]}
+          testID="live-aerial-hero-unavailable"
+        >
+          <View style={styles.fallbackIcon}>
+            <Ionicons name="cloud-offline-outline" size={28} color="rgba(255,255,255,0.55)" />
+          </View>
+          <Text style={styles.fallbackTitle}>Aerial flyover not available</Text>
+          <Text style={styles.fallbackSubtitle}>
+            This property isn&apos;t covered yet — try Street View for a curb-side look.
+          </Text>
+        </View>
+      )}
+
+      {/* Error overlay */}
+      {showError && (
+        <View style={[styles.overlayFill, styles.fallbackShell]} testID="live-aerial-hero-error">
+          <View style={[styles.fallbackIcon, styles.fallbackIconError]}>
+            <Ionicons name="cloud-offline-outline" size={28} color="#ff6b6b" />
+          </View>
+          <Text style={styles.fallbackTitle}>Could not load aerial view</Text>
+          <Text style={styles.fallbackSubtitle}>
+            Try Street View instead — we&apos;ll keep retrying in the background.
+          </Text>
+        </View>
+      )}
+
+      {/* Return-to-Street-View pill — top-right (unchanged from prior version) */}
       <Pressable
         onPress={onReturn}
         accessibilityRole="button"
@@ -142,15 +258,53 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
   },
+  overlayFill: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#0F0F12',
+  },
+  processingCaption: {
+    position: 'absolute',
+    bottom: 18,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.35)',
+    left: '50%',
+    ...(Platform.OS === 'web'
+      ? (({ transform: 'translateX(-50%)' } as unknown) as ViewStyle)
+      : {}),
+  },
+  processingText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#fbbf24',
+    letterSpacing: -0.1,
+  },
   fallbackIcon: {
     width: 60,
     height: 60,
     borderRadius: 30,
     borderWidth: 1,
-    borderColor: 'rgba(255,107,107,0.25)',
-    backgroundColor: 'rgba(255,107,107,0.05)',
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  fallbackIconError: {
+    borderColor: 'rgba(255,107,107,0.25)',
+    backgroundColor: 'rgba(255,107,107,0.05)',
   },
   fallbackTitle: {
     fontSize: 16,
@@ -163,6 +317,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.55)',
     textAlign: 'center',
     lineHeight: 18,
+    maxWidth: 420,
   },
   returnPill: {
     position: 'absolute',

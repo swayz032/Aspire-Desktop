@@ -16,6 +16,7 @@ import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, Animated } from 'react-native';
 import { LiveStreetViewHero } from './LiveStreetViewHero';
 import { LiveAerialHero } from './LiveAerialHero';
+import { LiveEarthHero } from './LiveEarthHero';
 import { PhotoGalleryHero } from './PhotoGalleryHero';
 import type { PropertyData } from '@/services/serviceHub/propertyDataApi';
 import type { HeroMode } from '@/hooks/useHeroMode';
@@ -34,6 +35,7 @@ export function HeroSwitcher({ mode, onModeChange, data, loading }: Props) {
   const opacities = useRef<Record<HeroMode, Animated.Value>>({
     streetview: new Animated.Value(mode === 'streetview' ? 1 : 0),
     aerial: new Animated.Value(mode === 'aerial' ? 1 : 0),
+    earth: new Animated.Value(mode === 'earth' ? 1 : 0),
     interior: new Animated.Value(mode === 'interior' ? 1 : 0),
     exterior: new Animated.Value(mode === 'exterior' ? 1 : 0),
     roof: new Animated.Value(mode === 'roof' ? 1 : 0),
@@ -60,6 +62,7 @@ export function HeroSwitcher({ mode, onModeChange, data, loading }: Props) {
           coords={data?.coords}
           loading={loading}
           onAerialPress={() => onModeChange('aerial')}
+          onEarthPress={() => onModeChange('earth')}
         />
       </Animated.View>
 
@@ -68,6 +71,17 @@ export function HeroSwitcher({ mode, onModeChange, data, loading }: Props) {
         style={[styles.layer, { opacity: opacities.aerial }]}
       >
         <LiveAerialHero
+          coords={data?.coords}
+          loading={loading}
+          onReturn={() => onModeChange('streetview')}
+        />
+      </Animated.View>
+
+      <Animated.View
+        pointerEvents={mode === 'earth' ? 'auto' : 'none'}
+        style={[styles.layer, { opacity: opacities.earth }]}
+      >
+        <LiveEarthHero
           coords={data?.coords}
           loading={loading}
           onReturn={() => onModeChange('streetview')}
