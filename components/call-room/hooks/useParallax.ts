@@ -1,5 +1,5 @@
 // components/call-room/hooks/useParallax.ts
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 
 export interface CursorPosition {
@@ -15,6 +15,11 @@ export interface ViewportSize {
 export interface ParallaxOffset {
   x: number;
   y: number;
+}
+
+export interface CursorRef {
+  cursor: { x: number; y: number };
+  viewport: { width: number; height: number };
 }
 
 /**
@@ -65,6 +70,10 @@ interface CursorState {
  * Tracks cursor position and viewport size on web. On native, returns a static
  * "cursor at center" state (no parallax movement) since touch devices don't
  * have a hover cursor.
+ *
+ * State updates are coalesced to one per animation frame (~16ms @ 60fps)
+ * instead of one per mousemove event (60-200/sec), which previously thrashed
+ * the React tree and caused visible jitter on the 3D card.
  */
 export function useCursor(): CursorState {
   const isWeb = Platform.OS === 'web';
@@ -87,11 +96,27 @@ export function useCursor(): CursorState {
       return;
     }
 
+    let pendingFrame: number | null = null;
+    let pendingCursor: CursorPosition | null = null;
+
+    const flush = () => {
+      pendingFrame = null;
+      if (pendingCursor) {
+        const next = pendingCursor;
+        pendingCursor = null;
+        setState((prev) =>
+          prev.cursor.x === next.x && prev.cursor.y === next.y
+            ? prev
+            : { ...prev, cursor: next },
+        );
+      }
+    };
+
     const handleMouseMove = (event: MouseEvent) => {
-      setState((prev) => ({
-        ...prev,
-        cursor: { x: event.clientX, y: event.clientY },
-      }));
+      pendingCursor = { x: event.clientX, y: event.clientY };
+      if (pendingFrame === null) {
+        pendingFrame = window.requestAnimationFrame(flush);
+      }
     };
 
     const handleResize = () => {
@@ -101,14 +126,69 @@ export function useCursor(): CursorState {
       }));
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
     window.addEventListener('resize', handleResize);
 
     return () => {
+      if (pendingFrame !== null) window.cancelAnimationFrame(pendingFrame);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('resize', handleResize);
     };
   }, [isWeb]);
 
   return state;
+}
+
+/**
+ * Ref-based cursor tracker — never triggers a React render. Use this when you
+ * want to apply cursor-driven transforms via direct DOM mutation inside an
+ * rAF loop instead of going through the React reconciliation cycle.
+ *
+ * Caller pattern:
+ *   const cursorRef = useCursorRef();
+ *   useEffect(() => {
+ *     let frame: number;
+ *     const tick = () => {
+ *       const { cursor, viewport } = cursorRef.current;
+ *       // ...compute transform, write to elementRef.current.style.transform
+ *       frame = requestAnimationFrame(tick);
+ *     };
+ *     frame = requestAnimationFrame(tick);
+ *     return () => cancelAnimationFrame(frame);
+ *   }, []);
+ */
+export function useCursorRef(): { current: CursorRef } {
+  const isWeb = Platform.OS === 'web';
+  const ref = useRef<CursorRef>({
+    cursor:
+      isWeb && typeof window !== 'undefined'
+        ? { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+        : { x: 0, y: 0 },
+    viewport:
+      isWeb && typeof window !== 'undefined'
+        ? { width: window.innerWidth, height: window.innerHeight }
+        : { width: 0, height: 0 },
+  });
+
+  useEffect(() => {
+    if (!isWeb || typeof window === 'undefined') return;
+
+    const onMove = (event: MouseEvent) => {
+      ref.current.cursor.x = event.clientX;
+      ref.current.cursor.y = event.clientY;
+    };
+    const onResize = () => {
+      ref.current.viewport.width = window.innerWidth;
+      ref.current.viewport.height = window.innerHeight;
+    };
+
+    window.addEventListener('mousemove', onMove, { passive: true });
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [isWeb]);
+
+  return ref;
 }

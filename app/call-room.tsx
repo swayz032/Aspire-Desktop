@@ -20,7 +20,7 @@
  * then the back-navigation lets the user exit while the call continues
  * on the Twilio side (matches the prior calls.tsx behavior).
  */
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 
@@ -29,6 +29,8 @@ import { CallRoom } from '@/components/call-room/CallRoom';
 import { PortalReveal, type PortalOrigin } from '@/components/call-room/PortalReveal';
 import type { CallState, ClientContext, VoiceState } from '@/components/call-room/types';
 import { useVoiceCall } from '@/lib/voice/useVoiceCall';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { fetchVoiceToken, VoiceTokenError } from '@/lib/api/voice';
 
 interface CallRoomQuery {
   /** E.164 dialed number, e.g. "+15558675309". Required. */
@@ -39,10 +41,12 @@ interface CallRoomQuery {
   callId?: string;
   /** Service / inquiry hint, if known from the contact record. */
   service?: string;
-  /** Twilio Voice SDK JWT, pre-fetched on the Return Call page. */
-  voiceToken?: string;
-  /** E.164 caller_id Twilio will surface (the office's Aspire number). */
-  callerId?: string;
+  /**
+   * Office ID — required to mint the voice token. Replaces the legacy
+   * pre-fetched voiceToken/callerId pattern (which forced a 200-800ms HTTP
+   * wait on the dial pad before navigation, producing a black-screen lag).
+   */
+  officeId?: string;
   /** Source button bounding rect (web only) for the portal-reveal morph. */
   originX?: string;
   originY?: string;
@@ -90,14 +94,58 @@ export default function CallRoomRoute(): React.ReactElement {
       name: pick('name'),
       callId: pick('callId'),
       service: pick('service'),
-      voiceToken: pick('voiceToken'),
-      callerId: pick('callerId'),
+      officeId: pick('officeId'),
       originX: pick('originX'),
       originY: pick('originY'),
       originW: pick('originW'),
       originH: pick('originH'),
     };
   }, [rawParams]);
+
+  // Fetch the Twilio Voice SDK token internally so navigation stays
+  // instant. Previously calls.tsx awaited fetchVoiceToken() before
+  // router.push — that 200-800ms HTTP round-trip showed as a frozen dial
+  // pad followed by a black screen. Now the CallRoom shell + connecting UI
+  // appear immediately, and the token resolves in parallel behind it.
+  const { authenticatedFetch } = useAuthFetch();
+  const [voiceToken, setVoiceToken] = useState<string | null>(null);
+  const [tokenError, setTokenError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!params.phone || !params.officeId) return;
+    let cancelled = false;
+    setTokenError(null);
+    setVoiceToken(null);
+
+    fetchVoiceToken({
+      authenticatedFetch,
+      officeId: params.officeId,
+    })
+      .then((tok) => {
+        if (cancelled) return;
+        setVoiceToken(tok.token);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        if (err instanceof VoiceTokenError) {
+          if (err.code === 'NO_ASPIRE_NUMBER') {
+            setTokenError(err.message);
+          } else if (err.code === 'VOICE_NOT_CONFIGURED') {
+            setTokenError(
+              'In-browser calls aren’t configured for this account yet. Contact support.',
+            );
+          } else {
+            setTokenError(err.message || 'Couldn’t set up the call.');
+          }
+        } else {
+          setTokenError('Network error — could not set up the call.');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [params.phone, params.officeId, authenticatedFetch]);
 
   // Parse the source-button rect for the portal-reveal morph. If any of the
   // four values is missing or non-numeric, drop the rect entirely — the
@@ -146,7 +194,7 @@ export default function CallRoomRoute(): React.ReactElement {
   );
 
   const voice = useVoiceCall({
-    token: params.voiceToken ?? null,
+    token: voiceToken,
     destination: params.phone ?? null,
     onEnd: handleVoiceEnd,
   });
@@ -224,7 +272,7 @@ export default function CallRoomRoute(): React.ReactElement {
           onMute={() => voice.mute()}
           onHold={() => voice.hold()}
           onSendDigit={(d) => voice.sendDigits(d)}
-          errorBanner={voice.error}
+          errorBanner={tokenError ?? voice.error}
         />
       </PortalReveal>
     </>
