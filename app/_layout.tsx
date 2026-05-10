@@ -283,7 +283,20 @@ function useWebDesktopSetup() {
     const viewport = document.querySelector('meta[name="viewport"]');
     const isGuestJoinPage = window.location.pathname.startsWith('/join/');
     if (viewport && !isGuestJoinPage) {
-      viewport.setAttribute('content', 'width=1440, initial-scale=1, shrink-to-fit=no');
+      // Tablet-aware viewport. Force-width=1440 was breaking iPad/Android tablets
+      // (rendered at 1440 then zoomed-out, illegible text, untappable buttons).
+      // Tablets/small laptops: device-width so existing layout reflows naturally.
+      // Desktops (>= 1280 CSS px): keep the 1440 lock for byte-for-byte parity
+      // with the existing desktop experience -- NO layout changes for desktop users.
+      // viewport-fit=cover enables env(safe-area-inset-*) on iPad notch/Android cutouts.
+      const useDeviceWidth = window.innerWidth < 1280;
+      // interactive-widget=resizes-content: 2026 viewport hint so on-screen keyboard
+      // resizes the layout viewport instead of overlaying it. Honored by Chrome/Firefox;
+      // Safari 18 ignores it (uses visualViewport overlay) but the directive is harmless.
+      const content = useDeviceWidth
+        ? 'width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content'
+        : 'width=1440, initial-scale=1, shrink-to-fit=no, viewport-fit=cover, interactive-widget=resizes-content';
+      viewport.setAttribute('content', content);
     }
   }, []);
 }
