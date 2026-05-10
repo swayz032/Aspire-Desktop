@@ -318,17 +318,28 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any, suiteId?: str
           // Keep this block in pure JS.
           var midToolTimers = [];
           var lastPersonaSpeechAt = 0;
-          var FILLER_FAST_TOOLS = { 'show_cards': 1 };
-          // 2026-05-10 (W12.3): professional EA phrasing. Brief, warm,
-          // polished. Pre-tool ack ("preamble") signals work has started.
-          // Mid-tool fillers (6s, 12s) signal the tool is still running —
-          // these legitimately mean "almost there" since the tool is in
-          // flight. Suppression logic prevents stacking.
+          // 2026-05-10 (W12.4): expanded skip list. Knowledge_Ava is an
+          // internal RAG lookup the user never sees — narrating "Let me
+          // check that" before EVERY workflow lookup is wrong context
+          // (user asked to send an invoice, doesn't expect Ava to "check"
+          // anything). ava_get_context fires once at session start, also
+          // background. show_cards was always exempt (instant frontend).
+          var FILLER_FAST_TOOLS = {
+            'show_cards': 1,
+            'Knowledge_Ava': 1,
+            'ava_get_context': 1,
+          };
+          // 2026-05-10 (W12.4): universal preambles that work for both
+          // lookup tools (invoke_adam research) AND action tools
+          // (invoke_quinn invoice creation, invoke_tec document drafting).
+          // Prior pool had "Let me check" / "Looking into that" / "Pulling
+          // that up" — all lookup-only. Wrong context when user asked to
+          // SEND an invoice. New pool is action-flexible.
           var PREAMBLE_POOL = [
             "One moment.",
-            "Let me check.",
-            "Looking into that.",
-            "Pulling that up."
+            "Sure thing.",
+            "On it.",
+            "Got it."
           ];
           var FILLER_POOL_FIRST = [
             "Still working on it.",
@@ -419,6 +430,12 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any, suiteId?: str
             end_session: 1,
             ava_get_context: 1,
             ava_request_approval: 1,
+            // 2026-05-10 (W12.4): Knowledge_Ava is an internal RAG lookup
+            // — the brain follows up with its own contextual response per
+            // the prompt's WORKFLOW TRIGGER RULE. A generic "Okay." hold
+            // here is wrong because the brain is about to say "Sure thing.
+            // Who's it for?" (Step 1 of the invoice workflow).
+            Knowledge_Ava: 1,
           };
           function pickFromPool(pool, lastIdxRef) {
             if (!pool.length) return null;
@@ -627,12 +644,30 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any, suiteId?: str
                }
             }, 1000);
 
-            // 2026 SDK OFFICIAL PATTERN: addContext and triggerGreeting
+            // 2026-05-10 (W12.4): deterministic greeting via client.talk().
+            // Production transcript on tablet showed Ava saying "Mr. Scott"
+            // without the "Good morning," prefix — first chunks of audio
+            // were being clipped because:
+            //   (1) triggerGreeting() routes through the LLM brain, which
+            //       takes 1-3s to compose the greeting → first chunks
+            //       arrive before the audio device finishes acquiring
+            //   (2) tablet autoplay policy can pause the <video> element
+            //       even after audio stream begins → first second of TTS
+            //       gets buffered but not played
+            //
+            // Fix: skip triggerGreeting (brain compose). Build the greeting
+            // text deterministically from the profile, wait for both
+            // audio_started AND a 1.5s settle window, THEN call client.talk().
+            // This guarantees:
+            //   - greeting text is correct (no LLM drift to wrong phrasing)
+            //   - greeting starts AFTER audio device is hot
+            //   - English-only (no locale drift)
+            //   - resilient to tablet autoplay policy
             if (profile) {
               const now = new Date();
               const fullDate = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
               const timeOfDay = now.getHours() < 12 ? 'morning' : now.getHours() < 17 ? 'afternoon' : 'evening';
-              
+
               const context = {
                 salutation: profile.salutation || '',
                 lastName: profile.lastName || '',
@@ -645,22 +680,60 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any, suiteId?: str
                 timeOfDay: timeOfDay
               };
 
-              // Inject context into the persona brain
+              // Inject context into the persona brain so subsequent turns
+              // have the user's name, business, etc. for substitution.
               if (typeof client.addContext === 'function') {
                 client.addContext(context);
               }
 
-              // Explicitly trigger the greeting sequence
-              if (typeof client.triggerGreeting === 'function') {
-                client.triggerGreeting();
-              } else if (typeof client.talk === 'function') {
-                // Fallback for older/middle versions of SDK
-                const greeting = "Good " + timeOfDay + ", " + (profile.salutation || "") + " " + (profile.lastName || "") + ".";
-                client.talk(greeting);
+              // Build the deterministic greeting text per the prompt's
+              // greeting hierarchy (PRIMARY → FALLBACK 1 → LAST RESORT).
+              const sal = String(profile.salutation || '').trim();
+              const last = String(profile.lastName || '').trim();
+              const first = String(profile.firstName || '').trim();
+              let greetingText;
+              if (sal && last) {
+                greetingText = "Good " + timeOfDay + ", " + sal + " " + last + ".";
+              } else if (first) {
+                greetingText = "Good " + timeOfDay + ", " + first + ".";
               } else {
-                // Ultra-fallback: send as user message to prime
-                const primeMsg = "Note to AI: The user is " + (profile.salutation || "") + " " + (profile.lastName || "") + ". Business: " + (profile.businessName || "") + ". Date: " + fullDate + ". Camera: " + (profile.hasCamera ? "true" : "false") + ". Please greet the user now.";
-                client.sendUserMessage(primeMsg);
+                greetingText = "Good " + timeOfDay + ".";
+              }
+
+              // Wait for audio pipeline + 1.5s settle window, then speak.
+              // If audio already started (desktop fast path), the 1500ms
+              // delay alone is enough. On tablet, audio_started may fire
+              // late — the greetingFired guard prevents double-speaking.
+              let greetingFired = false;
+              const fireGreeting = function (reason) {
+                if (greetingFired) return;
+                greetingFired = true;
+                console.log('[AvaIframe] firing greeting (' + reason + '): ' + greetingText);
+                try {
+                  if (typeof client.talk === 'function') {
+                    client.talk(greetingText);
+                  } else if (typeof client.triggerGreeting === 'function') {
+                    // Fallback for SDK builds without talk()
+                    client.triggerGreeting();
+                  }
+                } catch (e) {
+                  console.warn('[AvaIframe] greeting fire failed', e);
+                }
+              };
+
+              // Primary path: 1.5s after SESSION_READY.
+              setTimeout(function () { fireGreeting('settle_timer'); }, 1500);
+
+              // Backup path: if audio_started fires later than 1.5s
+              // (typical on tablet under autoplay restriction), the
+              // greetingFired guard means the talk call has already
+              // happened. If for some reason the settle timer never
+              // fired, audio_started gets a chance to fire it.
+              if (AnamEvent.AUDIO_STREAM_STARTED) {
+                client.addListener(AnamEvent.AUDIO_STREAM_STARTED, function () {
+                  // Add 200ms cushion to let the first audio packet flush
+                  setTimeout(function () { fireGreeting('audio_started'); }, 200);
+                });
               }
             }
           });
