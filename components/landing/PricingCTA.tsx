@@ -21,7 +21,8 @@ function PricingCTAInner() {
   return (
     <section id="pricing" style={{
       background: '#050508',
-      padding: 'clamp(72px, 9vw, 120px) clamp(20px, 5vw, 80px)',
+      // Fluid section padding -- see HowItWorks for rationale.
+      padding: 'clamp(4rem, 6vw + 1rem, 7.5rem) clamp(1rem, 4vw, 5rem)',
       fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif',
       borderTop: '1px solid rgba(255,255,255,0.04)',
     }}>

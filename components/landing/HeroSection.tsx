@@ -51,9 +51,11 @@ function HeroSectionInner() {
   return (
     <section className="aspire-hero-section" style={{
       position: 'relative',
-      // 100vh fallback; an injected CSS rule below upgrades to 100dvh on
-      // browsers that support it (handles iOS/Android tablet URL bar correctly).
-      minHeight: '100vh',
+      // 100svh = small-viewport-height -- excludes Safari 26 Liquid Glass tab-bar
+      // inflation (iPadOS 26 / iOS 26). Supported in all modern browsers
+      // (Safari >=15.4, Chrome >=108). Cast because RN CSS typings don't
+      // know about svh yet.
+      minHeight: '100svh' as unknown as number,
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',

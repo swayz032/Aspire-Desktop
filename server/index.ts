@@ -969,19 +969,22 @@ const TERMS_HTML = `<!DOCTYPE html>
 // (A future "real" tablet design would use width=device-width + a CSS grid
 // that gracefully renders at 768-1366 widths. That's a refactor; this is
 // the production-grade fix for shipping today.)
-// IMPORTANT differences vs desktop:
-//   - shrink-to-fit DROPPED (Safari default = yes). With shrink-to-fit=no,
-//     Safari rendered 1280 of layout in the iPad's smaller visual viewport
-//     and forced a horizontal scrollbar -- user had to swipe to reach the
-//     Sign In button. shrink-to-fit=yes lets Safari auto-zoom-down so the
-//     entire 1280 layout fits in whatever the iPad screen width is.
-//   - initial-scale DROPPED. Safari computes the scale that makes the layout
-//     viewport (1280) fit in the visual viewport (834-1366 depending on iPad
-//     model + orientation). No more "page is smaller than screen with margin".
-//   - minimum-scale DROPPED -- if we lock min=initial we kill accessibility
-//     pinch-zoom. WCAG 1.4.4 requires user-zoom available.
-//   - viewport-fit=cover kept for safe-area-insets on notched iPads.
-const TABLET_VIEWPORT = 'width=1280, viewport-fit=cover';
+// IMPORTANT — 2026-05-10 revert to PROPER tablet viewport. The previous
+// `width=1280, viewport-fit=cover` workaround was a symptom-treatment for
+// landing CSS that wasn't responsive. Now that components/landing/* uses
+// fluid grids (auto-fit + min(100%, Npx)), fluid section padding, dynamic
+// CockpitMockup scale, and 100svh hero height, the page actually fits the
+// real device viewport -- so we hand Safari the standard responsive meta.
+//
+// This is also REQUIRED on iPadOS 26 (March 2026) because of WebKit PR #17109,
+// which moved the desktop-viewport shrink-to-fit floor from 980 -> 820 CSS px.
+// Pages declaring width=1280 now produce a horizontal scroll on iPad portrait
+// (1024 px) instead of auto-shrinking. The fix is responsive CSS + standard
+// viewport meta -- not a width=N hack.
+//
+// `interactive-widget=resizes-content` keeps content visible when the iPad
+// software keyboard appears (avoids the keyboard occluding inputs).
+const TABLET_VIEWPORT = 'width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content';
 const DESKTOP_VIEWPORT = 'width=1280, initial-scale=1, minimum-scale=0.5, shrink-to-fit=no';
 const VIEWPORT_META_REGEX = /<meta\s+name="viewport"\s+content="[^"]*"\s*\/?>/i;
 

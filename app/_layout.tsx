@@ -760,13 +760,12 @@ function RootLayout() {
       style.id = 'aspire-viewport-lock';
       style.textContent = `
         html, body, #root {
-          /* overflow:hidden (no !important) so landing.tsx can override with
-             body.style.overflow='auto' for vertical scroll. App routes still get
-             the lock because nothing else sets overflow inline.
-             max-height uses --dvh-100 (set by useDynamicViewportHeight) so on
-             Safari iOS the cap matches the visible viewport, not the inflated
-             100vh that includes the URL bar. */
-          overflow: hidden;
+          overflow: hidden !important;
+          /* Belt-and-suspenders against iPad Safari pannable behaviour: even
+             if some descendant slips a horizontal overflow, overscroll-behavior
+             stops the page from rubber-banding/dragging as a unit. */
+          overflow-x: hidden !important;
+          overscroll-behavior: none !important;
           height: 100% !important;
           max-height: var(--dvh-100, 100vh) !important;
           margin: 0 !important;
