@@ -3,6 +3,7 @@ import 'dotenv/config';
 // dotenv/config only reads .env — .env.local must be loaded explicitly.
 import dotenv from 'dotenv';
 import { existsSync } from 'fs';
+import * as fs from 'fs';
 import { resolve } from 'path';
 const localEnvPath = resolve(process.cwd(), '.env.local');
 if (existsSync(localEnvPath)) {
@@ -958,12 +959,41 @@ const TERMS_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
-app.get('/', (req, res) => {
-  const distPath = path.join(process.cwd(), 'dist');
+// Tablet-correct viewport meta -- enforced server-side on every served HTML.
+// Survives any future build that regenerates dist/index.html with the legacy
+// width=1280 string. Symptoms of the legacy string on tablet: page laid out
+// at 1280 CSS px, user can pinch-zoom and pan the entire app, lag from the
+// browser scaling everything down. THIS rewrite is the definitive fix --
+// runtime JS in app/_layout.tsx cannot beat the initial layout pass.
+const TABLET_VIEWPORT = 'width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content';
+const VIEWPORT_META_REGEX = /<meta\s+name="viewport"\s+content="[^"]*"\s*\/?>/i;
+
+let _cachedIndexHtml: { mtimeMs: number; html: string } | null = null;
+function getRewrittenIndexHtml(): string {
+  const filePath = path.join(process.cwd(), 'dist', 'index.html');
+  const stat = fs.statSync(filePath);
+  if (_cachedIndexHtml && _cachedIndexHtml.mtimeMs === stat.mtimeMs) {
+    return _cachedIndexHtml.html;
+  }
+  const raw = fs.readFileSync(filePath, 'utf-8');
+  const fixed = raw.replace(
+    VIEWPORT_META_REGEX,
+    `<meta name="viewport" content="${TABLET_VIEWPORT}" />`,
+  );
+  _cachedIndexHtml = { mtimeMs: stat.mtimeMs, html: fixed };
+  return fixed;
+}
+
+function sendIndexHtml(res: import('express').Response): void {
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
-  res.sendFile(path.join(distPath, 'index.html'));
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(getRewrittenIndexHtml());
+}
+
+app.get('/', (req, res) => {
+  sendIndexHtml(res);
 });
 
 app.get('/privacy-policy', (req, res) => {
@@ -1093,13 +1123,10 @@ app.use(express.static(distPath, {
   },
 }));
 
-// SPA fallback — always serve fresh index.html
+// SPA fallback — always serve fresh index.html with tablet-correct viewport.
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api') && req.method === 'GET') {
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    res.sendFile(path.join(distPath, 'index.html'));
+    sendIndexHtml(res);
   } else {
     next();
   }

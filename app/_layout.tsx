@@ -283,17 +283,17 @@ function useWebDesktopSetup() {
     const viewport = document.querySelector('meta[name="viewport"]');
     const isGuestJoinPage = window.location.pathname.startsWith('/join/');
     if (viewport && !isGuestJoinPage) {
-      // Tablet-aware viewport. Force-width=1440 was breaking iPad/Android tablets
-      // (rendered at 1440 then zoomed-out, illegible text, untappable buttons).
-      // Now: tablets and below use device-width so the existing layout reflows
-      // naturally; desktops (>= 1280px CSS px) keep the legacy 1440 lock so the
-      // existing desktop experience is byte-for-byte preserved.
-      // viewport-fit=cover enables env(safe-area-inset-*) for iPad notch/home indicator.
-      const useDeviceWidth = window.innerWidth < 1280;
-      const content = useDeviceWidth
-        ? 'width=device-width, initial-scale=1, viewport-fit=cover'
-        : 'width=1440, initial-scale=1, shrink-to-fit=no, viewport-fit=cover';
-      viewport.setAttribute('content', content);
+      // Viewport is now set at served-HTML level (dist/index.html) and enforced
+      // by the server-side rewrite middleware in server/index.ts. Canonical:
+      //   width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content
+      //
+      // Earlier versions patched it here at runtime, but Safari iOS often
+      // ignored the post-hydration mutation -- the page was already laid out
+      // at the wrong width by then, AND minimum-scale=0.5 in the served HTML
+      // let users pinch-zoom and pan the entire app on tablet. Both root
+      // causes are now fixed before the JS bundle even loads.
+      // This block is kept as a hook point for future per-route overrides.
+      void viewport;
     }
   }, []);
 }
