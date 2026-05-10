@@ -38,6 +38,11 @@ yarn-error.*
 
 app-example
 
+# Playwright artifacts (generated per test run)
+test-results/
+playwright-report/
+playwright/.cache/
+
 # Local tooling caches
 .config/
 .local/

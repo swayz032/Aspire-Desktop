@@ -19,13 +19,15 @@ export function useDesktopWithMounted(): { isDesktop: boolean; mounted: boolean 
 }
 
 /**
- * Apple HIG 2026 minimum touch target size (px). Use for `hitSlop`,
- * minimum button height/width, and tap-area calculations on tablets/touch devices.
+ * Universal minimum touch-target size (px) — covers Apple HIG (44pt min),
+ * Material 3 Expressive 2026 (48dp), and WCAG 2.2 SC 2.5.8 (24px floor +
+ * spacing) at once. Picking 48 means we never need per-platform branching.
+ * Use for `hitSlop`, minimum button height/width, and tap-area calculations.
  *
  * Re-exported as a const here so callers in this module don't need to import
  * from `constants/tokens.ts`. Source of truth lives in tokens.
  */
-export const MIN_TOUCH_TARGET = 44 as const;
+export const MIN_TOUCH_TARGET = 48 as const;
 
 /**
  * Legacy coarse breakpoints — DO NOT MODIFY KEY NAMES.
@@ -199,4 +201,110 @@ export function useDynamicViewportHeight(): number {
   }, []);
 
   return height;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Visual viewport — Safari iOS keyboard / iPad Stage Manager handling.
+// `useWindowDimensions()` reads window.innerWidth/innerHeight which does NOT
+// shrink when the iOS on-screen keyboard appears. `window.visualViewport` does.
+// Use this hook for any layout that must reposition above the keyboard
+// (login forms, chat composers, modal sheets) or that needs to react to iPad
+// Stage Manager resize/scale events.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface VisualViewportSnapshot {
+  width: number;
+  height: number;
+  offsetTop: number;
+  offsetLeft: number;
+  scale: number;
+  available: boolean;
+}
+
+const EMPTY_VISUAL_VIEWPORT: VisualViewportSnapshot = {
+  width: 0,
+  height: 0,
+  offsetTop: 0,
+  offsetLeft: 0,
+  scale: 1,
+  available: false,
+};
+
+export function useVisualViewport(): VisualViewportSnapshot {
+  const isWeb = Platform.OS === 'web';
+  const [snapshot, setSnapshot] = useState<VisualViewportSnapshot>(() => {
+    if (!isWeb || typeof window === 'undefined' || !window.visualViewport) {
+      return EMPTY_VISUAL_VIEWPORT;
+    }
+    const vv = window.visualViewport;
+    return {
+      width: vv.width,
+      height: vv.height,
+      offsetTop: vv.offsetTop,
+      offsetLeft: vv.offsetLeft,
+      scale: vv.scale,
+      available: true,
+    };
+  });
+
+  useEffect(() => {
+    if (!isWeb || typeof window === 'undefined' || !window.visualViewport) return;
+    const vv = window.visualViewport;
+    const update = () => {
+      setSnapshot({
+        width: vv.width,
+        height: vv.height,
+        offsetTop: vv.offsetTop,
+        offsetLeft: vv.offsetLeft,
+        scale: vv.scale,
+        available: true,
+      });
+    };
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  }, [isWeb]);
+
+  return snapshot;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tablet visibility guard — iPadOS 26 PWA backgrounding bug.
+// When a PWA is backgrounded on iPadOS 26+, iOS resizes the webview to *card
+// dimensions* (1024x1334) BEFORE `visibilitychange` fires. Layouts that
+// recompute on every `resize` permanently degrade. Use this hook on any
+// component that performs expensive layout recomputes — short-circuit when
+// `visible === false`.
+// Reference: code-server #7648 (Jan 2026).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function useDocumentVisible(): boolean {
+  const isWeb = Platform.OS === 'web';
+  const [visible, setVisible] = useState<boolean>(() => {
+    if (!isWeb || typeof document === 'undefined') return true;
+    return document.visibilityState === 'visible';
+  });
+
+  useEffect(() => {
+    if (!isWeb || typeof document === 'undefined') return;
+    const update = () => setVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', update);
+    return () => document.removeEventListener('visibilitychange', update);
+  }, [isWeb]);
+
+  return visible;
+}
+
+/**
+ * Composite guard: returns true ONLY when document is visible AND the layout
+ * is on a tablet (any orientation). Use to short-circuit expensive recomputes
+ * when an iPadOS PWA backgrounds and resizes the webview to card dimensions.
+ */
+export function useIsTabletVisible(): boolean {
+  const visible = useDocumentVisible();
+  const { isTabletAny } = useTabletLayout();
+  return visible && isTabletAny;
 }

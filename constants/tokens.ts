@@ -144,9 +144,12 @@ export const Colors = {
  * Responsive viewport tokens — single source of truth for breakpoint widths.
  *
  * Use cases:
- *   - TOUCH_TARGET_MIN (44px, Apple HIG 2026): minimum tappable area for any
- *     interactive element on touch devices. Use for `hitSlop` calculations
- *     and `minHeight`/`minWidth` on buttons, list rows, and icon controls.
+ *   - TOUCH_TARGET_MIN (48px): universal minimum tappable area covering ALL three
+ *     specs at once -- Apple HIG (44pt min hit area), Material 3 Expressive 2026
+ *     (48dp), WCAG 2.2 SC 2.5.8 Target Size (24px floor + spacing). Picking 48
+ *     satisfies every spec without per-platform branching. Use for `hitSlop`
+ *     calculations and `minHeight`/`minWidth` on buttons, list rows, and icon
+ *     controls.
  *   - TABLET_PORTRAIT_MIN_WIDTH (768): lower bound of the portrait-tablet band.
  *     Below this we treat as compact/phone (currently unsupported in desktop app).
  *   - TABLET_LANDSCAPE_MIN_WIDTH (1024): boundary between portrait and landscape
@@ -159,7 +162,7 @@ export const Colors = {
  * desktop=1024, wide=1920) are kept as-is for backward compat. Prefer the
  * tokens here for new code.
  */
-export const TOUCH_TARGET_MIN = 44 as const;
+export const TOUCH_TARGET_MIN = 48 as const;
 export const TABLET_PORTRAIT_MIN_WIDTH = 768 as const;
 export const TABLET_LANDSCAPE_MIN_WIDTH = 1024 as const;
 export const DESKTOP_MIN_WIDTH = 1280 as const;
