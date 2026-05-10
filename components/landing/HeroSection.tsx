@@ -36,7 +36,11 @@ function HeroSectionInner() {
   return (
     <section style={{
       position: 'relative',
-      minHeight: '100vh',
+      // 100svh = small-viewport-height -- excludes Safari 26 Liquid Glass tab-bar
+      // inflation (iPadOS 26 / iOS 26). Supported in all modern browsers
+      // (Safari >=15.4, Chrome >=108). Cast because RN CSS typings don't
+      // know about svh yet.
+      minHeight: '100svh' as unknown as number,
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',

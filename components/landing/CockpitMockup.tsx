@@ -1,26 +1,46 @@
 import React from 'react';
-import { View } from 'react-native';
+import { View, useWindowDimensions } from 'react-native';
 import { DesktopHome } from '@/components/desktop/DesktopHome';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const NATURAL_WIDTH = 1440;
 const NATURAL_HEIGHT = 980;
-const SCALE = 0.72;
-const SCALED_WIDTH = NATURAL_WIDTH * SCALE;
+const MAX_SCALE = 0.72;
+// Width at which we hit MAX_SCALE. Below this, scale linearly down so the
+// mockup never exceeds the viewport width on tablet (e.g. iPad portrait 1024).
+const SCALE_REFERENCE_WIDTH = 1500;
 const CLIP_HEIGHT = 620;
 
 function CockpitMockupInner() {
+  const { width } = useWindowDimensions();
+  // Dynamic scale: full 0.72 on desktop (>=1500 CSS px), linearly smaller on tablet.
+  // At 1024 px (iPad portrait) -> ~0.683 -> scaled width ~983 px (fits viewport).
+  const scale = Math.min(MAX_SCALE, width / SCALE_REFERENCE_WIDTH);
+  const scaledWidth = NATURAL_WIDTH * scale;
+  const clipHeight = Math.min(CLIP_HEIGHT, NATURAL_HEIGHT * scale);
+
   return (
-    <div data-testid="landing-cockpit-frame" style={{
-      width: SCALED_WIDTH,
+    // Outer guard rail — even if scaledWidth math is slightly off,
+    // overflow:hidden + maxWidth:100% guarantee the mockup cannot push the
+    // page horizontally and trigger pannable Safari behaviour on iPad.
+    <div style={{
+      width: '100%',
       maxWidth: '100%',
-      boxSizing: 'border-box',
-      margin: '0 auto',
-      borderRadius: 16,
       overflow: 'hidden',
-      background: 'transparent',
-      boxShadow: '0 40px 120px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.07)',
+      display: 'flex',
+      justifyContent: 'center',
+      boxSizing: 'border-box',
     }}>
+      <div data-testid="landing-cockpit-frame" style={{
+        width: scaledWidth,
+        maxWidth: '100%',
+        boxSizing: 'border-box',
+        margin: '0 auto',
+        borderRadius: 16,
+        overflow: 'hidden',
+        background: 'transparent',
+        boxShadow: '0 40px 120px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.07)',
+      }}>
       {/* macOS browser chrome bar */}
       <div style={{
         background: '#1C1C1E',
@@ -53,11 +73,13 @@ function CockpitMockupInner() {
         <div style={{ width: 60, flexShrink: 0 }} />
       </div>
 
-      {/* Clip container — shows only the top CLIP_HEIGHT px of the scaled dashboard */}
+      {/* Clip container — shows only the top CLIP_HEIGHT px of the scaled dashboard.
+          Explicit pixel height (derived from the dynamic scale) keeps layout from
+          collapsing when the surrounding flex column resolves children. */}
       <div data-testid="landing-cockpit-clip" style={{
         position: 'relative',
         width: '100%',
-        height: `clamp(420px, 52vw, ${CLIP_HEIGHT}px)`,
+        height: `clamp(420px, 52vw, ${clipHeight}px)`,
         overflow: 'hidden',
       }}>
         {/* Scaled DesktopHome — pointer-events frozen, non-interactive */}
@@ -67,7 +89,7 @@ function CockpitMockupInner() {
           left: 'clamp(-430px, calc((1440px - 100vw) * 0.38), 0px)',
           width: NATURAL_WIDTH,
           height: NATURAL_HEIGHT,
-          transform: `scale(${SCALE})`,
+          transform: `scale(${scale})`,
           transformOrigin: 'top left',
           pointerEvents: 'none' as const,
           userSelect: 'none' as const,
@@ -90,6 +112,7 @@ function CockpitMockupInner() {
           pointerEvents: 'none',
           zIndex: 10,
         }} />
+      </div>
       </div>
     </div>
   );

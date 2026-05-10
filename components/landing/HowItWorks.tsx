@@ -87,7 +87,9 @@ function HowItWorksInner() {
   return (
     <section id="features" style={{
       background: '#050508',
-      padding: '120px 80px',
+      // Fluid section padding (768->1366 viewports). Caps in rem so user
+      // browser-zoom remains accessible. At >=1280 desktop ~= 120px / 80px.
+      padding: 'clamp(4rem, 6vw + 1rem, 7.5rem) clamp(1rem, 4vw, 5rem)',
       fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif',
     }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
@@ -189,7 +191,11 @@ function HowItWorksInner() {
           {/* Step columns — no card background, original open layout */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(4, 1fr)',
+            // Auto-collapse 4->3->2->1 columns by container width.
+            // 240px floor + min(100%,...) idiom prevents overflow when the
+            // container is narrower than the floor (Evan Minto pattern).
+            // At >=1280 desktop: 1280/4 = 320 > 240 -> still 4 columns.
+            gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))',
             gap: 24,
             position: 'relative',
             zIndex: 1,

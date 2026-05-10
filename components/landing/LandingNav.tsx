@@ -30,7 +30,9 @@ function LandingNavInner() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '0 48px',
+        // Fluid horizontal padding so nav doesn't overflow on iPad portrait.
+        // Caps at 48px above 1200px viewport -> desktop unchanged.
+        padding: '0 clamp(16px, 4vw, 48px)',
         height: 64,
         backdropFilter: scrolled ? 'blur(24px)' : 'blur(0px)',
         WebkitBackdropFilter: scrolled ? 'blur(24px)' : 'blur(0px)',

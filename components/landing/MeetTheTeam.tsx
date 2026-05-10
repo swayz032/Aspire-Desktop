@@ -10,7 +10,8 @@ function MeetTheTeamInner() {
   return (
     <section id="ai-staff" style={{
       background: '#070710',
-      padding: '120px 80px',
+      // Fluid section padding -- see HowItWorks for rationale.
+      padding: 'clamp(4rem, 6vw + 1rem, 7.5rem) clamp(1rem, 4vw, 5rem)',
       fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif',
       borderTop: '1px solid rgba(255,255,255,0.04)',
     }}>
@@ -44,7 +45,9 @@ function MeetTheTeamInner() {
         {/* Team Grid */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
+          // Auto-collapse 3->2->1 columns by container width.
+          // 280px floor; at >=1280 desktop: 1280/3 = 426 > 280 -> still 3 columns.
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))',
           gap: 20,
         }}>
           {teamMembers.map((member, i) => (

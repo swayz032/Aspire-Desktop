@@ -123,7 +123,8 @@ function FeatureSectionInner({ feature, index }: FeatureSectionProps) {
 
   return (
     <section style={{
-      padding: '80px 80px',
+      // Fluid section padding -- caps near original 80px on >=1280 desktop.
+      padding: 'clamp(3rem, 5vw + 1rem, 5rem) clamp(1rem, 4vw, 5rem)',
       background: index % 2 === 0 ? '#050508' : '#070710',
       fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif',
     }}>
@@ -131,7 +132,9 @@ function FeatureSectionInner({ feature, index }: FeatureSectionProps) {
         maxWidth: 1200,
         margin: '0 auto',
         display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
+        // Auto-collapse 2 cols -> 1 col on tablet portrait. 420px floor keeps
+        // text+image balanced on desktop (1200/2 = 600 > 420 -> still 2 cols).
+        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))',
         gap: 80,
         alignItems: 'center',
       }}>

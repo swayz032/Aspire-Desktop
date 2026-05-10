@@ -790,6 +790,11 @@ function RootLayout() {
       style.textContent = `
         html, body, #root {
           overflow: hidden !important;
+          /* Belt-and-suspenders against iPad Safari pannable behaviour: even
+             if some descendant slips a horizontal overflow, overscroll-behavior
+             stops the page from rubber-banding/dragging as a unit. */
+          overflow-x: hidden !important;
+          overscroll-behavior: none !important;
           height: 100% !important;
           max-height: 100vh !important;
           margin: 0 !important;
