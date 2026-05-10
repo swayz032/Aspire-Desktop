@@ -33,7 +33,7 @@ interface TodayPlanItem {
 function TodayPlanTabsInner({ planItems }: { planItems: TodayPlanItem[] }) {
   const router = useRouter();
   const { session } = useSupabase();
-  const displayedPlan = planItems.slice(0, 6);
+  const displayedPlan = planItems.slice(0, 3);
   const [isInboxSetup, setIsInboxSetup] = useState<boolean | null>(null);
 
   useEffect(() => {

@@ -1237,6 +1237,13 @@ function CallsScreen() {
                     ))}
                   </View>
 
+                  {/* Scrollable list region — fixed height, invisible scrollbar */}
+                  <ScrollView
+                    style={desktopStyles.recentList}
+                    contentContainerStyle={desktopStyles.recentListContent}
+                    showsVerticalScrollIndicator={false}
+                    nestedScrollEnabled
+                  >
                   {/* Loading state */}
                   {callsLoading && allCalls.length === 0 && (
                     <View style={desktopStyles.loadingContainer}>
@@ -1311,6 +1318,7 @@ function CallsScreen() {
                       <Ionicons name="chevron-forward" size={16} color={Colors.accent.cyan} />
                     </TouchableOpacity>
                   )}
+                  </ScrollView>
                 </View>
               </View>
             </View>
@@ -2097,7 +2105,18 @@ const desktopStyles = StyleSheet.create({
   },
   rightColumn: {
     flex: 1,
+    maxHeight: 720,
+    overflow: 'hidden',
   },
+  recentList: {
+    flex: 1,
+    maxHeight: 620,
+    ...(Platform.OS === 'web' ? ({ scrollbarWidth: 'none' } as any) : {}),
+  } as any,
+  recentListContent: {
+    paddingBottom: 12,
+    gap: 8,
+  } as any,
   sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
