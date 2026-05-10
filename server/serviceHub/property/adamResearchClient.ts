@@ -55,6 +55,17 @@ export type AdamPropertyResult = {
     stories?: number;
     bedrooms?: number;
     bathrooms?: number;
+    constructionFrame?: string;
+    quality?: string;
+    ownerName?: string;
+    ownerOccupied?: boolean;
+    estimatedValue?: number;
+    estimatedValueLow?: number;
+    estimatedValueHigh?: number;
+    lastSaleDate?: string;
+    lastSaleAmount?: number;
+    annualTax?: number;
+    taxYear?: number;
     address?: {
       formatted: string;
       street?: string;
@@ -277,35 +288,76 @@ function classifyStatus(
 function normalizeRecord(
   record: AdamRecordRaw,
 ): { facts: AdamPropertyResult['facts']; photos: AdamPropertyResult['photos'] } {
-  const sqft = toFiniteNumber(record.livingArea);
-  const yearBuilt = toFiniteNumber(record.yearBuilt);
-  const zoning = toTrimmedString(record.zoning);
-  const propertyType = toTrimmedString(record.homeType);
+  // Adam (ATTOM-backed) returns snake_case fields. Older Zillow path used
+  // camelCase. Read both so this works against either upstream shape.
+  const r = record as Record<string, unknown>;
+  const sqft =
+    toFiniteNumber(r.living_sqft) ??
+    toFiniteNumber(r.livingArea) ??
+    toFiniteNumber(r.sqft);
+  const yearBuilt = toFiniteNumber(r.year_built) ?? toFiniteNumber(r.yearBuilt);
+  const zoning = toTrimmedString(r.zoning);
+  const propertyType =
+    toTrimmedString(r.property_type) ?? toTrimmedString(r.homeType);
   const lotSqft = normalizeLotSqft(record);
-  const stories = toFiniteNumber(record.stories);
-  const bedrooms = toFiniteNumber(record.bedrooms);
-  const bathrooms = toFiniteNumber(record.bathrooms);
-  const address = normalizeAddress(record.address);
+  const stories = toFiniteNumber(r.stories);
+  const bedrooms = toFiniteNumber(r.beds) ?? toFiniteNumber(r.bedrooms);
+  const bathrooms = toFiniteNumber(r.baths) ?? toFiniteNumber(r.bathrooms);
+  const address =
+    normalizeAddress(r.address) ??
+    (typeof r.normalized_address === 'string'
+      ? { formatted: r.normalized_address as string }
+      : undefined);
 
   // Coords: ATTOM sometimes returns lat/lng top-level
   let coords: { lat: number; lng: number } | undefined;
-  const lat = toFiniteNumber(record.lat) ?? toFiniteNumber(record.latitude);
-  const lng = toFiniteNumber(record.lng) ?? toFiniteNumber(record.longitude);
+  const lat = toFiniteNumber(r.lat) ?? toFiniteNumber(r.latitude);
+  const lng = toFiniteNumber(r.lng) ?? toFiniteNumber(r.longitude);
   if (lat !== undefined && lng !== undefined) {
     coords = { lat, lng };
   }
 
   const photos = normalizePhotos(record);
 
+  // Extra ATTOM fields the contractor needs — owner, AVM, construction
+  // quality, last sale, taxes. Snake_case is canonical from the orchestrator.
+  const constructionFrame = toTrimmedString(r.construction_frame);
+  const quality = toTrimmedString(r.quality);
+  const ownerName = toTrimmedString(r.owner_name);
+  const ownerOccupied =
+    typeof r.owner_occupied === 'string'
+      ? (r.owner_occupied as string).toUpperCase().includes('OWNER')
+      : undefined;
+  const estimatedValue = toFiniteNumber(r.estimated_value);
+  const estimatedValueLow = toFiniteNumber(r.estimated_value_low);
+  const estimatedValueHigh = toFiniteNumber(r.estimated_value_high);
+  const lastSaleDate = toTrimmedString(r.last_sale_date);
+  const lastSaleAmount = toFiniteNumber(r.last_sale_amount);
+  const annualTax = toFiniteNumber(r.annual_tax_amount);
+  const taxYear = toFiniteNumber(r.tax_year);
+  const zoningResolved =
+    zoning ?? toTrimmedString(r.zoning_type) ?? toTrimmedString(r.zoning_code);
+
   const facts: AdamPropertyResult['facts'] = {
     ...(sqft !== undefined ? { sqft } : {}),
     ...(yearBuilt !== undefined ? { yearBuilt } : {}),
-    ...(zoning !== undefined ? { zoning } : {}),
+    ...(zoningResolved !== undefined ? { zoning: zoningResolved } : {}),
     ...(propertyType !== undefined ? { propertyType } : {}),
     ...(lotSqft !== undefined ? { lotSqft } : {}),
     ...(stories !== undefined ? { stories } : {}),
     ...(bedrooms !== undefined ? { bedrooms } : {}),
     ...(bathrooms !== undefined ? { bathrooms } : {}),
+    ...(constructionFrame !== undefined ? { constructionFrame } : {}),
+    ...(quality !== undefined ? { quality } : {}),
+    ...(ownerName !== undefined ? { ownerName } : {}),
+    ...(ownerOccupied !== undefined ? { ownerOccupied } : {}),
+    ...(estimatedValue !== undefined ? { estimatedValue } : {}),
+    ...(estimatedValueLow !== undefined ? { estimatedValueLow } : {}),
+    ...(estimatedValueHigh !== undefined ? { estimatedValueHigh } : {}),
+    ...(lastSaleDate !== undefined ? { lastSaleDate } : {}),
+    ...(lastSaleAmount !== undefined ? { lastSaleAmount } : {}),
+    ...(annualTax !== undefined ? { annualTax } : {}),
+    ...(taxYear !== undefined ? { taxYear } : {}),
     ...(address !== undefined ? { address } : {}),
     ...(coords !== undefined ? { coords } : {}),
   };
@@ -410,7 +462,13 @@ export async function fetchAdamPropertyResearch(
       return apiFailure('malformed response: not an object', fetchedAt);
     }
 
-    const response = payload as AdamResearchResponse;
+    // Orchestrator wraps the agent payload as `{ success, agent, result, data: {...} }`.
+    // Unwrap to find `records` / `receipts`. Older versions returned them at the top
+    // level — handle both shapes.
+    const envelope = payload as { data?: unknown; records?: unknown; receipts?: unknown };
+    const inner =
+      envelope.data && typeof envelope.data === 'object' ? (envelope.data as Record<string, unknown>) : null;
+    const response = (inner ?? envelope) as AdamResearchResponse;
 
     if (!Array.isArray(response.records) || response.records.length === 0) {
       logger.warn('[AdamResearch] no records in response', {

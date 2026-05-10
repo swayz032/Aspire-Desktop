@@ -8,10 +8,27 @@
  * (Visuals tab page), never fetched here.
  */
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { PropertySummaryCard } from './PropertySummaryCard';
 import type { PropertyData } from '@/services/serviceHub/propertyDataApi';
+
+// Inject a one-shot stylesheet on web that hides the scrollbar inside
+// the rail's scroll container (showsVerticalScrollIndicator={false} is
+// React-Native-only and doesn't bind to the underlying browser overflow
+// scrollbar on web).
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  const STYLE_ID = 'tim-rail-context-scrollbar-hide';
+  if (!document.getElementById(STYLE_ID)) {
+    const styleEl = document.createElement('style');
+    styleEl.id = STYLE_ID;
+    styleEl.textContent = `
+      [data-tim-rail-context="1"] { scrollbar-width: none; -ms-overflow-style: none; }
+      [data-tim-rail-context="1"]::-webkit-scrollbar { width: 0; height: 0; display: none; }
+    `;
+    document.head.appendChild(styleEl);
+  }
+}
 
 interface Props {
   data?: PropertyData;
@@ -26,6 +43,12 @@ export function TimRailContextTab({ data, loading, error, onRetry }: Props) {
       style={styles.container}
       contentContainerStyle={styles.content}
       testID="tim-rail-context-tab"
+      showsVerticalScrollIndicator={false}
+      showsHorizontalScrollIndicator={false}
+      // dataSet → the underlying div gets data-tim-rail-context="1" on web,
+      // matched by the injected stylesheet above to hide the scrollbar.
+      // RN-Web maps `dataSet` onto data-* attributes.
+      dataSet={Platform.OS === 'web' ? { timRailContext: '1' } : undefined as any}
     >
       {error ? (
         <View style={styles.errorBanner} accessibilityRole="alert">

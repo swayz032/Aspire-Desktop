@@ -231,10 +231,36 @@ app.use(async (req, res, next) => {
       });
     }
 
-    // JWT present: validate and extract suite_id
+    // JWT present: validate and extract suite_id.
+    // NOTE: supabase-js 2.95.x has a regression where supabaseAdmin.auth.getUser(token)
+    // returns "Auth session missing!" even when given a valid JWT (the SDK looks for an
+    // attached session instead of using the passed token). We bypass with a direct REST
+    // call to GET /auth/v1/user — that endpoint validates the Bearer JWT server-side.
     const token = bearerToken;
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
-    if (error || !user) {
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+    const supabaseApiKey = process.env.SUPABASE_ANON_KEY
+      || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
+      || process.env.SUPABASE_SERVICE_ROLE_KEY
+      || '';
+    let user: { id: string; email?: string; user_metadata?: Record<string, unknown> } | null = null;
+    let validationError: string | null = null;
+    try {
+      const userResp = await fetch(`${supabaseUrl}/auth/v1/user`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          apikey: supabaseApiKey,
+        },
+      });
+      if (userResp.ok) {
+        user = (await userResp.json()) as typeof user;
+      } else {
+        validationError = `${userResp.status} ${userResp.statusText}`;
+      }
+    } catch (fetchErr) {
+      validationError = fetchErr instanceof Error ? fetchErr.message : 'fetch_failed';
+    }
+    if (!user) {
       // Decode JWT payload (no verification) for diagnostic purposes only — the token is already rejected.
       let jwtClaims: Record<string, unknown> | null = null;
       try {
@@ -245,7 +271,7 @@ app.use(async (req, res, next) => {
       } catch { /* swallow */ }
       logger.warn('[auth-debug] INVALID_TOKEN', {
         path: req.path,
-        supabase_error: error?.message ?? 'no_user_returned',
+        validation_error: validationError ?? 'no_user_returned',
         token_len: token.length,
         jwt_iss: jwtClaims?.iss ?? null,
         jwt_aud: jwtClaims?.aud ?? null,

@@ -795,12 +795,20 @@ function RootLayout() {
              stops the page from rubber-banding/dragging as a unit. */
           overflow-x: hidden !important;
           overscroll-behavior: none !important;
-          height: 100% !important;
-          max-height: 100vh !important;
+          /* dvh tracks the CURRENT visible viewport height — vh on iOS is
+             the URL-bar-hidden value, which inflates with width=1280
+             viewport scaling and causes content to overflow / get cut off
+             on iPad. dvh is supported in Safari 16.4+ (Mar 2023). */
+          height: 100dvh !important;
+          max-height: 100dvh !important;
           margin: 0 !important;
           padding: 0 !important;
           width: 100% !important;
           max-width: 100vw !important;
+          /* Match the app background so any safe-area / overscroll area
+             paints the same color as the app instead of Safari's default
+             light gray. */
+          background-color: #0a0a0a !important;
         }
         #root {
           display: flex !important;

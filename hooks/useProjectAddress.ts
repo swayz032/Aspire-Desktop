@@ -53,10 +53,15 @@ function writeToUrl(addr: string): void {
   }
 }
 
-// Hydrate from URL on first import (web).
+// Hard refresh = clean slate. We DO NOT hydrate the active address from the
+// URL on initial load (founder requirement, 2026-05-10): the search bar must
+// be empty after a page reload. We still strip the `?address=` query param
+// so the URL doesn't show a stale value the user can't see in the input.
+// (Within a single session, navigating between Estimate Studio tabs preserves
+// the address via the in-memory store + URL writes — only a hard refresh
+// resets it.)
 if (Platform.OS === 'web') {
-  const fromUrl = readFromUrl();
-  if (fromUrl) _address = fromUrl;
+  writeToUrl('');
 }
 
 export function getProjectAddress(): string {

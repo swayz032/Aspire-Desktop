@@ -59,10 +59,15 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     borderLeftWidth: 1,
     borderLeftColor: 'rgba(255,255,255,0.06)',
+    // Constrain to parent height so the body's ScrollView can scroll
+    // INSIDE the rail instead of stretching the whole page.
+    overflow: 'hidden',
+    minHeight: 0,
   },
   body: {
     flex: 1,
-    minHeight: 360,
+    minHeight: 0,
+    overflow: 'hidden',
   },
   header: {
     paddingHorizontal: 18,

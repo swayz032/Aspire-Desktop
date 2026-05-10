@@ -42,12 +42,22 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     backgroundColor: Colors.background.primary,
-    ...(Platform.OS === 'web' ? { 
-      height: '100vh', 
-      maxHeight: '100vh',
+    ...(Platform.OS === 'web' ? {
+      // dvh = dynamic viewport height — always matches the current visible
+      // viewport. Replaces vh which was iOS Safari's "URL-bar-hidden"
+      // height, causing the page to jump when the URL bar showed/hid on
+      // scroll AND inflating to ~1700px on tablet width=1280 viewport.
+      // Safari 16.4+ (Mar 2023) and all modern Chrome/FF support dvh —
+      // covers every iPad/Android tablet we ship to.
+      height: '100dvh',
+      maxHeight: '100dvh',
       overflow: 'hidden',
       width: '100vw',
       maxWidth: '100vw',
+      // Stop iOS Safari rubber-band bounce / pull-to-refresh that moves
+      // the page around when the user just wants to tap or scroll a
+      // child ScrollView.
+      overscrollBehavior: 'none',
     } : {}),
   } as any,
   rightSection: {

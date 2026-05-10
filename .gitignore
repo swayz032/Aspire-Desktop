@@ -50,3 +50,7 @@ app-example
 # Path: public/vendor/<pkg>/<version>/index.js + sourcemap
 # See scripts/build-anam-sdk.mjs and Aspire-desktop/docs/runbooks/ava-video.md
 public/vendor/
+.dev-server.log
+.dev-server.err
+.metro.log
+.metro.err

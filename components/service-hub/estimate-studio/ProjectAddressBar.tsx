@@ -24,6 +24,7 @@ import {
   Pressable,
   Platform,
 } from 'react-native';
+import { createPortal } from 'react-dom';
 import { Ionicons } from '@expo/vector-icons';
 import { useProjectAddress, setProjectAddress } from '@/hooks/useProjectAddress';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -257,56 +258,67 @@ export function ProjectAddressBar({
           )}
         </View>
 
-        {dropdownVisible && (
-          <View
-            style={[
-              styles.dropdown,
-              Platform.OS === 'web' && dropdownRect
-                ? {
-                    position: 'fixed' as any,
-                    left: dropdownRect.left,
-                    top: dropdownRect.top,
-                    width: dropdownRect.width,
-                  }
-                : null,
-            ]}
-            testID="estimate-studio-address-suggestions">
-            {suggestions.length === 0 && isFetchingSuggestions && (
-              <View style={styles.dropdownEmpty}>
-                <ActivityIndicator size="small" color="rgba(255,255,255,0.45)" />
-                <Text style={styles.dropdownEmptyText}>Searching…</Text>
-              </View>
-            )}
-            {suggestions.map((s, i) => (
-              <Pressable
-                key={s.placeId}
-                // onPressIn fires on mousedown — beats the input's onBlur race on web.
-                onPressIn={() => pickSuggestion(s)}
-                onPress={() => pickSuggestion(s)}
-                onHoverIn={() => setHighlightedIndex(i)}
-                style={[
-                  styles.suggestionRow,
-                  highlightedIndex === i && styles.suggestionRowActive,
-                ]}
-                testID={`address-suggestion-${i}`}
-              >
-                <Ionicons
-                  name="location"
-                  size={14}
-                  color={highlightedIndex === i ? '#fbbf24' : 'rgba(255,255,255,0.45)'}
-                />
-                <View style={styles.suggestionTextWrap}>
-                  <Text style={styles.suggestionMain} numberOfLines={1}>
-                    {s.mainText}
-                  </Text>
-                  <Text style={styles.suggestionSecondary} numberOfLines={1}>
-                    {s.secondaryText}
-                  </Text>
+        {dropdownVisible && (() => {
+          const dropdownNode = (
+            <View
+              style={[
+                styles.dropdown,
+                Platform.OS === 'web' && dropdownRect
+                  ? {
+                      position: 'fixed' as any,
+                      left: dropdownRect.left,
+                      top: dropdownRect.top,
+                      width: dropdownRect.width,
+                    }
+                  : null,
+              ]}
+              testID="estimate-studio-address-suggestions">
+              {suggestions.length === 0 && isFetchingSuggestions && (
+                <View style={styles.dropdownEmpty}>
+                  <ActivityIndicator size="small" color="rgba(255,255,255,0.45)" />
+                  <Text style={styles.dropdownEmptyText}>Searching…</Text>
                 </View>
-              </Pressable>
-            ))}
-          </View>
-        )}
+              )}
+              {suggestions.map((s, i) => (
+                <Pressable
+                  key={s.placeId}
+                  // onPressIn fires on mousedown — beats the input's onBlur race on web.
+                  onPressIn={() => pickSuggestion(s)}
+                  onPress={() => pickSuggestion(s)}
+                  onHoverIn={() => setHighlightedIndex(i)}
+                  style={[
+                    styles.suggestionRow,
+                    highlightedIndex === i && styles.suggestionRowActive,
+                  ]}
+                  testID={`address-suggestion-${i}`}
+                >
+                  <Ionicons
+                    name="location"
+                    size={14}
+                    color={highlightedIndex === i ? '#fbbf24' : 'rgba(255,255,255,0.45)'}
+                  />
+                  <View style={styles.suggestionTextWrap}>
+                    <Text style={styles.suggestionMain} numberOfLines={1}>
+                      {s.mainText}
+                    </Text>
+                    <Text style={styles.suggestionSecondary} numberOfLines={1}>
+                      {s.secondaryText}
+                    </Text>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          );
+          // Portal to <body> on web so the dropdown escapes every parent
+          // stacking context (TabBar, canvas overflow:hidden, etc). Without
+          // this, the EstimateStudio TabBar pill renders ABOVE the dropdown
+          // and intercepts clicks on the suggestion rows that visually overlap
+          // it. On native, fall through to inline render.
+          if (Platform.OS === 'web' && typeof document !== 'undefined') {
+            return createPortal(dropdownNode, document.body);
+          }
+          return dropdownNode;
+        })()}
       </View>
 
       <TouchableOpacity
