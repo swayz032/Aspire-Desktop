@@ -140,6 +140,30 @@ export const Colors = {
   },
 } as const;
 
+/**
+ * Responsive viewport tokens — single source of truth for breakpoint widths.
+ *
+ * Use cases:
+ *   - TOUCH_TARGET_MIN (44px, Apple HIG 2026): minimum tappable area for any
+ *     interactive element on touch devices. Use for `hitSlop` calculations
+ *     and `minHeight`/`minWidth` on buttons, list rows, and icon controls.
+ *   - TABLET_PORTRAIT_MIN_WIDTH (768): lower bound of the portrait-tablet band.
+ *     Below this we treat as compact/phone (currently unsupported in desktop app).
+ *   - TABLET_LANDSCAPE_MIN_WIDTH (1024): boundary between portrait and landscape
+ *     tablet. Used by `useTabletLayout()` to disambiguate iPad portrait (1024
+ *     tall, ~768 wide) from iPad landscape (1024+ wide).
+ *   - DESKTOP_MIN_WIDTH (1280): true-desktop floor. Below this, prefer
+ *     tablet-optimized layouts (larger hit targets, simpler nav).
+ *
+ * NOTE: The legacy bands in `lib/useDesktop.ts` `BREAKPOINTS` (laptop=768,
+ * desktop=1024, wide=1920) are kept as-is for backward compat. Prefer the
+ * tokens here for new code.
+ */
+export const TOUCH_TARGET_MIN = 44 as const;
+export const TABLET_PORTRAIT_MIN_WIDTH = 768 as const;
+export const TABLET_LANDSCAPE_MIN_WIDTH = 1024 as const;
+export const DESKTOP_MIN_WIDTH = 1280 as const;
+
 export const Spacing = {
   xs: 4,
   sm: 8,
