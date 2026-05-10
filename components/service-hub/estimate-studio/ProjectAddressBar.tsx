@@ -63,7 +63,7 @@ export function ProjectAddressBar({
   const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
 
   const inputRef = useRef<TextInput>(null);
-  const blurTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   // Sync draft when the store changes from elsewhere (URL deep-link).
