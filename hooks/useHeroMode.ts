@@ -27,11 +27,12 @@ function isBrowser(): boolean {
   );
 }
 
-export type HeroMode = 'streetview' | 'aerial' | 'interior' | 'exterior' | 'roof';
+export type HeroMode = 'streetview' | 'aerial' | 'earth' | 'interior' | 'exterior' | 'roof';
 
 const HERO_MODES: HeroMode[] = [
   'streetview',
   'aerial',
+  'earth',
   'interior',
   'exterior',
   'roof',
