@@ -949,41 +949,62 @@ const TERMS_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
-// Tablet-correct viewport meta -- enforced server-side on every served HTML.
-// Survives any future build that regenerates dist/index.html with the legacy
-// width=1280 string. Symptoms of the legacy string on tablet: page laid out
-// at 1280 CSS px, user can pinch-zoom and pan the entire app, lag from the
-// browser scaling everything down. THIS rewrite is the definitive fix --
-// runtime JS in app/_layout.tsx cannot beat the initial layout pass.
+// Per-device viewport meta -- enforced server-side on every served HTML.
+// Tablets (iPad / Android tablet) get width=device-width so the responsive
+// layout can render at the actual screen width. Desktops + laptops keep the
+// legacy width=1280 zoom-up trick the original design relied on, so the
+// desktop "feel" is preserved byte-for-byte. Without the UA split, switching
+// to device-width universally made desktop layouts spread to 1920+ which
+// felt visibly "bigger" than before -- not the goal of the tablet sweep.
 const TABLET_VIEWPORT = 'width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content';
+const DESKTOP_VIEWPORT = 'width=1280, initial-scale=1, minimum-scale=0.5, shrink-to-fit=no';
 const VIEWPORT_META_REGEX = /<meta\s+name="viewport"\s+content="[^"]*"\s*\/?>/i;
 
-let _cachedIndexHtml: { mtimeMs: number; html: string } | null = null;
-function getRewrittenIndexHtml(): string {
-  const filePath = path.join(process.cwd(), 'dist', 'index.html');
-  const stat = fs.statSync(filePath);
-  if (_cachedIndexHtml && _cachedIndexHtml.mtimeMs === stat.mtimeMs) {
-    return _cachedIndexHtml.html;
-  }
-  const raw = fs.readFileSync(filePath, 'utf-8');
-  const fixed = raw.replace(
-    VIEWPORT_META_REGEX,
-    `<meta name="viewport" content="${TABLET_VIEWPORT}" />`,
-  );
-  _cachedIndexHtml = { mtimeMs: stat.mtimeMs, html: fixed };
-  return fixed;
+// Tablet UA detection. Excludes phones (iPhone-only "Mobile" UA, small Android).
+// iPad: UA includes "iPad" OR (Macintosh + Touch capability via "Mobile/15E148")
+//   -- Safari iPadOS reports as Mac since iPadOS 13, distinguishable by Mobile token.
+// Android tablet: UA includes "Android" but NOT "Mobile" (Android phones include
+//   "Mobile" in UA; tablets omit it). This is Google's documented detection rule.
+function isTabletUA(userAgent: string): boolean {
+  if (!userAgent) return false;
+  if (/iPad/i.test(userAgent)) return true;
+  // iPadOS 13+ desktop-class UA detection
+  if (/Macintosh/i.test(userAgent) && /Mobile\/[0-9A-Z]+/i.test(userAgent)) return true;
+  // Android tablet (no "Mobile" token)
+  if (/Android/i.test(userAgent) && !/Mobile/i.test(userAgent)) return true;
+  return false;
 }
 
-function sendIndexHtml(res: import('express').Response): void {
+let _cachedIndexHtmlRaw: { mtimeMs: number; raw: string } | null = null;
+function getIndexHtmlForViewport(viewport: string): string {
+  const filePath = path.join(process.cwd(), 'dist', 'index.html');
+  const stat = fs.statSync(filePath);
+  if (!_cachedIndexHtmlRaw || _cachedIndexHtmlRaw.mtimeMs !== stat.mtimeMs) {
+    _cachedIndexHtmlRaw = {
+      mtimeMs: stat.mtimeMs,
+      raw: fs.readFileSync(filePath, 'utf-8'),
+    };
+  }
+  return _cachedIndexHtmlRaw.raw.replace(
+    VIEWPORT_META_REGEX,
+    `<meta name="viewport" content="${viewport}" />`,
+  );
+}
+
+function sendIndexHtml(req: import('express').Request, res: import('express').Response): void {
+  const ua = (req.headers['user-agent'] as string) || '';
+  const viewport = isTabletUA(ua) ? TABLET_VIEWPORT : DESKTOP_VIEWPORT;
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(getRewrittenIndexHtml());
+  // Vary on User-Agent so any caching layer keeps tablet vs desktop responses separate.
+  res.setHeader('Vary', 'User-Agent');
+  res.send(getIndexHtmlForViewport(viewport));
 }
 
 app.get('/', (req, res) => {
-  sendIndexHtml(res);
+  sendIndexHtml(req, res);
 });
 
 app.get('/privacy-policy', (req, res) => {
@@ -1120,10 +1141,10 @@ app.use(express.static(distPath, {
   },
 }));
 
-// SPA fallback — always serve fresh index.html with tablet-correct viewport.
+// SPA fallback — always serve fresh index.html with per-device viewport.
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api') && req.method === 'GET') {
-    sendIndexHtml(res);
+    sendIndexHtml(req, res);
   } else {
     next();
   }
