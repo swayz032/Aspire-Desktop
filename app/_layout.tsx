@@ -118,21 +118,12 @@ import { getBiometricPreference, authenticateWithBiometrics } from '@/lib/biomet
 import { useSupabaseDevTools } from '@/lib/devtools/supabasePlugin';
 import { useStoreDevTools } from '@/lib/devtools/storePlugin';
 import { prefetchCriticalAssets } from '@/lib/assetPrefetch';
-import { ensureLiveVideoCssInstalled } from '@/lib/liveVideoCss';
 
 // Initialize Sentry before any component renders
 configureSentry();
 
 // Start prefetching critical assets immediately (before any component mounts)
 prefetchCriticalAssets();
-
-// Inject the global CSS that hides UA-rendered media controls (play overlay,
-// scrubber, fullscreen button, etc.) on every <video class="aspire-live-video">.
-// Required for live MediaStream tiles (Anam Ava video chat, local camera preview)
-// and looping avatars (Ava orb / Finn orb) -- on iPad Safari and Android Chrome
-// these otherwise render a giant native play button overlay that breaks the
-// "this is a live video, not playback" mental model.
-ensureLiveVideoCssInstalled();
 
 /**
  * Global Error Boundary — prevents white screen on uncaught errors.
@@ -322,14 +313,45 @@ if (DEV_BYPASS_AUTH && typeof console !== 'undefined') {
 }
 if (DEV_BYPASS_AUTH && typeof window !== 'undefined' && typeof document !== 'undefined') {
   // Inject a top-screen warning band so the human looking at the app sees it.
+  // Dismissible per-session — security signal still fires on every page load
+  // (banner re-mounts), but a developer reviewing UI can close it to see the
+  // page underneath. Console warning above also persists as a permanent signal.
+  //
+  // Idempotency: this module can re-execute on Metro hot reload, which previously
+  // stacked duplicate banners. Remove any existing one before re-injecting.
+  const existing = document.getElementById('aspire-dev-bypass-banner');
+  if (existing) existing.remove();
   const banner = document.createElement('div');
   banner.id = 'aspire-dev-bypass-banner';
   banner.style.cssText =
     'position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;' +
     'padding:6px 12px;font-family:system-ui,-apple-system,sans-serif;font-size:12px;' +
-    'font-weight:700;text-align:center;letter-spacing:0.4px;box-shadow:0 2px 8px rgba(0,0,0,0.3)';
-  banner.textContent =
-    '⚠ AUTH BYPASS ACTIVE — local dev only. NEVER deploy this build.';
+    'font-weight:700;letter-spacing:0.4px;box-shadow:0 2px 8px rgba(0,0,0,0.3);' +
+    'display:flex;align-items:center;justify-content:center;gap:12px';
+
+  const message = document.createElement('span');
+  message.textContent = '⚠ AUTH BYPASS ACTIVE — local dev only. NEVER deploy this build.';
+  banner.appendChild(message);
+
+  const closeBtn = document.createElement('button');
+  closeBtn.setAttribute('aria-label', 'Dismiss auth bypass banner');
+  closeBtn.textContent = '×';
+  closeBtn.style.cssText =
+    'background:rgba(255,255,255,0.18);color:#fff;border:none;border-radius:4px;' +
+    'width:22px;height:22px;font-size:16px;font-weight:700;line-height:1;cursor:pointer;' +
+    'display:flex;align-items:center;justify-content:center;padding:0;flex-shrink:0;' +
+    'transition:background 0.15s ease';
+  closeBtn.addEventListener('mouseenter', () => {
+    closeBtn.style.background = 'rgba(255,255,255,0.32)';
+  });
+  closeBtn.addEventListener('mouseleave', () => {
+    closeBtn.style.background = 'rgba(255,255,255,0.18)';
+  });
+  closeBtn.addEventListener('click', () => {
+    banner.remove();
+  });
+  banner.appendChild(closeBtn);
+
   if (document.body) {
     document.body.appendChild(banner);
   } else {
@@ -662,6 +684,13 @@ function AppNavigator() {
           }}
         />
         <Stack.Screen
+          name="service-hub"
+          options={{
+            headerShown: false,
+            presentation: isDesktop ? 'card' : 'modal'
+          }}
+        />
+        <Stack.Screen
           name="bookings"
           options={{
             headerShown: false,
@@ -766,12 +795,20 @@ function RootLayout() {
              stops the page from rubber-banding/dragging as a unit. */
           overflow-x: hidden !important;
           overscroll-behavior: none !important;
-          height: 100% !important;
-          max-height: var(--dvh-100, 100vh) !important;
+          /* dvh tracks the CURRENT visible viewport height — vh on iOS is
+             the URL-bar-hidden value, which inflates with width=1280
+             viewport scaling and causes content to overflow / get cut off
+             on iPad. dvh is supported in Safari 16.4+ (Mar 2023). */
+          height: 100dvh !important;
+          max-height: 100dvh !important;
           margin: 0 !important;
           padding: 0 !important;
           width: 100% !important;
           max-width: 100vw !important;
+          /* Match the app background so any safe-area / overscroll area
+             paints the same color as the app instead of Safari's default
+             light gray. */
+          background-color: #0a0a0a !important;
         }
         #root {
           display: flex !important;
@@ -781,22 +818,6 @@ function RootLayout() {
       `;
       document.head.appendChild(style);
     }
-
-    // Eager-install the --dvh-100 CSS var the viewport-lock above depends on.
-    // useDynamicViewportHeight() only installs lazily on first hook call, but
-    // the viewport-lock CSS references --dvh-100 immediately so we set it here
-    // and listen for resize/orientationchange so Safari iOS URL bar collapse
-    // updates the cap in real time.
-    const setDvh = () => {
-      document.documentElement.style.setProperty('--dvh-100', `${window.innerHeight}px`);
-    };
-    setDvh();
-    window.addEventListener('resize', setDvh);
-    window.addEventListener('orientationchange', setDvh);
-    return () => {
-      window.removeEventListener('resize', setDvh);
-      window.removeEventListener('orientationchange', setDvh);
-    };
   }, []);
 
   // Inject Ionicons font via CSS on web — the Metro-bundled .ttf path inside
