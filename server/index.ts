@@ -714,6 +714,16 @@ try {
   logger.warn('Places routes not available, skipping');
 }
 
+try {
+  const propertyRoutes = require('./serviceHub/property/propertyRoutes').default;
+  app.use(propertyRoutes);
+  logger.info('Service Hub property routes registered');
+} catch (e) {
+  logger.warn('Service Hub property routes not available, skipping', {
+    reason: e instanceof Error ? e.message.slice(0, 160) : 'unknown',
+  });
+}
+
 // Public client config — returns non-secret keys that the browser needs at runtime.
 // Google Places API key is browser-facing by design (restricted by HTTP referrer in GCP).
 // This avoids the EXPO_PUBLIC_* build-time limitation: the key comes from SM at server startup.

@@ -1,0 +1,401 @@
+/**
+ * PhotoGalleryHero — swipeable image carousel for interior / exterior / roof.
+ *
+ * Layout:
+ *   ┌────────────────────────────────────────────────────────────┐
+ *   │ Title · 12 photos · close to return       [✕]              │
+ *   ├────────────────────────────────────────────────────────────┤
+ *   │   ◀                                                  ▶     │
+ *   │              [main image — 12:5 aspect]                    │
+ *   │                                          3 / 18            │
+ *   ├────────────────────────────────────────────────────────────┤
+ *   │ caption (if present)                                       │
+ *   ├────────────────────────────────────────────────────────────┤
+ *   │ [thumb][thumb][thumb][thumb][thumb] …                       │
+ *   └────────────────────────────────────────────────────────────┘
+ *
+ * Empty state: friendly upload prompt, never a blank black box.
+ * Aspire Law #7: pure render. State is local (current index).
+ */
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import {
+  View,
+  Text,
+  Pressable,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Platform,
+  type ViewStyle,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { SheenBlock } from './InsightCardBase';
+
+interface Photo {
+  id: string;
+  url: string;
+  caption?: string;
+}
+
+interface Props {
+  photos?: Photo[];
+  title: string;
+  loading?: boolean;
+  onClose?: () => void;
+}
+
+export function PhotoGalleryHero({
+  photos = [],
+  title,
+  loading = false,
+  onClose,
+}: Props) {
+  const [index, setIndex] = useState(0);
+
+  const safePhotos = useMemo(() => photos ?? [], [photos]);
+  const total = safePhotos.length;
+
+  // Reset index if the photo list changes underneath us.
+  useEffect(() => {
+    setIndex((curr) => (curr >= total ? 0 : curr));
+  }, [total]);
+
+  const goPrev = useCallback(() => {
+    setIndex((curr) => (curr - 1 + total) % total);
+  }, [total]);
+
+  const goNext = useCallback(() => {
+    setIndex((curr) => (curr + 1) % total);
+  }, [total]);
+
+  // Web keyboard nav — arrow keys + escape close.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const handler = (e: KeyboardEvent) => {
+      if (total === 0) return;
+      if (e.key === 'ArrowLeft') goPrev();
+      else if (e.key === 'ArrowRight') goNext();
+      else if (e.key === 'Escape' && onClose) onClose();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [goPrev, goNext, onClose, total]);
+
+  if (loading) {
+    return (
+      <View style={styles.shell} testID="photo-gallery-hero-loading">
+        <SheenBlock width="100%" height={400} radius={12} />
+      </View>
+    );
+  }
+
+  if (total === 0) {
+    return (
+      <View style={[styles.shell, styles.empty]} testID="photo-gallery-hero-empty">
+        <View style={styles.emptyHeader}>
+          <Text style={styles.title}>{title} · 0 photos</Text>
+          {onClose && (
+            <Pressable
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Return to Street View"
+              style={({ hovered }: any) => [styles.closeButton, hovered && styles.closeButtonHover]}
+            >
+              <Ionicons name="close" size={14} color="rgba(255,255,255,0.85)" />
+            </Pressable>
+          )}
+        </View>
+        <View style={styles.emptyBody}>
+          <View style={styles.emptyIcon}>
+            <Ionicons name="cloud-upload-outline" size={28} color="rgba(255,255,255,0.55)" />
+          </View>
+          <Text style={styles.emptyTitle}>No {title.toLowerCase()} photos available</Text>
+          <Text style={styles.emptySubtitle}>
+            Drop in your own to populate this lane — Tim will fold them into the estimate.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  const current = safePhotos[index];
+
+  return (
+    <View style={styles.shell} testID="photo-gallery-hero">
+      <View style={styles.header}>
+        <Text style={styles.title}>
+          {title} · {total} {total === 1 ? 'photo' : 'photos'}
+          {onClose ? '  ·  close to return to Street View' : ''}
+        </Text>
+        {onClose && (
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Return to Street View"
+            style={({ hovered }: any) => [styles.closeButton, hovered && styles.closeButtonHover]}
+          >
+            <Ionicons name="close" size={14} color="rgba(255,255,255,0.85)" />
+          </Pressable>
+        )}
+      </View>
+
+      <View style={styles.mainImageWrap}>
+        <Image
+          source={{ uri: current.url }}
+          style={styles.mainImage}
+          resizeMode="cover"
+          accessibilityLabel={current.caption ?? `${title} photo ${index + 1} of ${total}`}
+        />
+
+        {total > 1 && (
+          <>
+            <Pressable
+              onPress={goPrev}
+              accessibilityRole="button"
+              accessibilityLabel="Previous photo"
+              style={({ hovered }: any) => [
+                styles.arrow,
+                styles.arrowLeft,
+                hovered && styles.arrowHover,
+              ]}
+            >
+              <Ionicons name="chevron-back" size={18} color="#ffffff" />
+            </Pressable>
+            <Pressable
+              onPress={goNext}
+              accessibilityRole="button"
+              accessibilityLabel="Next photo"
+              style={({ hovered }: any) => [
+                styles.arrow,
+                styles.arrowRight,
+                hovered && styles.arrowHover,
+              ]}
+            >
+              <Ionicons name="chevron-forward" size={18} color="#ffffff" />
+            </Pressable>
+          </>
+        )}
+
+        <View style={styles.counter}>
+          <Text style={styles.counterText}>
+            {index + 1} / {total}
+          </Text>
+        </View>
+      </View>
+
+      {current.caption ? (
+        <Text style={styles.caption} numberOfLines={2}>
+          {current.caption}
+        </Text>
+      ) : null}
+
+      {total > 1 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.thumbStrip}
+          accessibilityRole="tablist"
+        >
+          {safePhotos.map((photo, i) => {
+            const isCurrent = i === index;
+            return (
+              <Pressable
+                key={photo.id}
+                onPress={() => setIndex(i)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: isCurrent }}
+                accessibilityLabel={`Show photo ${i + 1} of ${total}`}
+                style={({ hovered }: any) => [
+                  styles.thumb,
+                  hovered && styles.thumbHover,
+                  isCurrent && styles.thumbActive,
+                ]}
+              >
+                <Image
+                  source={{ uri: photo.url }}
+                  style={styles.thumbImage}
+                  resizeMode="cover"
+                />
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  shell: {
+    width: '100%',
+    minHeight: 360,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#0F0F12',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  empty: {
+    paddingBottom: 24,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  emptyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  title: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.85)',
+    letterSpacing: -0.1,
+  },
+  closeButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeButtonHover: {
+    backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  mainImageWrap: {
+    width: '100%',
+    aspectRatio: 12 / 5,
+    minHeight: 320,
+    backgroundColor: '#0A0A0F',
+    position: 'relative',
+  },
+  mainImage: {
+    width: '100%',
+    height: '100%',
+  },
+  arrow: {
+    position: 'absolute',
+    top: '50%',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web'
+      ? (({
+          marginTop: -20,
+          transition: 'background-color 150ms ease-out, transform 150ms ease-out',
+        } as unknown) as ViewStyle)
+      : { transform: [{ translateY: -20 }] }),
+  },
+  arrowLeft: { left: 14 },
+  arrowRight: { right: 14 },
+  arrowHover: {
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    borderColor: 'rgba(251,191,36,0.45)',
+  },
+  counter: {
+    position: 'absolute',
+    right: 14,
+    bottom: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  counterText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.95)',
+    letterSpacing: 0.2,
+    fontVariant: ['tabular-nums'],
+  },
+  caption: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.65)',
+    lineHeight: 18,
+    backgroundColor: 'rgba(0,0,0,0.30)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  thumbStrip: {
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  thumb: {
+    width: 60,
+    height: 40,
+    borderRadius: 6,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    backgroundColor: '#0A0A0F',
+    ...(Platform.OS === 'web'
+      ? (({ transition: 'border-color 150ms ease-out' } as unknown) as ViewStyle)
+      : {}),
+  },
+  thumbHover: {
+    borderColor: 'rgba(255,255,255,0.20)',
+  },
+  thumbActive: {
+    borderColor: '#fbbf24',
+  },
+  thumbImage: {
+    width: '100%',
+    height: '100%',
+  },
+  emptyBody: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    minHeight: 280,
+    gap: 8,
+  },
+  emptyIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.90)',
+    letterSpacing: -0.1,
+  },
+  emptySubtitle: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.55)',
+    textAlign: 'center',
+    lineHeight: 18,
+    maxWidth: 420,
+  },
+});

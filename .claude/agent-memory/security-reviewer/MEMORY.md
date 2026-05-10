@@ -327,6 +327,89 @@
 - `city` and `state` from body: routed through `shopping_payload["location"] = location_hint` where `location_hint = f"{city}, {state}"`. This goes into SerpApi's HTTP GET query params without encoding. Same analysis: correctness bug, not security.
 - `_fuzzy_pick_store_from_query`: uses `re.findall(r"[A-Za-z]{3,}", text.lower())`. User-controlled `query` string passed as `text`. Pattern is a fixed character class — no user-supplied regex expansion. ReDoS is NOT possible here. PASS.
 
+## Cycle 10 Pass 3.1 — Service Hub Property Pipeline (2026-05-10)
+
+### Key Files
+- `Aspire-desktop/server/serviceHub/property/propertyRoutes.ts` — POST /api/service-hub/property-data, authenticated via authenticatedSuiteId
+- `Aspire-desktop/server/serviceHub/property/propertyAggregator.ts` — Stage 1 gate, Stage 2 fan-out, cache, receipt
+- `Aspire-desktop/server/serviceHub/property/adamResearchClient.ts` — calls orchestrator /v1/agents/invoke
+- `Aspire-desktop/supabase/migrations/20260510170000_property_snapshots.sql` — RLS-scoped cache table
+- `backend/orchestrator/src/aspire_orchestrator/providers/apify_zillow_client.py` — Apify scraper client
+- `backend/orchestrator/src/aspire_orchestrator/services/adam/normalizers/zillow_photo_normalizer.py` — photo lane categorizer
+- `backend/orchestrator/src/aspire_orchestrator/services/adam/playbooks/trades.py` (execute_property_facts_and_permits) — ATTOM + Apify parallel fan-out
+
+### Confirmed Findings (Pass 3.1)
+
+#### HIGH: `sql.raw(String(CACHE_TTL_HOURS))` in interval clause — SQL injection vector
+- `propertyAggregator.ts:96` — `interval '${sql.raw(String(CACHE_TTL_HOURS))} hours'`
+- `CACHE_TTL_HOURS` is a module constant (24), never user-supplied → NOT currently exploitable
+- BUT: `sql.raw()` bypasses drizzle's parameterization. If CACHE_TTL_HOURS ever becomes configurable at runtime or the pattern is copy-pasted for user-supplied values, this becomes an injection vector
+- Pattern: Mark as HIGH due to dangerous anti-pattern in SQL construction. The `sql.raw()` call in this position is a security smell requiring documentation or a safer alternative
+
+#### HIGH: PII (owner_name, mailing_address, mortgage, sale_history) flows through Adam into property_snapshots cache
+- `property_record.py:to_dict()` — ALL PropertyRecord fields serialized including `owner_name`, `mailing_address`, `mortgage_amount`, `mortgage_lender`, `deed_type`, `sale_history[].buyer/seller`
+- `trades.py:300-301` — `prop.to_dict()` appended to `records[]`, `sale_history` with buyer/seller also appended at line 391-394
+- Adam's `/v1/agents/invoke` response returns `records[]` containing all ATTOM PII
+- `adamResearchClient.ts` maps `records[0]` but ONLY normalizes: sqft, yearBuilt, zoning, propertyType, lotSqft, stories, bedrooms, bathrooms, address, coords, photos — owner_name/mortgage/deed_type NOT mapped and NOT returned to client
+- The desktop adamResearchClient.ts DOES correctly filter out the PII fields (only maps the contractor-relevant facts)
+- HOWEVER: `data_jsonb` in property_snapshots cache receives the filtered `PropertyData` (desktop-shaped), NOT the raw ATTOM record — so PII does NOT persist to the cache
+- VERDICT: PII filtering is correct at the desktop boundary. The raw ATTOM record with owner_name/mortgage stays inside the Python orchestrator and is never serialized to property_snapshots. PASS on this dimension.
+
+#### MEDIUM: `sql.raw()` pattern in cache query — dangerous precedent
+- Same as HIGH above — details in that finding
+
+#### MEDIUM: Missing UPDATE RLS policy for property_snapshots (authenticated role)
+- Migration only defines: service_role FOR ALL, authenticated SELECT, authenticated INSERT, authenticated DELETE
+- No FOR UPDATE policy for authenticated role
+- The aggregator uses `db.execute()` as postgres superuser — bypasses RLS anyway (known pre-existing risk)
+- If a future migration adds UPDATE logic via the authenticated role, it would be unprotected
+- LOW practical risk currently but worth noting as a gap
+
+#### MEDIUM: `EXPO_PUBLIC_GOOGLE_PLACES_API_KEY` falls through to non-production environments
+- `runtimeGuards.ts:14-16` — `if (!isProductionEnv()) return env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY`
+- This means staging and dev environments can serve Google Geocoding, Solar, and Address Validation requests using the client-side (EXPO_PUBLIC_) key
+- EXPO_PUBLIC_ keys are baked into the client bundle — a staging URL exposure leaks the key
+- Risk: moderate — staging may be firewalled, but key reuse between browser and server is poor hygiene
+
+#### LOW: No rate limiting on POST /api/service-hub/property-data
+- propertyRoutes.ts has no rate limiter beyond the global 200 req/min
+- Each call triggers Google Validation + Geocoding + Solar + Adam (ATTOM + Apify) — expensive
+- An authenticated attacker can drain Apify tokens (1,388/mo on free plan) with forceRefresh=true
+- Fix: add a per-suite rate limiter (e.g., 20 req/min) mirroring the existing bootstrapRateLimit pattern
+
+#### LOW: No receipt emitted for cache-hit path
+- propertyAggregator.ts:281-286 — cache hit returns immediately with no receipt
+- Law #2 specifies "every state change produces a receipt" — a cache HIT is a read, not a state change, so this may be acceptable by design
+- However, if audit trails are needed for all property data access (including cached), the receipt gap exists
+- ADVISORY: consider emitting a receipt even for cache hits with `outcome='cache_hit'` for complete audit trail
+
+#### INFO: ORCHESTRATOR_URL not authenticated — internal trust boundary
+- adamResearchClient.ts sends POST to `${ORCHESTRATOR_URL}/v1/agents/invoke` with no auth header
+- This is the internal S2S trust boundary (both services on Railway private network)
+- Consistent with prior design: orchestrator trusts the gateway/caller without per-request auth on internal paths
+- Risk: if ORCHESTRATOR_URL is misconfigured (attacker-controlled), all Adam calls go to attacker server
+- No secrets in the request body (no API keys) — but suiteId/officeId/address are disclosed
+
+#### INFO: Photo URLs from Apify are third-party Zillow CDN URLs — no key exposure
+- photos.zillowstatic.com URLs do not contain API keys
+- URLs are served directly to client — acceptable
+
+#### INFO: bypassPermissions NOT FOUND in any Pass 3.1 files
+
+### Gate Bypass Analysis (Stage 1 gate correctness)
+- `api_failure` from Address Validation: aggregator PROCEEDS to Stage 2 (degraded) — this is intentional by design (fail-open for validation API failure)
+- `invalid` verdict: correctly short-circuits, no Adam/Solar/Geocoding called
+- `needs_correction` verdict: correctly short-circuits, no Adam/Solar/Geocoding called
+- `valid` and `unconfirmed` and `api_failure`: all proceed to Stage 2
+- Law #3 compliance: the GATE is designed to block malformed addresses, NOT to block API failures. API failure falls through to partial result — this is documented design, not a regression.
+
+### RLS Assessment (property_snapshots)
+- SELECT/INSERT/DELETE policies all correctly gate on JWT claims suite_id
+- No UPDATE policy for authenticated role (gap noted above)
+- Service role bypass is intentional and correct (server-side aggregator already enforces suiteId from JWT)
+- Cache write uses postgres superuser (db.execute) — bypasses RLS but suite_id is correctly passed as a parameter
+- Cache is keyed (suite_id, address) — no cross-tenant cache bleed possible via correct key structure
+
 ## Cycle 9 Findings (ElevenLabs V1 Hybrid Architecture) — 2026-03-27
 
 ### CRITICAL

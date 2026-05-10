@@ -48,7 +48,7 @@ function OpsSnapshotTabsInner({ cashData, pipelineStages, businessScore, founder
           onPress={() => setActiveTab('hub')}
         >
           <Text style={[styles.tabText, activeTab === 'hub' && styles.activeTabText]}>
-            Founder Hub
+            Service Hub
           </Text>
           {activeTab === 'hub' && <View style={styles.activeIndicator} />}
         </TouchableOpacity>
@@ -57,7 +57,7 @@ function OpsSnapshotTabsInner({ cashData, pipelineStages, businessScore, founder
       {activeTab === 'cash' ? (
         <CashContent data={cashData} />
       ) : (
-        <FounderHubContent data={hubData} />
+        <ServiceHubContent />
       )}
     </Card>
   );
@@ -189,6 +189,74 @@ function CashContent({ data }: { data: CashPosition }) {
   );
 }
 
+function ServiceHubContent() {
+  const router = useRouter();
+
+  return (
+    <View style={styles.hubContainer}>
+      <View style={[styles.premiumCardWrapper, { borderColor: 'rgba(251, 191, 36, 0.30)' }]}>
+        <LinearGradient
+          colors={['#1a1208', '#241810', '#2e2014', '#241810', '#1a1208']}
+          locations={[0, 0.2, 0.5, 0.8, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.cashHero}
+        >
+          <View style={[styles.heroGlowPrimary, { backgroundColor: 'rgba(251, 191, 36, 0.14)' }]} />
+          <View style={[styles.heroGlowSecondary, { backgroundColor: 'rgba(251, 146, 60, 0.10)' }]} />
+          <View style={[styles.heroGlowAccent, { backgroundColor: 'rgba(244, 63, 94, 0.05)' }]} />
+
+          <View style={styles.cashHeroHeader}>
+            <View style={[styles.walletIconOuter, { backgroundColor: 'rgba(251, 191, 36, 0.10)' }]}>
+              <View style={[styles.walletIconGlow, { borderColor: 'rgba(251, 191, 36, 0.35)' }]} />
+              <View style={[styles.walletIconInner, { backgroundColor: 'rgba(251, 191, 36, 0.25)' }]}>
+                <Ionicons name="construct" size={16} color="#fbbf24" />
+              </View>
+            </View>
+            <View style={[styles.trendBadge, { backgroundColor: 'rgba(251, 191, 36, 0.15)', borderColor: 'rgba(251, 191, 36, 0.35)' }]}>
+              <Ionicons name="flash" size={11} color="#fbbf24" />
+              <Text style={[styles.trendText, { color: '#fbbf24' }]}>Service Hub</Text>
+            </View>
+          </View>
+
+          <Text style={styles.hubHeadline}>Your office, run end-to-end</Text>
+          <Text style={styles.hubSubtitle}>Estimate, schedule, dispatch — Tim runs your service line.</Text>
+
+          <View style={styles.hubPillarsRow}>
+            <View style={[styles.hubPillarChip, { backgroundColor: 'rgba(251, 191, 36, 0.10)', borderColor: 'rgba(251, 191, 36, 0.25)' }]}>
+              <Ionicons name="analytics" size={12} color="#fbbf24" />
+              <Text style={[styles.hubPillarLabel, { color: '#fbbf24' }]}>Estimate Studio</Text>
+            </View>
+            <View style={[styles.hubPillarChip, { backgroundColor: 'rgba(129, 140, 248, 0.10)', borderColor: 'rgba(129, 140, 248, 0.25)' }]}>
+              <Ionicons name="flask" size={12} color="#818cf8" />
+              <Text style={[styles.hubPillarLabel, { color: '#818cf8' }]}>Service Lab</Text>
+            </View>
+            <View style={[styles.hubPillarChip, { backgroundColor: 'rgba(52, 211, 153, 0.10)', borderColor: 'rgba(52, 211, 153, 0.25)' }]}>
+              <Ionicons name="briefcase" size={12} color="#34d399" />
+              <Text style={[styles.hubPillarLabel, { color: '#34d399' }]}>Jobs</Text>
+            </View>
+          </View>
+        </LinearGradient>
+      </View>
+
+      <TouchableOpacity
+        style={[styles.dashboardButton, { backgroundColor: 'rgba(251, 191, 36, 0.14)', borderColor: 'rgba(251, 191, 36, 0.32)' }]}
+        onPress={() => router.push('/service-hub/estimate-studio' as any)}
+        activeOpacity={0.8}
+        testID="enter-service-hub-button"
+      >
+        <View style={styles.dashboardButtonInner}>
+          <Text style={[styles.dashboardButtonText, { color: 'rgba(255,255,255,0.95)' }]}>Enter Service Hub</Text>
+          <View style={[styles.dashboardButtonIcon, { backgroundColor: 'rgba(251, 191, 36, 0.25)' }]}>
+            <Ionicons name="arrow-forward" size={14} color="#fbbf24" />
+          </View>
+        </View>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// Legacy: kept for direct /founder-hub URL access. No longer rendered from homepage.
 function FounderHubContent({ data }: { data: FounderHubData }) {
   const router = useRouter();
 

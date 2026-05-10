@@ -58,6 +58,8 @@ const KEY_MAP: Record<string, string> = {
   tavily_key: 'TAVILY_API_KEY',
   brave_key: 'BRAVE_API_KEY',
   google_maps_key: 'GOOGLE_MAPS_API_KEY',
+  // NOTE: Apify token lives on Ava-Brain (Python orchestrator), not Aspire-Desktop.
+  // Property research is fetched via Adam → Apify (see adamResearchClient.ts).
   // Google OAuth (Eli inbox — Gmail integration)
   google_client_id: 'GOOGLE_CLIENT_ID',
   google_client_secret: 'GOOGLE_CLIENT_SECRET',

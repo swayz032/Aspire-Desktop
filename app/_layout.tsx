@@ -285,17 +285,14 @@ function useWebDesktopSetup() {
     if (viewport && !isGuestJoinPage) {
       // Tablet-aware viewport. Force-width=1440 was breaking iPad/Android tablets
       // (rendered at 1440 then zoomed-out, illegible text, untappable buttons).
-      // Tablets/small laptops: device-width so existing layout reflows naturally.
-      // Desktops (>= 1280 CSS px): keep the 1440 lock for byte-for-byte parity
-      // with the existing desktop experience -- NO layout changes for desktop users.
-      // viewport-fit=cover enables env(safe-area-inset-*) on iPad notch/Android cutouts.
+      // Now: tablets and below use device-width so the existing layout reflows
+      // naturally; desktops (>= 1280px CSS px) keep the legacy 1440 lock so the
+      // existing desktop experience is byte-for-byte preserved.
+      // viewport-fit=cover enables env(safe-area-inset-*) for iPad notch/home indicator.
       const useDeviceWidth = window.innerWidth < 1280;
-      // interactive-widget=resizes-content: 2026 viewport hint so on-screen keyboard
-      // resizes the layout viewport instead of overlaying it. Honored by Chrome/Firefox;
-      // Safari 18 ignores it (uses visualViewport overlay) but the directive is harmless.
       const content = useDeviceWidth
-        ? 'width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content'
-        : 'width=1440, initial-scale=1, shrink-to-fit=no, viewport-fit=cover, interactive-widget=resizes-content';
+        ? 'width=device-width, initial-scale=1, viewport-fit=cover'
+        : 'width=1440, initial-scale=1, shrink-to-fit=no, viewport-fit=cover';
       viewport.setAttribute('content', content);
     }
   }, []);
@@ -316,14 +313,45 @@ if (DEV_BYPASS_AUTH && typeof console !== 'undefined') {
 }
 if (DEV_BYPASS_AUTH && typeof window !== 'undefined' && typeof document !== 'undefined') {
   // Inject a top-screen warning band so the human looking at the app sees it.
+  // Dismissible per-session — security signal still fires on every page load
+  // (banner re-mounts), but a developer reviewing UI can close it to see the
+  // page underneath. Console warning above also persists as a permanent signal.
+  //
+  // Idempotency: this module can re-execute on Metro hot reload, which previously
+  // stacked duplicate banners. Remove any existing one before re-injecting.
+  const existing = document.getElementById('aspire-dev-bypass-banner');
+  if (existing) existing.remove();
   const banner = document.createElement('div');
   banner.id = 'aspire-dev-bypass-banner';
   banner.style.cssText =
     'position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;' +
     'padding:6px 12px;font-family:system-ui,-apple-system,sans-serif;font-size:12px;' +
-    'font-weight:700;text-align:center;letter-spacing:0.4px;box-shadow:0 2px 8px rgba(0,0,0,0.3)';
-  banner.textContent =
-    '⚠ AUTH BYPASS ACTIVE — local dev only. NEVER deploy this build.';
+    'font-weight:700;letter-spacing:0.4px;box-shadow:0 2px 8px rgba(0,0,0,0.3);' +
+    'display:flex;align-items:center;justify-content:center;gap:12px';
+
+  const message = document.createElement('span');
+  message.textContent = '⚠ AUTH BYPASS ACTIVE — local dev only. NEVER deploy this build.';
+  banner.appendChild(message);
+
+  const closeBtn = document.createElement('button');
+  closeBtn.setAttribute('aria-label', 'Dismiss auth bypass banner');
+  closeBtn.textContent = '×';
+  closeBtn.style.cssText =
+    'background:rgba(255,255,255,0.18);color:#fff;border:none;border-radius:4px;' +
+    'width:22px;height:22px;font-size:16px;font-weight:700;line-height:1;cursor:pointer;' +
+    'display:flex;align-items:center;justify-content:center;padding:0;flex-shrink:0;' +
+    'transition:background 0.15s ease';
+  closeBtn.addEventListener('mouseenter', () => {
+    closeBtn.style.background = 'rgba(255,255,255,0.32)';
+  });
+  closeBtn.addEventListener('mouseleave', () => {
+    closeBtn.style.background = 'rgba(255,255,255,0.18)';
+  });
+  closeBtn.addEventListener('click', () => {
+    banner.remove();
+  });
+  banner.appendChild(closeBtn);
+
   if (document.body) {
     document.body.appendChild(banner);
   } else {
@@ -650,6 +678,13 @@ function AppNavigator() {
         />
         <Stack.Screen
           name="finance-hub"
+          options={{
+            headerShown: false,
+            presentation: isDesktop ? 'card' : 'modal'
+          }}
+        />
+        <Stack.Screen
+          name="service-hub"
           options={{
             headerShown: false,
             presentation: isDesktop ? 'card' : 'modal'

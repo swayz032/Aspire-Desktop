@@ -27,6 +27,64 @@ The production `receipts` table schema is a simplified Trust Spine subset. Missi
 - `reason_code` → not stored
 - `office_id` column exists in schema but emitReceipt() does NOT write it
 
+## Cycle 10 Audit — Service Hub Phase 3 Pass 3.1 (2026-05-10)
+
+### Files Audited
+- Aspire-desktop: propertyAggregator.ts, propertyRoutes.ts, adamResearchClient.ts, propertyAggregator.test.ts, 20260510170000_property_snapshots.sql
+- Python: apify_zillow_client.py, trades.py (PROPERTY_FACTS_AND_PERMITS), receipt_store.py, server.py (agents_invoke_sync), research_response.py
+
+### BLOCKER — Trace Chain Broken: receipts[] and correlation_id NOT in Adam HTTP response
+- server.py agents_invoke_sync (line 2009-2018) returns: success, agent, result, data, receipt_id, error
+- `data` (response_data) only has: artifact_type, records, total_count, summary, card_records
+- `receipts` array is NEVER included in the HTTP response
+- `correlation_id` is NEVER echoed back in the HTTP response
+- adamResearchClient.ts line 441 reads `response.receipts` — always returns undefined
+- extractAdamCorrelationId() always returns undefined — evidence[] in desktop receipt is always []
+- Law #2 trace chain: desktop rollup receipt CANNOT chain Adam's receipt by correlation_id
+- CONFIRMED: ResearchResponse dataclass has NO `receipts` field and NO `correlation_id` field
+
+### Desktop (TypeScript) Audit — writeReceipt() in propertyAggregator.ts
+- CONFIRMED: receipt written for all 5 outcome paths: empty address (returns 'invalid' before writing — GAP), suiteId missing (returns 'invalid' before writing — GAP), address invalid (line 297), needs_correction (line 312), ok (line 513)
+- GAP: empty address early-return (line 256) does NOT call writeReceipt — pre-write exit
+- GAP: suiteId missing early-return (line 266) does NOT call writeReceipt — pre-write exit
+- Receipt uses createReceipt() → createTrustSpineReceipt() → receipts table
+- Status hardcoded to 'SUCCEEDED' in createReceipt() wrapper — failure paths also write SUCCEEDED receipt
+- No correlation_id field in createReceipt() params — correlation_id in receipt goes to action jsonb only (not top-level receipts.correlation_id column)
+- officeId correctly passed (ctx.officeId ?? ctx.suiteId)
+- risk_tier: 'green' in metadata — correct for read-only
+
+### Property Routes (propertyRoutes.ts) — unhandled catch block gap
+- Line 70-77: outer catch block returns 500 with NO receipt — this covers internal exceptions from aggregator
+- Line 25-28: AUTH_REQUIRED (missing suiteId) returns 401 with NO receipt
+- Line 35-38: ADDRESS_REQUIRED returns 400 with NO receipt
+- Line 40-43: ADDRESS_TOO_LONG returns 400 with NO receipt
+
+### Python (PROPERTY_FACTS_AND_PERMITS) — Receipt Coverage
+- address_parse_error path (line 257): receipt emitted via _emit_playbook_receipt — COVERED
+- attom_unavailable path (line 314): receipt emitted — COVERED
+- success path (line 446): receipt emitted, risk_tier='yellow' (intentional, correct) — COVERED
+- ATTOM sales history exception path (line 382): logged, NO separate receipt — MEDIUM (supplementary data, covered by playbook rollup)
+- Apify exception path (line 410): logged, NO separate receipt — MEDIUM (same reason)
+- _emit_playbook_receipt() receipt hash: SHA-256 computed (line 103) — CORRECT (not empty string)
+- capability_token_id: present in ctx and passed to providers (line 374) — but ctx.capability_token_id is None for desktop-invoked calls (server.py line 1759 creates AdamContext without it)
+
+### RLS (property_snapshots migration) — Largely Correct
+- SELECT and INSERT: scoped to suite_id from JWT claims — CORRECT
+- DELETE: scoped to suite_id — CORRECT
+- NO UPDATE policy exists — CORRECT (append-only; cache is insert-only)
+- service_role USING true — bypasses RLS for server-side aggregator — acceptable pattern
+- NO UPDATE policy = write-once — immutability satisfied for cache table
+
+### Cache Hit Path — Missing Receipt (LAW #2 GAP)
+- readCache() hit at line 279-285 returns immediately — NO receipt written for cache hits
+- Test at line 376-397 explicitly confirms: cache hit → mkReceipt NOT called
+- This is a Law #2 gap: a cache hit is a state-observation that serves as an access receipt; it should be logged at MEDIUM priority
+
+### Systemic Pattern — createReceipt() status always 'SUCCEEDED'
+- createReceipt() wrapper (receiptService.ts line 121) hardcodes status: 'SUCCEEDED'
+- All failure-path receipts (address invalid, needs_correction) also write as SUCCEEDED
+- This masks failure outcomes in receipt queries
+
 ## Stable Patterns
 
 ### emitReceipt() call sites in routes.ts

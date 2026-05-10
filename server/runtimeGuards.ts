@@ -16,3 +16,4 @@ export function resolveGooglePlacesApiKey(env: NodeJS.ProcessEnv = process.env):
   }
   return '';
 }
+
