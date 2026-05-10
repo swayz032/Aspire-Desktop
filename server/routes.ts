@@ -273,15 +273,17 @@ function validateAnamAvaPromptAndConfig(prompt: string, personaId: string): stri
     );
   }
 
-  // Check 2: show_cards mandate near the top of the prompt (within first 3500 chars).
-  // Verifies the instruction exists where the LLM sees it early in context.
-  const promptHead = rawPrompt.slice(0, 3500);
+  // Check 2: show_cards mandate near the top of the prompt (within first 4500 chars).
+  // 2026-05-10: bumped from 3500 → 4500 after Tone section expansion for
+  // humanization. Mandate still appears at top of Goal — just slightly
+  // later in raw chars due to the expanded Tone block.
+  const promptHead = rawPrompt.slice(0, 4500);
   const hasShowCardsMandate =
     promptHead.includes('show_cards is required after invoke_adam') ||
     promptHead.includes('## CRITICAL — show_cards is required');
   if (!hasShowCardsMandate) {
     errors.push(
-      'Anam Ava prompt missing show_cards mandate in first 3500 chars ' +
+      'Anam Ava prompt missing show_cards mandate in first 4500 chars ' +
       '(expected "show_cards is required after invoke_adam" or "## CRITICAL — show_cards is required").',
     );
   }

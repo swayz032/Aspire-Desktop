@@ -22,9 +22,9 @@ if (normalizedPrompt.includes('switch to voice mode')) errors.push('Banned: voic
 
 // Wave 3 baseline
 if (!/American English only|Always respond in English/i.test(rawPrompt)) errors.push('Missing language lock');
-const head3500 = rawPrompt.slice(0, 3500);
-if (!head3500.includes('show_cards is required after invoke_adam') && !head3500.includes('## CRITICAL — show_cards is required') && !head3500.includes('## CRITICAL - show_cards is required')) {
-  errors.push('Missing show_cards mandate in first 3500 chars');
+const head4500 = rawPrompt.slice(0, 4500);
+if (!head4500.includes('show_cards is required after invoke_adam') && !head4500.includes('## CRITICAL — show_cards is required') && !head4500.includes('## CRITICAL - show_cards is required')) {
+  errors.push('Missing show_cards mandate in first 4500 chars');
 }
 if (!rawPrompt.includes('## NEVER SAY')) errors.push('Missing ## NEVER SAY block');
 

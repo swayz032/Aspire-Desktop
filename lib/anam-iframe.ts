@@ -319,22 +319,25 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any, suiteId?: str
           var midToolTimers = [];
           var lastPersonaSpeechAt = 0;
           var FILLER_FAST_TOOLS = { 'show_cards': 1 };
+          // 2026-05-10 (W12.1): more natural, contraction-heavy phrasing.
+          // Old phrases sounded robot-stiff stacked back-to-back. New set
+          // mirrors the casual cadence in Ava_Voice_Rules_v6 (contractions,
+          // "Yeah", "Alright", "Hang on" — used sparingly, not every turn).
           var PREAMBLE_POOL = [
-            "Alright, let me take care of that.",
-            "On it — one moment.",
-            "Pulling that up now.",
-            "Let me check that for you."
+            "Alright, let me check on that.",
+            "Yeah, hang on a sec.",
+            "Looking that up real quick.",
+            "Let me see what I can find."
           ];
           var FILLER_POOL_FIRST = [
-            "Just one more sec, almost there.",
-            "Hang on, pulling that up.",
-            "One moment, still on it.",
-            "Almost done."
+            "Yeah, hang on — almost there.",
+            "One sec, still pulling that.",
+            "Almost got it."
           ];
           var FILLER_POOL_SECOND = [
-            "Still digging — hang tight.",
-            "Just another sec, close now.",
-            "Pulling it together, almost there."
+            "Yeah, still digging — hang tight.",
+            "Just another sec — close now.",
+            "Almost there, hang on."
           ];
           // 2026-05-06: tool-error recovery pool. Production transcript
           // 51eb43c3 showed a 34-second silence after invoke_adam returned
@@ -385,36 +388,41 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any, suiteId?: str
           //
           // Skipped for: show_cards (instant), end_session (terminal),
           // ava_get_context (background, no user-visible action).
+          // 2026-05-10 (W12.1): warmer hold lines. Production transcript
+          // f4df1564 graded F because "Almost ready — one sec." sounds
+          // robotic stacked on top of the brain's "On it — one moment."
+          // pre-tool ack. New phrases lean casual + contraction-heavy
+          // matching the v6 voice-rules tone ("Yeah", "Hang on", "Alright").
           var TOOL_SUCCESS_HOLD_POOL = {
             invoke_adam: [
-              "Almost there — pulling it up.",
-              "Got the data — one sec to read it.",
-              "Just a moment, formatting that for you."
+              "Yeah, hang on — almost there.",
+              "Reading through this real quick.",
+              "Alright, almost got it."
             ],
             invoke_quinn: [
-              "Almost ready — one sec.",
-              "Got it back — give me a moment.",
-              "Pulled what I need — one second."
+              "Yeah, hang on a sec.",
+              "Alright, just looking at this.",
+              "Hold on — almost there."
             ],
             invoke_tec: [
-              "Got it — preparing the document.",
-              "Almost done — one sec."
+              "Yeah, putting that together now.",
+              "One sec — almost done."
             ],
             invoke_clara: [
-              "Got the legal data — one sec.",
-              "Almost ready — give me a moment."
+              "Yeah, hang on — looking at this.",
+              "Hold on, almost there."
             ],
             ava_search: [
-              "Found it — one sec.",
-              "Got the results — pulling them up."
+              "Yeah, looking at it now.",
+              "Hang on, almost there."
             ],
             Knowledge_Ava: [
-              "Got it — one moment.",
-              "Almost there."
+              "Yeah, one sec.",
+              "Hang on."
             ],
             generic: [
-              "Almost ready — one sec.",
-              "Got it back — one moment."
+              "Yeah, hang on a sec.",
+              "Alright, almost there."
             ]
           };
           var successHoldIdxRefs = {
@@ -520,29 +528,55 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any, suiteId?: str
             if (completedToolName === 'invoke_adam') {
               setTimeout(_pollPendingCards, 300);
             }
-            // 2026-05-09 (W11.1): post-success hold-line. Closes the 32s dead-air
-            // gap observed in transcript 3cdc28d8 when invoke_quinn returned
-            // SUCCESS but the brain took ~32s to compose its response. The
-            // mid-tool fillers (6s, 12s) had already exhausted, so user heard
-            // 20s of additional silence after the last filler.
+            // 2026-05-09 (W11.1): post-success hold-line.
+            // 2026-05-10 (W12.1): suppression rewrite. The original 200ms
+            // back-check window was too narrow — the brain's pre-tool ack
+            // (3s BEFORE the tool completed) wasn't covered, so the hold
+            // stacked on top of the ack ("On it — one moment." then 4s
+            // later "Almost ready — one sec." in transcript f4df1564).
+            //
+            // New approach: suppress if the brain has spoken at all within
+            // the last 8 seconds (pre-tool ack OR post-tool result). Also
+            // re-arm: if suppressed and brain still hasn't progressed
+            // 5s later, try once more (max 2 retries). This catches the
+            // "brain says one filler then dies" failure mode without
+            // stacking on top of legitimate brain narration.
             //
             // Skip for fast/terminal/background tools where a hold line is
             // either superfluous or actively wrong (end_session, show_cards).
-            // Suppress if persona spoke in last 4500ms (post-tool brain ack
-            // already covers it — no double-talk).
             if (SUCCESS_HOLD_SKIP_TOOLS[completedToolName]) return;
             var tCompleteStart = Date.now();
-            setTimeout(function () {
+            var holdAttempt = 0;
+            var MAX_HOLD_ATTEMPTS = 3;
+            var SPEECH_RECENT_MS = 8000; // brain spoke within 8s = suppress
+            var HOLD_INITIAL_DELAY_MS = 4000;
+            var HOLD_RETRY_DELAY_MS = 5000;
+            function tryHoldLine() {
+              holdAttempt += 1;
               var nowTs = Date.now();
-              var personaSpokeRecently = (lastPersonaSpeechAt >= tCompleteStart - 200) && (lastPersonaSpeechAt <= nowTs);
-              if (personaSpokeRecently) {
-                post({ type: 'tool_success_hold_skipped', payload: { reason: 'persona_speaking', toolName: completedToolName } });
+              var msSinceLastSpeech = nowTs - lastPersonaSpeechAt;
+              if (msSinceLastSpeech < SPEECH_RECENT_MS) {
+                post({ type: 'tool_success_hold_skipped', payload: {
+                  reason: 'persona_spoke_within_8s',
+                  toolName: completedToolName,
+                  attempt: holdAttempt,
+                  msSinceLastSpeech: msSinceLastSpeech,
+                } });
+                if (holdAttempt < MAX_HOLD_ATTEMPTS) {
+                  setTimeout(tryHoldLine, HOLD_RETRY_DELAY_MS);
+                }
                 return;
               }
               var pool = TOOL_SUCCESS_HOLD_POOL[completedToolName] || TOOL_SUCCESS_HOLD_POOL.generic;
               var idxRef = successHoldIdxRefs[completedToolName] || successHoldIdxRefs.generic;
               speakNarration(pickFromPool(pool, idxRef), 'tool_success_hold');
-            }, 4000);
+              // After firing a hold, give the brain 5s to take over;
+              // if still silent, fire one more hold (max 3 total).
+              if (holdAttempt < MAX_HOLD_ATTEMPTS) {
+                setTimeout(tryHoldLine, HOLD_RETRY_DELAY_MS);
+              }
+            }
+            setTimeout(tryHoldLine, HOLD_INITIAL_DELAY_MS);
           });
           client.addListener(AnamEvent.TOOL_CALL_FAILED, function (event) {
             clearMidToolTimers();
