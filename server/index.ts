@@ -453,6 +453,7 @@ app.use(helmet({
         "https://*.stripe.com",
         "https://*.plaid.com",
         "https://maps.googleapis.com",
+        "https://aerialview.googleapis.com",
         "https://api.deepgram.com",
         "wss://api.deepgram.com",
         "https://cdn.jsdelivr.net",
@@ -468,7 +469,7 @@ app.use(helmet({
         "https://*.twilio.com",
         "wss://*.twilio.com",
       ],
-      mediaSrc: ["'self'", "data:", "blob:", "https://zoom.us", "https://*.zoom.us"],
+      mediaSrc: ["'self'", "data:", "blob:", "https://zoom.us", "https://*.zoom.us", "https://storage.googleapis.com"],
       frameSrc: ["'self'", "https://*.pandadoc.com", "https://*.stripe.com", "https://*.plaid.com", "https://zoom.us", "https://*.zoom.us"],
       workerSrc: ["'self'", "blob:", "https://source.zoom.us"],
       fontSrc: ["'self'", "data:", "https://cdn.jsdelivr.net", "https://unpkg.com", "https://source.zoom.us"],
@@ -746,6 +747,16 @@ try {
   logger.info('Service Hub property routes registered');
 } catch (e) {
   logger.warn('Service Hub property routes not available, skipping', {
+    reason: e instanceof Error ? e.message.slice(0, 160) : 'unknown',
+  });
+}
+
+try {
+  const aerialViewRoute = require('./serviceHub/property/aerialViewRoute').default;
+  app.use(aerialViewRoute);
+  logger.info('Aerial View route registered (GET /api/property/aerial-video)');
+} catch (e) {
+  logger.warn('Aerial View route not available, skipping', {
     reason: e instanceof Error ? e.message.slice(0, 160) : 'unknown',
   });
 }
