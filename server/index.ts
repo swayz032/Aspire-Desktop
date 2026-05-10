@@ -1110,8 +1110,15 @@ app.use(express.static(publicPath, {
   },
 }));
 
-// dist/ root (index.html etc.) — NEVER cache
+// dist/ root (favicon, manifests, hashed bundles, etc.) — NEVER cache.
+// CRITICAL: index: false so this middleware never auto-serves dist/index.html
+// for `/` or any directory request -- otherwise the legacy viewport meta from
+// the build artifact would ship to clients before our sendIndexHtml() rewrite
+// gets a chance to run. The SPA fallback below + the explicit `/` handler
+// above are the only paths that should serve index.html, and both go through
+// sendIndexHtml() to enforce the tablet-correct viewport.
 app.use(express.static(distPath, {
+  index: false,
   maxAge: 0,
   etag: false,
   setHeaders: (res, filePath) => {
