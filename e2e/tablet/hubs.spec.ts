@@ -17,33 +17,7 @@
 
 import { expect, Page, test } from '@playwright/test';
 
-async function injectAuthIfAvailable(page: Page, baseURL: string): Promise<void> {
-  const token = process.env.E2E_SUPABASE_TOKEN;
-  if (!token) return;
-  const refresh = process.env.E2E_SUPABASE_REFRESH ?? token;
-  const projectRef = process.env.E2E_SUPABASE_PROJECT_REF ?? 'aspire';
-  const storageKey = `sb-${projectRef}-auth-token`;
-  await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
-  await page.evaluate(
-    ({ key, value }: { key: string; value: string }) => {
-      localStorage.setItem(key, value);
-    },
-    {
-      key: storageKey,
-      value: JSON.stringify({
-        access_token: token,
-        refresh_token: refresh,
-        token_type: 'bearer',
-        expires_in: 3600,
-        expires_at: Math.floor(Date.now() / 1000) + 3600,
-      }),
-    },
-  );
-}
-
-async function isOnLoginRedirect(page: Page): Promise<boolean> {
-  return page.url().includes('/login');
-}
+import { injectAuthIfAvailable, isOnLoginRedirect } from './fixtures';
 
 test.describe('Tablet hubs — finance + founder + inbox layout invariants', () => {
   test('finance-hub | no horizontal overflow at tablet viewport', async ({ page, baseURL }) => {

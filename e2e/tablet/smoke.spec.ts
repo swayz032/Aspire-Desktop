@@ -23,6 +23,8 @@ import * as path from 'path';
 
 import { expect, Page, test } from '@playwright/test';
 
+import { injectAuthIfAvailable } from './fixtures';
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ScreenEntry {
@@ -92,32 +94,7 @@ function installDiagnostics(page: Page): TabletDiagnostics {
  * TODO: Replace this stub with a proper Playwright storageState fixture once the
  * dev bypass pattern (`?e2eRoute=...`) is extended to authenticated routes.
  */
-async function injectAuthIfAvailable(page: Page, baseURL: string): Promise<void> {
-  const token = process.env.E2E_SUPABASE_TOKEN;
-  if (!token) return;
-
-  const refresh = process.env.E2E_SUPABASE_REFRESH ?? token;
-  const projectRef = process.env.E2E_SUPABASE_PROJECT_REF ?? 'aspire';
-  const storageKey = `sb-${projectRef}-auth-token`;
-
-  // Navigate to origin first so localStorage is accessible on the correct domain
-  await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
-  await page.evaluate(
-    ({ key, value }: { key: string; value: string }) => {
-      localStorage.setItem(key, value);
-    },
-    {
-      key: storageKey,
-      value: JSON.stringify({
-        access_token: token,
-        refresh_token: refresh,
-        token_type: 'bearer',
-        expires_in: 3600,
-        expires_at: Math.floor(Date.now() / 1000) + 3600,
-      }),
-    },
-  );
-}
+// injectAuthIfAvailable moved to ./fixtures so it's shared across the suite.
 
 function screenshotDir(projectName: string): string {
   return path.join(
