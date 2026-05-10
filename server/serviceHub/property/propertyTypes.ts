@@ -39,7 +39,8 @@ export type SourceStatus = {
     | 'streetView'
     | 'solar'
     | 'adam'
-    | 'places';
+    | 'places'
+    | 'aerialView';
   fetchedAt: string;
   status: 'ok' | 'partial' | 'missing' | 'api_failure';
   confidence?: 'high' | 'medium' | 'low';
@@ -68,6 +69,14 @@ export type AddressValidationVerdict = {
   fetchedAt: string;
 };
 
+/** Cached Google Aerial View API data stored in property_snapshots.aerial_video_data. */
+export type AerialVideoData = {
+  videoUrl: string;
+  videoH265Url?: string;
+  thumbnailUrl?: string;
+  fetched_at: string;
+};
+
 /** PropertyData = the aggregated, fully-shaped payload returned from
  *  POST /api/service-hub/property-data. */
 export type PropertyData = {
@@ -85,7 +94,7 @@ export type PropertyData = {
     /**
      * Server-side proxy URL — fallback static Street View image. Primary
      * hero is the live Maps JS panorama loaded client-side from address/coords.
-     * Aerial view is rendered client-side via Maps JS API (no server map).
+     * Aerial view is served by GET /api/property/aerial-video (separate endpoint).
      */
     streetViewProxyUrl?: string;
   };
