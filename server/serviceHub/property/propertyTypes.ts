@@ -96,6 +96,19 @@ export type PropertyData = {
     propertyType?: string;
     lotSqft?: number;
     stories?: number;
+    bedrooms?: number;
+    bathrooms?: number;
+    constructionFrame?: string;
+    quality?: string;
+    ownerName?: string;
+    ownerOccupied?: boolean;
+    estimatedValue?: number;
+    estimatedValueLow?: number;
+    estimatedValueHigh?: number;
+    lastSaleDate?: string;
+    lastSaleAmount?: number;
+    annualTax?: number;
+    taxYear?: number;
   };
   photos: {
     interior: PhotoLane;

@@ -488,6 +488,19 @@ export async function aggregatePropertyData(
     propertyType: adamFacts?.propertyType,
     lotSqft: adamFacts?.lotSqft,
     stories: adamFacts?.stories,
+    bedrooms: adamFacts?.bedrooms,
+    bathrooms: adamFacts?.bathrooms,
+    constructionFrame: adamFacts?.constructionFrame,
+    quality: adamFacts?.quality,
+    ownerName: adamFacts?.ownerName,
+    ownerOccupied: adamFacts?.ownerOccupied,
+    estimatedValue: adamFacts?.estimatedValue,
+    estimatedValueLow: adamFacts?.estimatedValueLow,
+    estimatedValueHigh: adamFacts?.estimatedValueHigh,
+    lastSaleDate: adamFacts?.lastSaleDate,
+    lastSaleAmount: adamFacts?.lastSaleAmount,
+    annualTax: adamFacts?.annualTax,
+    taxYear: adamFacts?.taxYear,
   };
 
   const data: PropertyData = {

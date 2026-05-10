@@ -3,19 +3,11 @@
  *
  * Typed wrapper around `POST /api/service-hub/property-data` (Pass 3.1).
  *
- * The endpoint either:
- *   - Returns aggregated `PropertyData` (200, `kind: 'ok'`).
- *   - Asks the user to confirm a corrected address (200 with
- *     `propertyData: null` + `suggestedAddress` → `kind: 'needs_correction'`).
- *   - Rejects an unverifiable address (422 → `kind: 'invalid'`).
- *
- * Auth: same-origin fetch with `credentials: 'include'` so the JWT cookie
- * flows. The server resolves suite_id from the JWT — no client-side
- * tenant input (Law #6 isolation).
- *
- * Test seam: `__setFetchForTests` lets unit tests inject a stub `fetch`
- * implementation. Pattern matches the rest of `lib/api/*` clients.
+ * Auth: uses `authenticatedFetchStandalone` which pulls the current Supabase
+ * session and injects `Authorization: Bearer <jwt>` + `X-Suite-Id`. The server
+ * resolves suite_id from the JWT (Law #6).
  */
+import { authenticatedFetchStandalone } from '@/lib/authFetchStandalone';
 // ---------------------------------------------------------------------------
 // Wire types — duplicated here from `server/serviceHub/property/propertyTypes`
 // (Pass 3.1) so that the Visuals tab data layer can ship independently of
@@ -86,6 +78,19 @@ export type PropertyData = {
     propertyType?: string;
     lotSqft?: number;
     stories?: number;
+    bedrooms?: number;
+    bathrooms?: number;
+    constructionFrame?: string;
+    quality?: string;
+    ownerName?: string;
+    ownerOccupied?: boolean;
+    estimatedValue?: number;
+    estimatedValueLow?: number;
+    estimatedValueHigh?: number;
+    lastSaleDate?: string;
+    lastSaleAmount?: number;
+    annualTax?: number;
+    taxYear?: number;
   };
   photos: {
     interior: PhotoLane;
@@ -158,10 +163,10 @@ export class PropertyDataApiError extends Error {
 // ---------------------------------------------------------------------------
 
 type FetchFn = typeof fetch;
-let _fetch: FetchFn = (...args) => fetch(...args);
+let _fetch: FetchFn = (...args) => authenticatedFetchStandalone(args[0] as string, args[1]);
 
 export function __setFetchForTests(impl: FetchFn | null): void {
-  _fetch = impl ?? ((...args) => fetch(...args));
+  _fetch = impl ?? ((...args) => authenticatedFetchStandalone(args[0] as string, args[1]));
 }
 
 // ---------------------------------------------------------------------------
@@ -190,7 +195,6 @@ export async function fetchPropertyData(
   try {
     resp = await _fetch(url, {
       method: 'POST',
-      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         address: args.address,

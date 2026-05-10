@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, useWindowDimensions } from 'react-native';
+import { View, StyleSheet, useWindowDimensions, Platform, type ViewStyle } from 'react-native';
 import { EstimateStudioHeader } from './EstimateStudioHeader';
 import { ProjectAddressBar } from './ProjectAddressBar';
 import { EstimateStudioTabBar } from './EstimateStudioTabBar';
@@ -102,6 +102,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
     overflow: 'hidden',
+    // Web-only: cap the canvas at the viewport so the rail can scroll
+    // internally rather than stretching the whole page.
+    ...(Platform.OS === 'web'
+      ? (({
+          height: 'calc(100vh - 90px)',
+          maxHeight: 'calc(100vh - 90px)',
+        } as unknown) as ViewStyle)
+      : {}),
   },
   outerCanvasTablet: {
     borderRadius: 12,

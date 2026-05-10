@@ -8470,8 +8470,34 @@ async function handleStreetViewProxy(req: Request, res: Response): Promise<void>
   }
 }
 
-router.get('/v1/places/streetview', handleStreetViewProxy);
-router.get('/api/places/streetview', handleStreetViewProxy);
+// Per-IP rate limit for the public streetview proxy (60 req/min/IP).
+// In-memory sliding-window counter — sufficient for single-instance dev/prod.
+// Multi-instance deploys should swap to a shared Redis backend.
+const STREETVIEW_RATE_WINDOW_MS = 60_000;
+const STREETVIEW_RATE_MAX = 60;
+const streetViewRateBuckets = new Map<string, number[]>();
+function streetViewRateLimit(req: Request, res: Response, next: () => void): void {
+  const ip = (req.ip || req.socket.remoteAddress || 'unknown').toString();
+  const now = Date.now();
+  const recent = (streetViewRateBuckets.get(ip) ?? []).filter((t) => now - t < STREETVIEW_RATE_WINDOW_MS);
+  if (recent.length >= STREETVIEW_RATE_MAX) {
+    res.status(429).json({ error: 'RATE_LIMITED', message: 'Too many street view requests; retry shortly.' });
+    return;
+  }
+  recent.push(now);
+  streetViewRateBuckets.set(ip, recent);
+  // Lazy cleanup: prune buckets older than 5 windows to bound memory.
+  if (streetViewRateBuckets.size > 1000) {
+    const cutoff = now - STREETVIEW_RATE_WINDOW_MS * 5;
+    for (const [k, v] of streetViewRateBuckets) {
+      if (!v.length || v[v.length - 1] < cutoff) streetViewRateBuckets.delete(k);
+    }
+  }
+  next();
+}
+
+router.get('/v1/places/streetview', streetViewRateLimit, handleStreetViewProxy);
+router.get('/api/places/streetview', streetViewRateLimit, handleStreetViewProxy);
 
 // ─── POST /api/tools/enrich-product ────────────────────────────────────────
 // Authenticated client proxy for the orchestrator's lazy product-enrichment

@@ -31,12 +31,11 @@ import { useHeroMode, type HeroMode } from '@/hooks/useHeroMode';
 import { usePropertyData } from '@/hooks/usePropertyData';
 
 // Static imports — components ship in this same commit (Pass 3.2).
+// Hero + photo grid only. PropertyInsights / TotalBuildingArea / MaterialSignals /
+// QuickCostInt cards were removed from the canvas (founder decision 2026-05-10) —
+// all that detail now lives in the Tim rail Context tab in a premium layout.
 import { HeroSwitcher } from '@/components/service-hub/estimate-studio/visuals/HeroSwitcher';
 import { PropertyImagesGrid } from '@/components/service-hub/estimate-studio/visuals/PropertyImagesGrid';
-import { PropertyInsightsCard } from '@/components/service-hub/estimate-studio/visuals/PropertyInsightsCard';
-import { TotalBuildingAreaCard } from '@/components/service-hub/estimate-studio/visuals/TotalBuildingAreaCard';
-import { MaterialSignalsCard } from '@/components/service-hub/estimate-studio/visuals/MaterialSignalsCard';
-import { QuickCostIntCard } from '@/components/service-hub/estimate-studio/visuals/QuickCostIntCard';
 
 export default function VisualsTab() {
   const { address } = useProjectAddress();
@@ -94,30 +93,6 @@ export default function VisualsTab() {
           activeMode={mode}
           onLaneClick={(lane: HeroMode) => setMode(lane)}
           loading={isLoading}
-        />
-      </View>
-
-      <View style={styles.insightCardsRow}>
-        <PropertyInsightsCard
-          facts={data?.facts}
-          address={data?.address}
-          loading={isLoading}
-        />
-        <TotalBuildingAreaCard
-          sqft={data?.facts?.sqft}
-          stories={data?.facts?.stories}
-          loading={isLoading}
-        />
-        <MaterialSignalsCard
-          signals={data?.signals?.materials}
-          roofType={data?.signals?.roofType}
-          loading={isLoading}
-        />
-        <QuickCostIntCard
-          costBand={data?.costBand}
-          evidenceGaps={data?.evidenceGaps}
-          loading={isLoading}
-          onRefresh={forceRefresh}
         />
       </View>
 
