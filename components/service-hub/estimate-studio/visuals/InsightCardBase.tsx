@@ -131,7 +131,7 @@ export function SheenBlock({
   style,
 }: {
   width: number | `${number}%` | '100%';
-  height: number;
+  height: number | `${number}%` | '100%';
   radius?: number;
   style?: ViewStyle;
 }) {

@@ -26,16 +26,20 @@ import { SheenBlock } from './InsightCardBase';
 interface Props {
   coords?: { lat: number; lng: number };
   loading: boolean;
-  /** Optional hook for the inset to switch the parent into aerial mode. */
+  /** Optional hook for the bottom-right inset → switches parent into aerial mode. */
   onAerialPress?: () => void;
+  /** Optional hook for the top-left inset → switches parent into Photorealistic 3D Tiles. */
+  onEarthPress?: () => void;
 }
 
 type LoadStatus = 'idle' | 'loading' | 'ready' | 'no-imagery' | 'error';
 
-export function LiveStreetViewHero({ coords, loading, onAerialPress }: Props) {
+export function LiveStreetViewHero({ coords, loading, onAerialPress, onEarthPress }: Props) {
   const containerRef = useRef<any>(null);
   const insetRef = useRef<any>(null);
+  const earthInsetRef = useRef<any>(null);
   const [status, setStatus] = useState<LoadStatus>('idle');
+  const [earthAvailable, setEarthAvailable] = useState<boolean>(false);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -49,45 +53,96 @@ export function LiveStreetViewHero({ coords, loading, onAerialPress }: Props) {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const loaderMod = require('@/lib/googleMapsLoader');
         const loader = loaderMod.loadGoogleMaps ?? loaderMod.default ?? loaderMod;
-        const google = await loader();
+        const apiKey = loaderMod.resolveBrowserMapsKey
+          ? loaderMod.resolveBrowserMapsKey()
+          : (process.env.EXPO_PUBLIC_GOOGLE_MAPS_BROWSER_KEY ?? '');
+        // streetView + geometry libraries — geometry is required for
+        // computeHeading() so we can point the camera AT the property.
+        const google = await loader({ apiKey, libraries: ['streetView', 'geometry'] });
         if (cancelled) return;
 
-        // Verify Street View imagery exists at coords before mounting.
+        // Find the closest OUTDOOR Google-car panorama (filters out the
+        // low-res user-uploaded indoor 360s that caused the blur). Wider
+        // radius (100m) gives the SDK room to pick the best curb-side pano.
         const sv = new google.maps.StreetViewService();
-        sv.getPanorama({ location: coords, radius: 80 }, (_data: any, svStatus: any) => {
-          if (cancelled) return;
-          if (svStatus !== google.maps.StreetViewStatus.OK) {
-            setStatus('no-imagery');
-            return;
-          }
-          if (!containerRef.current) return;
-          new google.maps.StreetViewPanorama(containerRef.current, {
-            position: coords,
-            pov: { heading: 0, pitch: 0 },
-            zoom: 1,
-            addressControl: false,
-            fullscreenControl: false,
-            motionTracking: false,
-            motionTrackingControl: false,
-            linksControl: false,
-            zoomControl: true,
-            panControl: true,
-            enableCloseButton: false,
-          });
-          // Mount a small inset map (top-down satellite) for an aerial preview.
-          if (insetRef.current) {
-            const insetMap = new google.maps.Map(insetRef.current, {
-              center: coords,
-              zoom: 18,
-              mapTypeId: 'hybrid',
-              disableDefaultUI: true,
-              gestureHandling: 'none',
-              clickableIcons: false,
+        sv.getPanorama(
+          {
+            location: coords,
+            radius: 100,
+            source: google.maps.StreetViewSource.OUTDOOR,
+            preference: google.maps.StreetViewPreference.NEAREST,
+          },
+          (panoData: any, svStatus: any) => {
+            if (cancelled) return;
+            if (svStatus !== google.maps.StreetViewStatus.OK) {
+              setStatus('no-imagery');
+              return;
+            }
+            if (!containerRef.current) return;
+            // Camera position (on the road) → property coords gives the
+            // heading needed to look AT the house instead of staring north.
+            const panoLatLng = panoData?.location?.latLng;
+            let heading = 0;
+            if (panoLatLng && google.maps.geometry?.spherical?.computeHeading) {
+              const target = new google.maps.LatLng(coords.lat, coords.lng);
+              heading = google.maps.geometry.spherical.computeHeading(panoLatLng, target);
+            }
+            // Use `position` (not `pano`) so the SDK serves the highest-res
+            // tile available at this location and the user can still click
+            // arrows to walk down the street.
+            new google.maps.StreetViewPanorama(containerRef.current, {
+              position: panoLatLng ?? coords,
+              pov: { heading, pitch: 8 },
+              zoom: 1,
+              addressControl: false,
+              fullscreenControl: false,
+              motionTracking: false,
+              motionTrackingControl: false,
+              linksControl: true,
+              zoomControl: true,
+              panControl: true,
+              enableCloseButton: false,
             });
-            new google.maps.Marker({ position: coords, map: insetMap });
-          }
-          setStatus('ready');
-        });
+            // Mount a small inset map (top-down satellite) for an aerial preview.
+            if (insetRef.current) {
+              const insetMap = new google.maps.Map(insetRef.current, {
+                center: coords,
+                zoom: 18,
+                mapTypeId: 'hybrid',
+                disableDefaultUI: true,
+                gestureHandling: 'none',
+                clickableIcons: false,
+              });
+              new google.maps.Marker({ position: coords, map: insetMap });
+            }
+
+            // Mount the top-left Earth View inset (Photorealistic 3D Tiles).
+            // Older Maps JS versions don't ship maps3d → gracefully skip.
+            (async () => {
+              try {
+                const maps3d: any = await (google as any).maps.importLibrary('maps3d');
+                if (cancelled || !earthInsetRef.current || !maps3d?.Map3DElement) return;
+                const map3d = new maps3d.Map3DElement({
+                  center: { lat: coords.lat, lng: coords.lng, altitude: 100 },
+                  range: 600,
+                  tilt: 67.5,
+                  heading: 0,
+                });
+                // Map3DElement is a Web Component → set styles, then append.
+                map3d.style.width = '100%';
+                map3d.style.height = '100%';
+                map3d.style.borderRadius = '8px';
+                earthInsetRef.current.appendChild(map3d);
+                setEarthAvailable(true);
+              } catch {
+                // No maps3d on this account/version → hide the inset silently.
+                if (!cancelled) setEarthAvailable(false);
+              }
+            })();
+
+            setStatus('ready');
+          },
+        );
       } catch {
         if (!cancelled) setStatus('error');
       }
@@ -96,66 +151,94 @@ export function LiveStreetViewHero({ coords, loading, onAerialPress }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [coords]);
+    // Key on the primitive lat/lng pair so the effect doesn't refire when the
+    // parent passes a structurally-equal but reference-different coords obj.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coords?.lat, coords?.lng]);
 
   // ---- Render -------------------------------------------------------------
-  if (loading || status === 'loading' || status === 'idle') {
-    return (
-      <View style={styles.shell} testID="live-street-view-hero-loading">
-        <SheenBlock width="100%" height={400} radius={12} />
-      </View>
-    );
-  }
+  // CRITICAL: the panorama mount <div> MUST be in the DOM before the effect's
+  // sv.getPanorama callback fires, otherwise containerRef.current is null and
+  // the panorama silently fails to mount (hero stays black forever). So we
+  // render the mount divs unconditionally, then overlay loading/fallback
+  // states on top via absolute positioning.
+  const showLoadingOverlay = loading || status === 'loading' || status === 'idle';
+  const showNoImageryOverlay = status === 'no-imagery';
+  const showErrorOverlay = status === 'error';
+  const showInset = Platform.OS === 'web' && status === 'ready';
+  const showEarthInset = Platform.OS === 'web' && status === 'ready' && earthAvailable;
 
-  if (status === 'no-imagery') {
+  if (Platform.OS !== 'web') {
     return (
-      <View style={[styles.shell, styles.fallbackShell]} testID="live-street-view-hero-no-imagery">
-        <View style={styles.fallbackInner}>
-          <View style={styles.fallbackIcon}>
-            <Ionicons name="cloud-upload-outline" size={28} color="rgba(255,255,255,0.55)" />
-          </View>
-          <Text style={styles.fallbackTitle}>No Street View available</Text>
-          <Text style={styles.fallbackSubtitle}>
-            Drop in exterior photos to continue — Tim can use them as the hero.
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (status === 'error') {
-    return (
-      <View style={[styles.shell, styles.fallbackShell]} testID="live-street-view-hero-error">
-        <View style={styles.fallbackInner}>
-          <View style={[styles.fallbackIcon, { borderColor: 'rgba(255,107,107,0.25)' }]}>
-            <Ionicons name="alert-circle-outline" size={28} color="#ff6b6b" />
-          </View>
-          <Text style={styles.fallbackTitle}>Could not load Street View</Text>
-          <Text style={styles.fallbackSubtitle}>
-            Check your network — we'll retry automatically when you reload.
-          </Text>
-        </View>
+      <View style={[styles.shell, styles.fallbackShell]}>
+        <Text style={styles.fallbackSubtitle}>Street View preview is web-only.</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.shell} testID="live-street-view-hero">
-      {/* Live Maps JS panorama mount */}
-      {Platform.OS === 'web' ? (
-        // The Maps SDK mutates the DOM directly. We render a div via React DOM
-        // by reaching into createElement on web. Wrap in a View for layout.
-        React.createElement('div', {
-          ref: containerRef,
-          style: { width: '100%', height: '100%', borderRadius: 12 },
-        })
-      ) : (
-        <View style={styles.shell}>
-          <Text style={styles.fallbackSubtitle}>Street View preview is web-only.</Text>
+      {/* ALWAYS-MOUNTED panorama target — Maps JS writes into this div */}
+      {React.createElement('div', {
+        ref: containerRef,
+        style: {
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          borderRadius: 12,
+          backgroundColor: '#0F0F12',
+        },
+      })}
+
+      {/* Loading overlay (fades the SheenBlock over the mount div) */}
+      {showLoadingOverlay && (
+        <View style={styles.overlayFill} pointerEvents="none" testID="live-street-view-hero-loading">
+          <SheenBlock width="100%" height="100%" radius={12} />
         </View>
       )}
 
-      {/* Aerial inset overlay — bottom-right */}
+      {/* No-imagery overlay */}
+      {showNoImageryOverlay && (
+        <View
+          style={[styles.overlayFill, styles.fallbackShell]}
+          testID="live-street-view-hero-no-imagery"
+        >
+          <View style={styles.fallbackInner}>
+            <View style={styles.fallbackIcon}>
+              <Ionicons name="cloud-upload-outline" size={28} color="rgba(255,255,255,0.55)" />
+            </View>
+            <Text style={styles.fallbackTitle}>No Street View available</Text>
+            <Text style={styles.fallbackSubtitle}>
+              Drop in exterior photos to continue — Tim can use them as the hero.
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Error overlay */}
+      {showErrorOverlay && (
+        <View
+          style={[styles.overlayFill, styles.fallbackShell]}
+          testID="live-street-view-hero-error"
+        >
+          <View style={styles.fallbackInner}>
+            <View style={[styles.fallbackIcon, { borderColor: 'rgba(255,107,107,0.25)' }]}>
+              <Ionicons name="alert-circle-outline" size={28} color="#ff6b6b" />
+            </View>
+            <Text style={styles.fallbackTitle}>Could not load Street View</Text>
+            <Text style={styles.fallbackSubtitle}>
+              Check your network — we'll retry automatically when you reload.
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Aerial inset overlay — bottom-right. Same chicken-and-egg as the
+          panorama: inset div must be in the DOM BEFORE the Maps callback
+          fires so insetRef.current is non-null. We always render the
+          Pressable but hide it (opacity 0 + pointer-events none) until the
+          panorama is ready, so the underlying div mounts immediately. */}
       {Platform.OS === 'web' && (
         <Pressable
           onPress={onAerialPress}
@@ -164,7 +247,9 @@ export function LiveStreetViewHero({ coords, loading, onAerialPress }: Props) {
           style={({ hovered }: any) => [
             styles.inset,
             hovered && styles.insetHover,
+            !showInset && styles.insetHidden,
           ]}
+          pointerEvents={showInset ? 'auto' : 'none'}
         >
           {React.createElement('div', {
             ref: insetRef,
@@ -176,8 +261,40 @@ export function LiveStreetViewHero({ coords, loading, onAerialPress }: Props) {
             } as any,
           })}
           <View style={styles.insetCaption}>
-            <Ionicons name="map-outline" size={11} color="#fbbf24" />
-            <Text style={styles.insetCaptionText}>View Aerial</Text>
+            <Ionicons name="cube-outline" size={11} color="#fbbf24" />
+            <Text style={styles.insetCaptionText}>3D View</Text>
+          </View>
+        </Pressable>
+      )}
+
+      {/* Earth View inset overlay — top-left. Photorealistic 3D Tiles preview.
+          Same chicken-and-egg: the Map3DElement parent div must be in the DOM
+          before the Maps callback fires, so we always render the Pressable
+          and toggle visibility via opacity + pointer-events. */}
+      {Platform.OS === 'web' && (
+        <Pressable
+          onPress={onEarthPress}
+          accessibilityRole="button"
+          accessibilityLabel="Open Photorealistic 3D Earth view"
+          style={({ hovered }: any) => [
+            styles.earthInset,
+            hovered && styles.insetHover,
+            !showEarthInset && styles.insetHidden,
+          ]}
+          pointerEvents={showEarthInset ? 'auto' : 'none'}
+        >
+          {React.createElement('div', {
+            ref: earthInsetRef,
+            style: {
+              width: '100%',
+              height: '100%',
+              borderRadius: 8,
+              pointerEvents: 'none',
+            } as any,
+          })}
+          <View style={styles.insetCaption}>
+            <Ionicons name="globe-outline" size={11} color="#fbbf24" />
+            <Text style={styles.insetCaptionText}>Earth View</Text>
           </View>
         </Pressable>
       )}
@@ -201,6 +318,16 @@ const styles = StyleSheet.create({
     padding: 32,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
+  },
+  overlayFill: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#0F0F12',
   },
   fallbackInner: {
     alignItems: 'center',
@@ -247,6 +374,27 @@ const styles = StyleSheet.create({
           transition: 'transform 150ms ease-out, border-color 150ms ease-out',
         } as unknown) as ViewStyle)
       : {}),
+  },
+  earthInset: {
+    position: 'absolute',
+    left: 14,
+    top: 14,
+    width: 240,
+    height: 152,
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: '#0F0F12',
+    ...(Platform.OS === 'web'
+      ? (({
+          boxShadow: '0 6px 18px rgba(0,0,0,0.45)',
+          transition: 'transform 150ms ease-out, border-color 150ms ease-out',
+        } as unknown) as ViewStyle)
+      : {}),
+  },
+  insetHidden: {
+    opacity: 0,
   },
   insetHover: {
     borderColor: 'rgba(251,191,36,0.55)',
