@@ -10,7 +10,7 @@ function MeetTheTeamInner() {
   return (
     <section id="ai-staff" style={{
       background: '#070710',
-      padding: '120px 80px',
+      padding: 'clamp(72px, 9vw, 120px) clamp(20px, 5vw, 80px)',
       fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif',
       borderTop: '1px solid rgba(255,255,255,0.04)',
     }}>
@@ -171,6 +171,9 @@ function MeetTheTeamInner() {
                       borderRadius: 8, padding: '10px 0', cursor: 'pointer',
                       transition: 'all 0.2s ease',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      minHeight: 44, // tablet tap target
+                      WebkitTapHighlightColor: 'transparent',
+                      touchAction: 'manipulation',
                     }}
                     onMouseEnter={(e) => {
                       const el = e.currentTarget as HTMLButtonElement;

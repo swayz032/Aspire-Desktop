@@ -87,7 +87,9 @@ function HowItWorksInner() {
   return (
     <section id="features" style={{
       background: '#050508',
-      padding: '120px 80px',
+      // 120px/80px on desktop — clamp keeps tablets from getting crushed
+      // without changing the >= 1280px experience.
+      padding: 'clamp(72px, 9vw, 120px) clamp(20px, 5vw, 80px)',
       fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif',
     }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>

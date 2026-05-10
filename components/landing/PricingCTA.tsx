@@ -21,7 +21,7 @@ function PricingCTAInner() {
   return (
     <section id="pricing" style={{
       background: '#050508',
-      padding: '120px 80px',
+      padding: 'clamp(72px, 9vw, 120px) clamp(20px, 5vw, 80px)',
       fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif',
       borderTop: '1px solid rgba(255,255,255,0.04)',
     }}>
@@ -79,7 +79,7 @@ function PricingCTAInner() {
             position: 'relative', zIndex: 1,
             background: '#0a0a12',
             borderRadius: 24,
-            padding: '56px 64px',
+            padding: 'clamp(36px, 5vw, 56px) clamp(28px, 5vw, 64px)',
             overflow: 'hidden',
           }}>
             {/* Background glow */}

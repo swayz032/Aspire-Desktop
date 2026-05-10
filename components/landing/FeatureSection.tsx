@@ -123,7 +123,7 @@ function FeatureSectionInner({ feature, index }: FeatureSectionProps) {
 
   return (
     <section style={{
-      padding: '80px 80px',
+      padding: 'clamp(56px, 7vw, 80px) clamp(20px, 5vw, 80px)',
       background: index % 2 === 0 ? '#050508' : '#070710',
       fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif',
     }}>
@@ -132,7 +132,7 @@ function FeatureSectionInner({ feature, index }: FeatureSectionProps) {
         margin: '0 auto',
         display: 'grid',
         gridTemplateColumns: '1fr 1fr',
-        gap: 80,
+        gap: 'clamp(32px, 5vw, 80px)',
         alignItems: 'center',
       }}>
         {/* Visual */}
@@ -194,6 +194,10 @@ function FeatureSectionInner({ feature, index }: FeatureSectionProps) {
               background: `${feature.accentLight}`,
               border: `1px solid ${feature.accent}33`,
               transition: 'all 0.2s ease',
+              minHeight: 44, // tablet tap target
+              boxSizing: 'border-box',
+              WebkitTapHighlightColor: 'transparent',
+              touchAction: 'manipulation',
             }}
             onMouseEnter={(e) => {
               const el = e.currentTarget as HTMLAnchorElement;
