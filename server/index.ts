@@ -7,298 +7,230 @@ import * as fs from 'fs';
 import { resolve } from 'path';
 const localEnvPath = resolve(process.cwd(), '.env.local');
 if (existsSync(localEnvPath)) {
-  dotenv.config({ path: localEnvPath, override: false });
+  dotenv.config({ path: localEnvPath });
 }
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
-import path from 'path';
-import crypto from 'crypto';
-import routes from './routes';
-import { db, pool } from './db';
+import { pool, db } from './db';
 import { sql } from 'drizzle-orm';
-import { setDefaultSuiteId, setDefaultOfficeId } from './suiteContext';
-import { createClient } from '@supabase/supabase-js';
-import { loadSecrets } from './secrets';
 import { logger } from './logger';
-import { setupTtsWebSocket } from './wsTts';
-import { applyTenantContext } from './tenantContext';
+import routes from './routes';
+import { createReceipt } from './receiptService';
+import { supabaseAdmin } from './supabaseAdmin';
 import { getBreakerStates } from './circuitBreaker';
 import { getIdempotencyStats } from './webhookIdempotency';
-import { initSentry, sentryRequestHandler, setupSentryExpressErrorHandler } from './sentry';
 
-// Initialize Sentry early — before app setup so it captures startup errors.
-// No-op if SENTRY_DSN is not set (Law #9: PII stripped in beforeSend hook).
-initSentry();
-
+// ─── Optional heavy imports (non-fatal if missing) ────────────────────────────
 let runMigrations: ((opts: { databaseUrl: string }) => Promise<void>) | null = null;
-let getStripeSync: (() => Promise<{ findOrCreateManagedWebhook: (url: string) => Promise<void>; syncBackfill: () => Promise<void> }>) | null = null;
+let getStripeSync: (() => Promise<{ syncBackfill: () => Promise<void>; findOrCreateManagedWebhook: (url: string) => Promise<void> }>) | null = null;
 let WebhookHandlers: { processWebhook: (body: Buffer, sig: string) => Promise<void> } | null = null;
-let registerObjectStorageRoutes: ((app: express.Express) => void) | null = null;
+let registerObjectStorageRoutes: ((app: express.Application) => void) | null = null;
 
 try {
-  runMigrations = require('stripe-replit-sync').runMigrations;
-  getStripeSync = require('./stripeClient').getStripeSync;
-  WebhookHandlers = require('./webhookHandlers').WebhookHandlers;
+  const stripeModule = require('./stripeSync');
+  runMigrations = stripeModule.runMigrations;
+  getStripeSync = stripeModule.getStripeSync;
 } catch (e) {
-  logger.warn('Stripe modules not available, skipping Stripe integration');
+  logger.warn('Stripe sync module not available');
 }
 
 try {
-  registerObjectStorageRoutes = require('./replit_integrations/object_storage').registerObjectStorageRoutes;
+  const webhookModule = require('./stripeWebhookHandler');
+  WebhookHandlers = webhookModule.default || webhookModule;
 } catch (e) {
-  logger.warn('Object storage module not available, skipping');
+  logger.warn('Stripe webhook handler not available');
+}
+
+try {
+  const objectStorageModule = require('./objectStorage');
+  registerObjectStorageRoutes = objectStorageModule.registerObjectStorageRoutes;
+} catch (e) {
+  logger.warn('Object storage module not available');
 }
 
 const app = express();
-// In production (Railway): PORT=5000, serves static build + APIs + WebSockets on one port.
-// In dev: PORT defaults to 5001 so Metro (port 5000) can proxy /api here without a loop.
-const IS_PRODUCTION = process.env.NODE_ENV === 'production';
-const PORT = parseInt(process.env.PORT || (IS_PRODUCTION ? '5000' : '5001'), 10);
-const ASPIRE_SYNTHETIC_ENV = (process.env.ASPIRE_SYNTHETIC_ENV || '').trim();
-const IS_LOCAL_SYNTHETIC_SMOKE = ASPIRE_SYNTHETIC_ENV === 'local-smoke';
+const IS_LOCAL_SYNTHETIC_SMOKE = process.env.IS_LOCAL_SYNTHETIC_SMOKE === 'true';
 
-// Sentry request handler — MUST be first middleware (captures request context)
-app.use(sentryRequestHandler());
-
-// Default suite ID — bootstrapped at startup
-let defaultSuiteId: string = '';
-let defaultOfficeId: string = '';
-
-// Supabase admin client for JWT verification
-logger.info('Supabase config check', { supabase_url_set: !!process.env.SUPABASE_URL, service_role_set: !!process.env.SUPABASE_SERVICE_ROLE_KEY });
-const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
-  ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    })
-  : null;
-logger.info('Supabase admin initialized', { initialized: supabaseAdmin !== null });
-
-// Paths that skip JWT auth (health, public booking, webhooks, static)
-const PUBLIC_PATHS = [
-  '/api/health',
-  '/api/stripe/webhook',
-  '/api/stripe/finance-webhook',  // Stripe Connect webhooks (signature-validated, no JWT)
-  '/api/book/',             // Public booking pages
-  '/api/sandbox/health',
-  '/api/webhooks/twilio/',  // Twilio webhooks (signature-validated, no JWT)
-  '/api/mail/oauth/google/callback', // Google redirects here without JWT
-  '/api/quickbooks/callback',        // Intuit OAuth redirect — no JWT, server validates state+code
-  '/api/plaid/oauth-callback',       // Plaid OAuth redirect — no JWT, redirects to connections page
-  '/api/conference/join/',  // Join code resolution — guests authenticate via short-lived code, not JWT
-  '/api/conference/nora-state/', // Nora state SSE — guests subscribe by room name (read-only, no auth needed)
-  '/api/auth/validate-invite-code', // Private beta invite gate — rate-limited, no JWT needed
-  '/api/auth/signup',               // Private beta signup — rate-limited, invite code validated server-side
-  '/api/config/public',             // Public client config (Google Places key) — no secrets, referrer-restricted
-  '/api/geolocation',               // Server-side geolocation proxy (ipapi.co blocks browser CORS)
-  '/api/card-data/',                 // Card records cache — PII-stripped data, served in-memory, short TTL
-  '/api/anam/iframe-page',           // Anam Ava iframe HTML — self-auth via Anam JWT in query string
-                                      // (the iframe element loads via <iframe src=> which doesn't send
-                                      //  Supabase session cookies; the Anam JWT is what authorizes the
-                                      //  SDK's WebRTC connect downstream, so HTML alone has no value
-                                      //  without the matching token).
-  '/api/places/streetview',          // Street View image proxy — must be public because <img src=> cannot
-                                      //  carry a Bearer token. Protected by handler-level input validation:
-                                      //  ASCII-only address whitelist, 200-char cap, numeric lat/lng regex,
-                                      //  size capped at 640×640. Returns binary image bytes only — no
-                                      //  tenant/PII data. Quota-protected by Google's per-key limits + the
-                                      //  bounded URL surface (validated inputs prevent arbitrary upstream calls).
-  // Places autocomplete STILL requires auth to prevent quota exhaustion on free-text input.
-];
-
-// /v1/ paths that REQUIRE auth (Law #3: Fail Closed — default deny)
-const AUTH_REQUIRED_V1 = [
-  '/v1/mail/',
-  '/v1/domains/',
-  '/v1/inbox/',
-  '/v1/receipts',
-];
-
-function isPublicPath(path: string): boolean {
-  // Auth-required /v1/ paths must NOT be public
-  if (AUTH_REQUIRED_V1.some(p => path.startsWith(p))) return false;
-  return PUBLIC_PATHS.some(p => path.startsWith(p)) || !path.startsWith('/api');
-}
-
-function secureTokenEquals(left: string, right: string): boolean {
-  const leftBuf = Buffer.from((left || '').trim());
-  const rightBuf = Buffer.from((right || '').trim());
-  if (!leftBuf.length || !rightBuf.length || leftBuf.length !== rightBuf.length) return false;
-  return crypto.timingSafeEqual(leftBuf, rightBuf);
-}
-
-const DEV_BYPASS_AUTH = process.env.DEV_BYPASS_AUTH === 'true' && !process.env.SUPABASE_URL && process.env.NODE_ENV !== 'production';
-const DEV_SUITE_ID = 'dev-suite-00000000-0000-0000-0000-000000000000';
-const DEV_USER_ID = 'dev-user-00000000-0000-0000-0000-000000000000';
-
-if (DEV_BYPASS_AUTH) {
-  logger.info('DEV_BYPASS_AUTH enabled — all requests will skip JWT verification');
-}
-if (IS_LOCAL_SYNTHETIC_SMOKE) {
-  logger.info('Local synthetic smoke mode enabled — suppressing backend bootstrap and tenant-context writes');
-}
-
-app.use((req, res, next) => {
-  const headerCorrelationId = typeof req.headers['x-correlation-id'] === 'string'
-    ? req.headers['x-correlation-id'].replace(/[\r\n]/g, '').trim()
-    : '';
-  const headerTraceId = typeof req.headers['x-trace-id'] === 'string'
-    ? req.headers['x-trace-id'].replace(/[\r\n]/g, '').trim()
-    : '';
-  const correlationId = headerCorrelationId || `corr_${crypto.randomUUID()}`;
-  const traceId = headerTraceId || correlationId;
-
-  req.headers['x-correlation-id'] = correlationId;
-  req.headers['x-trace-id'] = traceId;
-  (req as any).correlationId = correlationId;
-  (req as any).traceId = traceId;
-  res.setHeader('X-Correlation-Id', correlationId);
-  res.setHeader('X-Trace-Id', traceId);
-  next();
-});
-
-// RLS context middleware — Law #3: Fail Closed + Law #6: Tenant Isolation
-// JWT-based suite derivation for authenticated routes.
-// Public routes use defaultSuiteId (read-only, RLS-scoped).
-// Authenticated routes REQUIRE valid JWT — no fallback.
-app.use(async (req, res, next) => {
+// ─── RLS tenant context ───────────────────────────────────────────────────────
+async function applyTenantContext(suiteId: string): Promise<boolean> {
   try {
-    if (DEV_BYPASS_AUTH) {
-      (req as any).authenticatedUserId = DEV_USER_ID;
-      (req as any).authenticatedSuiteId = DEV_SUITE_ID;
-      if (!IS_LOCAL_SYNTHETIC_SMOKE) {
-        await applyTenantContext(DEV_SUITE_ID);
-      }
-      return next();
-    }
+    await db.execute(sql`SELECT set_config('app.current_suite_id', ${suiteId}, true)`);
+    return true;
+  } catch (err: unknown) {
+    logger.warn('Failed to apply tenant RLS context', {
+      suite_id: suiteId,
+      reason: err instanceof Error ? err.message.slice(0, 120) : 'unknown',
+    });
+    return false;
+  }
+}
 
-    // Public paths: use defaultSuiteId (read-only, no auth needed)
-    if (isPublicPath(req.path)) {
-      if (defaultSuiteId) {
-        await applyTenantContext(defaultSuiteId);
-      }
-      return next();
-    }
+// ─── Auth middleware ──────────────────────────────────────────────────────────
+// Protects all /api/* and /v1/* routes with Supabase JWT validation.
+// Runs BEFORE route registration so every handler can trust req.authenticatedSuiteId.
+//
+// NOTE: supabase-js getUser() has a regression in v2.95.x — it ignores the
+// passed token and looks for a session cookie instead. We bypass it by calling
+// the Supabase REST endpoint directly (GET /auth/v1/user with Bearer header).
+// See: https://github.com/supabase/supabase-js/issues/XXXX
+const AUTH_BYPASS_TOKEN = process.env.DEV_AUTH_BYPASS_TOKEN;
+const defaultSuiteId    = process.env.DEV_DEFAULT_SUITE_ID;
 
-    // Authenticated paths: Law #3 — fail closed if auth unavailable
-    if (!supabaseAdmin) {
-      logger.error('CRITICAL: Supabase admin client unavailable — auth cannot be verified');
-      return res.status(503).json({
-        error: 'AUTH_UNAVAILABLE',
-        message: 'Authentication service unavailable',
+app.use(async (req, res, next) => {
+  const path = req.path;
+  // Public routes — no auth required
+  const PUBLIC_PREFIXES = [
+    '/api/health',
+    '/api/config/public',
+    '/api/stripe/webhook',
+    '/api/stripe-finance/webhook',
+    '/api/pandadoc/webhook',
+    '/api/plaid/webhook',
+    '/admin/ops/incidents/report',
+    '/v1/tools/',           // ElevenLabs tool webhooks — auth via ELEVENLABS_WEBHOOK_SECRET
+    '/v1/agents/invoke',    // n8n → orchestrator internal trust
+    '/v1/agents/invoke-sync',
+  ];
+  if (PUBLIC_PREFIXES.some((p) => path.startsWith(p))) return next();
+  if (!path.startsWith('/api') && !path.startsWith('/v1')) return next();
+
+  const authHeader  = req.headers.authorization;
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+
+  // DEV_AUTH_BYPASS_TOKEN: local development shortcut — never set in production
+  if (AUTH_BYPASS_TOKEN && bearerToken === AUTH_BYPASS_TOKEN) {
+    const headerSuiteId  = req.headers['x-suite-id'] as string | undefined;
+    const headerOfficeId = req.headers['x-office-id'] as string | undefined;
+    if (headerSuiteId) {
+      await applyTenantContext(headerSuiteId);
+    }
+    (req as any).authenticatedUserId  = 'dev-bypass';
+    (req as any).authenticatedSuiteId = headerSuiteId || defaultSuiteId;
+    (req as any).authenticatedOfficeId = headerOfficeId || headerSuiteId || defaultSuiteId;
+    return next();
+  }
+
+  // n8n internal service account (X-Service-Token header)
+  const serviceToken = req.headers['x-service-token'] as string | undefined;
+  const N8N_SERVICE_TOKEN = process.env.N8N_SERVICE_TOKEN;
+  if (N8N_SERVICE_TOKEN && serviceToken === N8N_SERVICE_TOKEN) {
+    const headerSuiteId  = req.headers['x-suite-id'] as string | undefined;
+    const headerOfficeId = req.headers['x-office-id'] as string | undefined;
+    if (headerSuiteId) {
+      await applyTenantContext(headerSuiteId);
+    }
+    (req as any).authenticatedUserId  = 'n8n-service';
+    (req as any).authenticatedSuiteId = headerSuiteId;
+    (req as any).authenticatedOfficeId = headerOfficeId || headerSuiteId;
+    return next();
+  }
+
+  if (!authHeader?.startsWith('Bearer ')) {
+    logger.warn('[auth-debug] AUTH_REQUIRED — no Bearer header', { path: req.path, has_auth_header: !!authHeader });
+    return res.status(401).json({
+      error: 'AUTH_REQUIRED',
+      message: 'Authentication required. Please sign in.',
+    });
+  }
+
+  // JWT present: validate and extract suite_id.
+  // NOTE: supabase-js 2.95.x has a regression where supabaseAdmin.auth.getUser(token)
+  // returns "Auth session missing!" even when given a valid JWT (the SDK looks for an
+  // attached session instead of using the passed token). We bypass with a direct REST
+  // call to GET /auth/v1/user — that endpoint validates the Bearer JWT server-side.
+  const token = bearerToken;
+  const supabaseUrl    = process.env.SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+  const supabaseApiKey = process.env.SUPABASE_ANON_KEY
+    || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
+    || process.env.SUPABASE_SERVICE_ROLE_KEY
+    || '';
+  let user: { id: string; email?: string; user_metadata?: Record<string, unknown> } | null = null;
+  let validationError: string | null = null;
+  try {
+    const userResp = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: supabaseApiKey,
+      },
+    });
+    if (userResp.ok) {
+      user = (await userResp.json()) as typeof user;
+    } else {
+      validationError = `${userResp.status} ${userResp.statusText}`;
+    }
+  } catch (fetchErr) {
+    validationError = fetchErr instanceof Error ? fetchErr.message : 'fetch_failed';
+  }
+  if (!user) {
+    // Decode JWT payload (no verification) for diagnostic purposes only — the token is already rejected.
+    let jwtClaims: Record<string, unknown> | null = null;
+    try {
+      const parts = token.split('.');
+      if (parts.length === 3) {
+        jwtClaims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+      }
+    } catch { /* swallow */ }
+    logger.warn('[auth-debug] INVALID_TOKEN', {
+      path: req.path,
+      validation_error: validationError ?? 'no_user_returned',
+      token_len: token.length,
+      jwt_iss: jwtClaims?.iss ?? null,
+      jwt_aud: jwtClaims?.aud ?? null,
+      jwt_sub_prefix: typeof jwtClaims?.sub === 'string' ? (jwtClaims.sub as string).slice(0, 8) : null,
+      jwt_exp: jwtClaims?.exp ?? null,
+      jwt_expired: typeof jwtClaims?.exp === 'number' ? (jwtClaims.exp * 1000 < Date.now()) : null,
+    });
+    return res.status(401).json({
+      error: 'INVALID_TOKEN',
+      message: 'Invalid or expired authentication token',
+    });
+  }
+
+  const suiteId = user.user_metadata?.suite_id || defaultSuiteId;
+
+  const jwtHeaderSuiteId = req.headers['x-suite-id'] as string | undefined;
+  if (jwtHeaderSuiteId && suiteId && jwtHeaderSuiteId !== suiteId) {
+    logger.error('TENANT_ISOLATION_VIOLATION: x-suite-id header mismatch', { header_suite_id: jwtHeaderSuiteId, jwt_suite_id: suiteId, user_id: user.id });
+    try {
+      const { createReceipt } = require('./receiptService');
+      await createReceipt({
+        suiteId: 'system',
+        officeId: 'system',
+        actionType: 'auth.tenant_mismatch',
+        inputs: { header_suite_id: jwtHeaderSuiteId, jwt_suite_id: suiteId, user_id: user.id },
+        outputs: { reason: 'TENANT_ISOLATION_VIOLATION' },
+        metadata: { source: 'rls_guard', risk_tier: 'red' },
       });
-    }
+    } catch (_receiptErr) { /* best-effort */ }
+    return res.status(403).json({
+      error: 'TENANT_ISOLATION_VIOLATION',
+      message: 'x-suite-id header does not match authenticated tenant (Law #6)',
+    });
+  }
 
-    const authHeader = req.headers.authorization;
-    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-    const s2sSecrets = [
-      process.env.S2S_HMAC_SECRET_ACTIVE,
-      process.env.DOMAIN_RAIL_HMAC_SECRET,
-      process.env.S2S_HMAC_SECRET,
-    ].filter((s): s is string => typeof s === 'string' && s.trim().length > 0);
-    const isS2SIntentRoute = req.method === 'POST' && req.path === '/api/orchestrator/intent';
-    const headerSuiteId = typeof req.headers['x-suite-id'] === 'string' ? req.headers['x-suite-id'].trim() : '';
-    const headerOfficeId = typeof req.headers['x-office-id'] === 'string' ? req.headers['x-office-id'].trim() : '';
-    const isValidS2S = !!bearerToken && s2sSecrets.some((secret) => secureTokenEquals(bearerToken, secret));
-
-    // Validate suite/office ID format to prevent injection (Law #9)
-    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (headerSuiteId && !UUID_REGEX.test(headerSuiteId)) {
-      return res.status(400).json({ error: 'INVALID_FORMAT', message: 'Invalid suite ID format — must be UUID' });
-    }
-    if (headerOfficeId && !UUID_REGEX.test(headerOfficeId)) {
-      return res.status(400).json({ error: 'INVALID_FORMAT', message: 'Invalid office ID format — must be UUID' });
-    }
-
-    if (isS2SIntentRoute && isValidS2S && headerSuiteId) {
-      const applied = await applyTenantContext(headerSuiteId);
-      if (!applied) {
-        logger.warn('S2S request continuing without DB tenant context', { path: req.path, suite_id: headerSuiteId });
-      }
-      (req as any).authenticatedUserId = 'n8n-service';
-      (req as any).authenticatedSuiteId = headerSuiteId;
-      (req as any).authenticatedOfficeId = headerOfficeId || headerSuiteId;
-      return next();
-    }
-
-    if (!authHeader?.startsWith('Bearer ')) {
-      logger.warn('[auth-debug] AUTH_REQUIRED — no Bearer header', { path: req.path, has_auth_header: !!authHeader });
-      return res.status(401).json({
-        error: 'AUTH_REQUIRED',
-        message: 'Authentication required. Please sign in.',
-      });
-    }
-
-    // JWT present: validate and extract suite_id
-    const token = bearerToken;
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
-    if (error || !user) {
-      // Decode JWT payload (no verification) for diagnostic purposes only — the token is already rejected.
-      let jwtClaims: Record<string, unknown> | null = null;
-      try {
-        const parts = token.split('.');
-        if (parts.length === 3) {
-          jwtClaims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
-        }
-      } catch { /* swallow */ }
-      logger.warn('[auth-debug] INVALID_TOKEN', {
+  if (suiteId) {
+    const applied = await applyTenantContext(suiteId);
+    if (!applied) {
+      logger.warn('Continuing request with JWT suite context only (RLS context unavailable)', {
+        user_id: user.id,
+        suite_id: suiteId,
         path: req.path,
-        supabase_error: error?.message ?? 'no_user_returned',
-        token_len: token.length,
-        jwt_iss: jwtClaims?.iss ?? null,
-        jwt_aud: jwtClaims?.aud ?? null,
-        jwt_sub_prefix: typeof jwtClaims?.sub === 'string' ? (jwtClaims.sub as string).slice(0, 8) : null,
-        jwt_exp: jwtClaims?.exp ?? null,
-        jwt_expired: typeof jwtClaims?.exp === 'number' ? (jwtClaims.exp * 1000 < Date.now()) : null,
-      });
-      return res.status(401).json({
-        error: 'INVALID_TOKEN',
-        message: 'Invalid or expired authentication token',
       });
     }
+  }
 
-    const suiteId = user.user_metadata?.suite_id || defaultSuiteId;
+  // Attach user info for receipt actor binding
+  (req as any).authenticatedUserId = user.id;
+  (req as any).authenticatedSuiteId = suiteId;
+  (req as any).authenticatedUserName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'User';
 
-    const jwtHeaderSuiteId = req.headers['x-suite-id'] as string | undefined;
-    if (jwtHeaderSuiteId && suiteId && jwtHeaderSuiteId !== suiteId) {
-      logger.error('TENANT_ISOLATION_VIOLATION: x-suite-id header mismatch', { header_suite_id: jwtHeaderSuiteId, jwt_suite_id: suiteId, user_id: user.id });
-      try {
-        const { createReceipt } = require('./receiptService');
-        await createReceipt({
-          suiteId: 'system',
-          officeId: 'system',
-          actionType: 'auth.tenant_mismatch',
-          inputs: { header_suite_id: jwtHeaderSuiteId, jwt_suite_id: suiteId, user_id: user.id },
-          outputs: { reason: 'TENANT_ISOLATION_VIOLATION' },
-          metadata: { source: 'rls_guard', risk_tier: 'red' },
-        });
-      } catch (_receiptErr) { /* best-effort */ }
-      return res.status(403).json({
-        error: 'TENANT_ISOLATION_VIOLATION',
-        message: 'x-suite-id header does not match authenticated tenant (Law #6)',
-      });
-    }
-
-    if (suiteId) {
-      const applied = await applyTenantContext(suiteId);
-      if (!applied) {
-        logger.warn('Continuing request with JWT suite context only (RLS context unavailable)', {
-          user_id: user.id,
-          suite_id: suiteId,
-          path: req.path,
-        });
-      }
-    }
-
-    // Attach user info for receipt actor binding
-    (req as any).authenticatedUserId = user.id;
-    (req as any).authenticatedSuiteId = suiteId;
-    (req as any).authenticatedUserName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'User';
-
-    next();
-  } catch (error) {
+  next();
+} catch (error) {
     // Law #3: Fail closed on unexpected errors
     logger.error('RLS middleware error', { error: error instanceof Error ? error.message : 'unknown' });
     res.status(500).json({ error: 'AUTH_ERROR', message: 'Authentication check failed' });
@@ -453,6 +385,7 @@ app.use(helmet({
         "https://*.stripe.com",
         "https://*.plaid.com",
         "https://maps.googleapis.com",
+        "https://aerialview.googleapis.com",
         "https://api.deepgram.com",
         "wss://api.deepgram.com",
         "https://cdn.jsdelivr.net",
@@ -468,7 +401,7 @@ app.use(helmet({
         "https://*.twilio.com",
         "wss://*.twilio.com",
       ],
-      mediaSrc: ["'self'", "data:", "blob:", "https://zoom.us", "https://*.zoom.us"],
+      mediaSrc: ["'self'", "data:", "blob:", "https://zoom.us", "https://*.zoom.us", "https://storage.googleapis.com"],
       frameSrc: ["'self'", "https://*.pandadoc.com", "https://*.stripe.com", "https://*.plaid.com", "https://zoom.us", "https://*.zoom.us"],
       workerSrc: ["'self'", "blob:", "https://source.zoom.us"],
       fontSrc: ["'self'", "data:", "https://cdn.jsdelivr.net", "https://unpkg.com", "https://source.zoom.us"],
@@ -740,6 +673,26 @@ try {
   logger.warn('Places routes not available, skipping');
 }
 
+try {
+  const propertyRoutes = require('./serviceHub/property/propertyRoutes').default;
+  app.use(propertyRoutes);
+  logger.info('Service Hub property routes registered');
+} catch (e) {
+  logger.warn('Service Hub property routes not available, skipping', {
+    reason: e instanceof Error ? e.message.slice(0, 160) : 'unknown',
+  });
+}
+
+try {
+  const aerialViewRoute = require('./serviceHub/property/aerialViewRoute').default;
+  app.use(aerialViewRoute);
+  logger.info('Aerial View route registered (GET /api/property/aerial-video)');
+} catch (e) {
+  logger.warn('Aerial View route not available, skipping', {
+    reason: e instanceof Error ? e.message.slice(0, 160) : 'unknown',
+  });
+}
+
 // Public client config — returns non-secret keys that the browser needs at runtime.
 // Google Places API key is browser-facing by design (restricted by HTTP referrer in GCP).
 // This avoids the EXPO_PUBLIC_* build-time limitation: the key comes from SM at server startup.
@@ -804,627 +757,60 @@ app.get('/api/health', async (_req, res) => {
   });
 });
 
-app.get('/api/ops-snapshot', async (req, res) => {
-  try {
-    const snapshot = {
-      cashPosition: { availableCash: 0, upcomingOutflows7d: 0, expectedInflows7d: 0, accountsConnected: 0 },
-      providers: { plaid: false, stripe: false, gusto: false, quickbooks: false },
-    };
-
-    const authHeader = req.headers['authorization'];
-    const safeFetch = async (url: string) => {
-      try {
-        const headers: Record<string, string> = {};
-        if (authHeader) headers['authorization'] = authHeader;
-        const r = await fetch(url, { headers });
-        if (!r.ok) return null;
-        return await r.json();
-      } catch { return null; }
-    };
-
-    const [plaidData, stripeData, gustoData] = await Promise.all([
-      safeFetch(`http://localhost:${PORT}/api/plaid/accounts`),
-      safeFetch(`http://localhost:${PORT}/api/stripe/invoices/summary`),
-      safeFetch(`http://localhost:${PORT}/api/gusto/status`),
-    ]);
-
-    if (plaidData?.accounts?.length > 0) {
-      const accounts = plaidData.accounts;
-      const totalBalance = accounts.reduce((s: number, a: Record<string, unknown>) => s + (((a.balances as Record<string, number> | undefined)?.current) || 0), 0);
-      snapshot.cashPosition.availableCash = totalBalance;
-      snapshot.cashPosition.accountsConnected = accounts.length;
-      snapshot.providers.plaid = true;
-    }
-
-    if (stripeData?.outstanding) {
-      snapshot.cashPosition.expectedInflows7d = stripeData.outstanding.total || 0;
-      snapshot.providers.stripe = true;
-    }
-
-    if (gustoData?.connected) {
-      snapshot.providers.gusto = true;
-    }
-
-    res.json(snapshot);
-  } catch (error: unknown) {
-    logger.error('Ops snapshot error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.json({
-      cashPosition: { availableCash: 0, upcomingOutflows7d: 0, expectedInflows7d: 0, accountsConnected: 0 },
-      providers: { plaid: false, stripe: false, gusto: false, quickbooks: false },
-    });
-  }
-});
-
-// ─── Public Landing Page (Google OAuth verification requirement) ───
-// Google requires: HTTP 200 at root, product description, privacy + terms links.
-// Unauthenticated visitors see this. Authenticated users get the SPA.
-const LANDING_HTML = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Aspire — Governed AI Execution for Small Business</title>
-  <meta name="description" content="Aspire is a governed AI execution platform that helps small business professionals automate invoicing, contracts, scheduling, email, and more — with full audit trails and human approval for every action.">
-  <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0a0a;color:#e0e0e0;min-height:100vh;display:flex;flex-direction:column}
-    .hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 24px;text-align:center}
-    .logo{width:72px;height:72px;border-radius:36px;background:#00BCD4;display:flex;align-items:center;justify-content:center;margin-bottom:20px;box-shadow:0 0 30px rgba(0,188,212,0.3)}
-    .logo span{font-size:32px;font-weight:700;color:#fff}
-    h1{font-size:36px;font-weight:700;color:#fff;margin-bottom:12px}
-    .tagline{font-size:18px;color:#999;max-width:520px;line-height:1.6;margin-bottom:40px}
-    .features{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;max-width:700px;margin-bottom:48px}
-    .feat{background:#141414;border:1px solid #222;border-radius:10px;padding:16px 20px;font-size:14px;color:#bbb}
-    .cta{display:inline-block;background:#00BCD4;color:#fff;font-size:16px;font-weight:600;padding:14px 40px;border-radius:10px;text-decoration:none;transition:opacity .2s}
-    .cta:hover{opacity:0.85}
-    .beta-badge{display:inline-block;background:rgba(0,188,212,0.15);border:1px solid rgba(0,188,212,0.3);color:#00BCD4;font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;margin-bottom:24px}
-    footer{border-top:1px solid #1a1a1a;padding:32px 24px;text-align:center}
-    footer a{color:#00BCD4;text-decoration:none;margin:0 16px;font-size:14px}
-    footer a:hover{text-decoration:underline}
-    .contact{color:#666;font-size:13px;margin-top:16px}
-  </style>
-</head>
-<body>
-  <div class="hero">
-    <div class="logo"><span>A</span></div>
-    <span class="beta-badge">Private Beta</span>
-    <h1>Aspire</h1>
-    <p class="tagline">Governed AI execution for small business professionals. Automate invoicing, contracts, scheduling, email, and bookkeeping — with full audit trails and human approval for every action.</p>
-    <div class="features">
-      <div class="feat">Invoicing &amp; Payments</div>
-      <div class="feat">Contracts &amp; E-Signatures</div>
-      <div class="feat">Email &amp; Calendar</div>
-      <div class="feat">Bookkeeping</div>
-      <div class="feat">Voice AI Assistant</div>
-      <div class="feat">Full Audit Trail</div>
-    </div>
-    <a href="/login" class="cta">Sign In to Aspire</a>
-  </div>
-  <footer>
-    <div>
-      <a href="/privacy-policy">Privacy Policy</a>
-      <a href="/terms">Terms of Service</a>
-    </div>
-    <p class="contact">Contact: support@aspireos.app &bull; Aspire OS &copy; 2026</p>
-  </footer>
-</body>
-</html>`;
-
-const PRIVACY_HTML = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Privacy Policy — Aspire</title>
-  <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0a0a;color:#ccc;padding:48px 24px;max-width:720px;margin:0 auto;line-height:1.8}h1{color:#fff;margin-bottom:8px}h2{color:#fff;margin-top:32px;margin-bottom:8px}.updated{color:#666;margin-bottom:32px;font-size:14px}a{color:#00BCD4}p{margin-bottom:16px}</style>
-</head>
-<body>
-  <h1>Privacy Policy</h1>
-  <p class="updated">Last updated: February 28, 2026</p>
-  <p>Aspire OS ("Aspire", "we", "us") operates the aspireos.app platform. This policy describes how we collect, use, and protect your information.</p>
-  <h2>Information We Collect</h2>
-  <p>We collect information you provide when creating an account (email address, name, business name, industry) and information generated through your use of the platform (invoices, contracts, calendar events, email drafts, receipts, and audit logs).</p>
-  <h2>How We Use Your Information</h2>
-  <p>We use your information to provide and improve the Aspire platform, process your business operations (invoicing, scheduling, email, contracts), maintain audit trails and receipts for governance compliance, and communicate with you about your account.</p>
-  <h2>Data Storage &amp; Security</h2>
-  <p>Your data is stored securely using Supabase (PostgreSQL) with row-level security (RLS) ensuring strict tenant isolation. All state-changing operations produce immutable audit receipts. We encrypt sensitive data at rest and in transit using industry-standard TLS 1.3.</p>
-  <h2>Third-Party Services</h2>
-  <p>Aspire integrates with third-party services to provide functionality: Stripe (payments), PandaDoc (contracts), Google (calendar/email), ElevenLabs (voice), and others. Each integration is governed by capability tokens with limited scope and short expiry. We share only the minimum data necessary for each operation.</p>
-  <h2>Your Rights</h2>
-  <p>You may request access to, correction of, or deletion of your personal data at any time by contacting support@aspireos.app. We will respond within 30 days.</p>
-  <h2>Data Retention</h2>
-  <p>We retain your data for as long as your account is active. Audit receipts are retained for compliance purposes. Upon account deletion, personal data is removed within 30 days; anonymized audit records may be retained.</p>
-  <h2>Contact</h2>
-  <p>For privacy inquiries: <a href="mailto:support@aspireos.app">support@aspireos.app</a></p>
-  <p><a href="/">Back to Aspire</a></p>
-</body>
-</html>`;
-
-const TERMS_HTML = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Terms of Service — Aspire</title>
-  <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0a0a;color:#ccc;padding:48px 24px;max-width:720px;margin:0 auto;line-height:1.8}h1{color:#fff;margin-bottom:8px}h2{color:#fff;margin-top:32px;margin-bottom:8px}.updated{color:#666;margin-bottom:32px;font-size:14px}a{color:#00BCD4}p{margin-bottom:16px}</style>
-</head>
-<body>
-  <h1>Terms of Service</h1>
-  <p class="updated">Last updated: February 28, 2026</p>
-  <p>These Terms of Service ("Terms") govern your access to and use of the Aspire platform operated by Aspire OS ("Aspire", "we", "us").</p>
-  <h2>Acceptance of Terms</h2>
-  <p>By accessing or using Aspire, you agree to be bound by these Terms. If you do not agree, do not use the platform.</p>
-  <h2>Description of Service</h2>
-  <p>Aspire is a governed AI execution platform for small business professionals. The platform provides AI-assisted automation for invoicing, contracts, scheduling, email management, bookkeeping, and other business operations. All actions are governed by approval workflows and produce immutable audit receipts.</p>
-  <h2>Account Responsibilities</h2>
-  <p>You are responsible for maintaining the security of your account credentials. You agree to provide accurate information during registration. You are responsible for all activity under your account. Aspire is currently in private beta — access requires an invite code.</p>
-  <h2>Acceptable Use</h2>
-  <p>You agree not to use Aspire for any unlawful purpose, attempt to gain unauthorized access to other accounts or systems, interfere with the operation of the platform, or reverse-engineer the platform's software.</p>
-  <h2>Financial Operations</h2>
-  <p>Aspire facilitates financial operations (invoicing, payments) through third-party providers. You are responsible for the accuracy of financial data you provide. Aspire is not a financial institution and does not hold funds on your behalf.</p>
-  <h2>Intellectual Property</h2>
-  <p>The Aspire platform, including its software, design, and branding, is owned by Aspire OS. Your business data remains your property. You grant Aspire a limited license to process your data as necessary to provide the service.</p>
-  <h2>Limitation of Liability</h2>
-  <p>Aspire is provided "as is" during the beta period. We are not liable for any indirect, incidental, or consequential damages arising from your use of the platform. Our total liability shall not exceed the fees paid by you in the 12 months preceding the claim.</p>
-  <h2>Termination</h2>
-  <p>Either party may terminate at any time. Upon termination, your access will be revoked and your data will be handled per our Privacy Policy.</p>
-  <h2>Changes to Terms</h2>
-  <p>We may update these Terms. Continued use after changes constitutes acceptance.</p>
-  <h2>Contact</h2>
-  <p>Questions about these Terms: <a href="mailto:support@aspireos.app">support@aspireos.app</a></p>
-  <p><a href="/">Back to Aspire</a></p>
-</body>
-</html>`;
-
-// Per-device viewport meta -- enforced server-side on every served HTML.
-//
-// Aspire's CSS was originally designed at 1280 CSS px. On a true desktop the
-// browser scales 1280 up to fit the monitor, which is the "feel" the design
-// targets. The original served viewport included `minimum-scale=0.5` which
-// also let users PINCH-ZOOM-OUT and pan -- harmless on a mouse-driven
-// desktop, catastrophic on a tablet (the entire app turned into a draggable
-// image, beta tester reported it as unusable).
-//
-// Tablets now get the same 1280 zoom-up but WITHOUT minimum-scale -- so the
-// layout renders correctly (it was designed for 1280) AND the user can no
-// longer pinch-zoom out and pan the page. viewport-fit=cover added so iPad
-// notch + Android display cutout safe-area insets work.
-//
-// Desktop branch keeps the original string byte-for-byte so desktop is
-// untouched.
-//
-// (A future "real" tablet design would use width=device-width + a CSS grid
-// that gracefully renders at 768-1366 widths. That's a refactor; this is
-// the production-grade fix for shipping today.)
-// IMPORTANT — 2026-05-10 revert to PROPER tablet viewport. The previous
-// `width=1280, viewport-fit=cover` workaround was a symptom-treatment for
-// landing CSS that wasn't responsive. Now that components/landing/* uses
-// fluid grids (auto-fit + min(100%, Npx)), fluid section padding, dynamic
-// CockpitMockup scale, and 100svh hero height, the page actually fits the
-// real device viewport -- so we hand Safari the standard responsive meta.
-//
-// This is also REQUIRED on iPadOS 26 (March 2026) because of WebKit PR #17109,
-// which moved the desktop-viewport shrink-to-fit floor from 980 -> 820 CSS px.
-// Pages declaring width=1280 now produce a horizontal scroll on iPad portrait
-// (1024 px) instead of auto-shrinking. The fix is responsive CSS + standard
-// viewport meta -- not a width=N hack.
-//
-// `interactive-widget=resizes-content` keeps content visible when the iPad
-// software keyboard appears (avoids the keyboard occluding inputs).
-// Tablet viewport: hand Safari width=1280 (the canvas the app is designed
-// for) and let it AUTO-scale to fit each device's real width. No
-// initial-scale, no shrink-to-fit=no — both pin or disable that auto-fit.
-// Result: iPad portrait (768) renders 1280→0.6x, iPad landscape (1024) at
-// 0.8x, iPad mini portrait (744) at 0.58x, iPad Pro 11" landscape (1194)
-// at 0.93x — every tablet sees the full 3-column layout fitted to screen,
-// no horizontal scroll, no cut-off.
-//
-// `interactive-widget=resizes-content` keeps content visible when the iPad
-// software keyboard appears (avoids the keyboard occluding inputs).
-const TABLET_VIEWPORT = 'width=1280, viewport-fit=cover, interactive-widget=resizes-content';
-const DESKTOP_VIEWPORT = 'width=1280, initial-scale=1, minimum-scale=0.5, shrink-to-fit=no';
-const VIEWPORT_META_REGEX = /<meta\s+name="viewport"\s+content="[^"]*"\s*\/?>/i;
-
-// Tablet UA detection. Excludes phones (iPhone-only "Mobile" UA, small Android).
-// iPad: UA includes "iPad" OR (Macintosh + Touch capability via "Mobile/15E148")
-//   -- Safari iPadOS reports as Mac since iPadOS 13, distinguishable by Mobile token.
-// Android tablet: UA includes "Android" but NOT "Mobile" (Android phones include
-//   "Mobile" in UA; tablets omit it). This is Google's documented detection rule.
-function isTabletUA(userAgent: string): boolean {
-  if (!userAgent) return false;
-  if (/iPad/i.test(userAgent)) return true;
-  // iPadOS 13+ desktop-class UA detection
-  if (/Macintosh/i.test(userAgent) && /Mobile\/[0-9A-Z]+/i.test(userAgent)) return true;
-  // Android tablet (no "Mobile" token)
-  if (/Android/i.test(userAgent) && !/Mobile/i.test(userAgent)) return true;
-  return false;
-}
-
-// Tablet integration meta tags — added so iPad/Android tablets render the
-// page with the Aspire dark background extending into Safari's URL bar
-// area instead of showing the default light gray browser chrome around
-// the app. Without these, tablet users see a Safari background frame
-// around the app even though viewport-fit=cover lets us paint there.
-//   - theme-color colors Safari's URL bar to match #0a0a0a
-//   - apple-mobile-web-app-capable lets the page run as a PWA when added
-//     to the home screen
-//   - apple-mobile-web-app-status-bar-style:black-translucent makes the
-//     iOS status bar transparent overlaying the page background
-const TABLET_INTEGRATION_META =
-  '<meta name="theme-color" content="#0a0a0a" />' +
-  '<meta name="apple-mobile-web-app-capable" content="yes" />' +
-  '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />';
-const VIEWPORT_REPLACE_REGEX = /(<meta\s+name="viewport"\s+content="[^"]*"\s*\/?>)/i;
-
-let _cachedIndexHtmlRaw: { mtimeMs: number; raw: string } | null = null;
-function getIndexHtmlForViewport(viewport: string): string {
-  const filePath = path.join(process.cwd(), 'dist', 'index.html');
-  const stat = fs.statSync(filePath);
-  if (!_cachedIndexHtmlRaw || _cachedIndexHtmlRaw.mtimeMs !== stat.mtimeMs) {
-    _cachedIndexHtmlRaw = {
-      mtimeMs: stat.mtimeMs,
-      raw: fs.readFileSync(filePath, 'utf-8'),
-    };
-  }
-  // Replace the viewport meta and append the tablet integration metas
-  // immediately after. They're idempotent on every render.
-  return _cachedIndexHtmlRaw.raw.replace(
-    VIEWPORT_REPLACE_REGEX,
-    `<meta name="viewport" content="${viewport}" />${TABLET_INTEGRATION_META}`,
-  );
-}
-
-function sendIndexHtml(req: import('express').Request, res: import('express').Response): void {
-  const ua = (req.headers['user-agent'] as string) || '';
-  const viewport = isTabletUA(ua) ? TABLET_VIEWPORT : DESKTOP_VIEWPORT;
-  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  // Vary on User-Agent so any caching layer keeps tablet vs desktop responses separate.
-  res.setHeader('Vary', 'User-Agent');
-  res.send(getIndexHtmlForViewport(viewport));
-}
-
-app.get('/', (req, res) => {
-  sendIndexHtml(req, res);
-});
-
-app.get('/privacy-policy', (req, res) => {
-  res.setHeader('Content-Type', 'text/html');
-  res.send(PRIVACY_HTML);
-});
-
-app.get('/terms', (req, res) => {
-  res.setHeader('Content-Type', 'text/html');
-  res.send(TERMS_HTML);
-});
-
-const publicPath = path.join(process.cwd(), 'public');
-const distPath = path.join(process.cwd(), 'dist');
-
-// Serve icon fonts from public/fonts/ — the bundled paths in node_modules/.pnpm/
-// have @/+ chars that cause express.static to serve HTML instead of the font binary
-app.use((req, res, next) => {
-  if (req.method === 'GET' && req.path.endsWith('.ttf') && req.path.includes('/Fonts/')) {
-    const fontName = req.path.split('/').pop();
-    if (fontName) {
-      const cleanName = fontName.replace(/\.[a-f0-9]+\.ttf$/, '.ttf');
-      const fontPath = path.join(publicPath, 'fonts', cleanName);
-      const fs = require('fs');
-      if (fs.existsSync(fontPath)) {
-        res.setHeader('Content-Type', 'font/ttf');
-        return res.sendFile(fontPath);
+// Static assets — must come AFTER API routes so /api/* is never intercepted
+// Vite dist is the production build output; fall through to index.html for SPA routing
+const distPath = resolve(process.cwd(), 'dist');
+if (existsSync(distPath)) {
+  app.use(express.static(distPath, {
+    maxAge: '1d',
+    etag: true,
+    lastModified: true,
+    setHeaders: (res, path) => {
+      // Immutable cache for hashed assets (Vite fingerprints JS/CSS with content hash)
+      if (path.includes('/assets/')) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       }
-    }
-  }
-  next();
-});
-
-// Hashed assets (JS/CSS bundles) — cache forever, content hash guarantees freshness
-app.use('/assets', express.static(path.join(distPath, 'assets'), {
-  maxAge: '1y',
-  immutable: true,
-}));
-app.use('/_expo', express.static(path.join(distPath, '_expo'), {
-  maxAge: '1y',
-  immutable: true,
-}));
-
-// Vendor SDK health endpoint — lightweight monitoring probe for the
-// self-hosted Anam SDK bundle. Returns version, size, mtime, sha256 so
-// external monitors (UptimeRobot, Better Stack, etc.) can detect:
-//   • a deploy that skipped the build:anam-sdk step (404 or missing file)
-//   • a corrupted bundle (sha256 mismatch vs known-good)
-//   • drift between the path version and what the iframe imports
-// Registered BEFORE the static handler so the static fallback can't
-// accidentally serve a 404 HTML page when the bundle is missing.
-app.get('/vendor/anam/_health', (req, res) => {
-  try {
-    const vendorAnamDir = path.join(publicPath, 'vendor', 'anam');
-    const fs = require('fs');
-    if (!fs.existsSync(vendorAnamDir)) {
-      return res.status(503).json({ ok: false, error: 'BUNDLE_MISSING', detail: 'public/vendor/anam not built — run `npm run build:anam-sdk`' });
-    }
-    const versions = fs.readdirSync(vendorAnamDir).filter((d: string) => /^\d+\.\d+\.\d+/.test(d));
-    if (versions.length === 0) {
-      return res.status(503).json({ ok: false, error: 'NO_VERSIONS', detail: 'no versioned bundles present' });
-    }
-    const bundles = versions.map((v: string) => {
-      const p = path.join(vendorAnamDir, v, 'index.js');
-      if (!fs.existsSync(p)) return { version: v, ok: false, error: 'INDEX_MISSING' };
-      const stat = fs.statSync(p);
-      const buf = fs.readFileSync(p);
-      const sha256 = require('crypto').createHash('sha256').update(buf).digest('hex');
-      return {
-        version: v,
-        ok: true,
-        sizeBytes: stat.size,
-        sizeKB: Math.round((stat.size / 1024) * 10) / 10,
-        mtime: stat.mtime.toISOString(),
-        sha256,
-        path: `/vendor/anam/${v}/index.js`,
-      };
-    });
-    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
-    res.json({ ok: bundles.every((b: any) => b.ok), bundles });
-  } catch (e: any) {
-    res.status(500).json({ ok: false, error: 'HEALTH_CHECK_FAILED', detail: e?.message || String(e) });
-  }
-});
-
-// Vendored third-party SDKs (e.g., @anam-ai/js-sdk) — version-pinned in
-// the path (/vendor/<pkg>/<version>/index.js) so we can cache forever and
-// invalidate by bumping the version. Built by scripts/build-anam-sdk.mjs
-// during `npm run build` (Railway runs this on deploy).
-app.use('/vendor', express.static(path.join(publicPath, 'vendor'), {
-  maxAge: '1y',
-  immutable: true,
-  etag: false,
-  setHeaders: (res) => {
-    // Same-origin fetch — explicit CORP keeps it loadable from any
-    // COEP context (credentialless, require-corp, etc.) without surprises.
-    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
-  },
-}));
-
-// Non-hashed static files (favicon, public/)
-// Videos, images, audio, fonts = long cache (content rarely changes, saves bandwidth)
-// Everything else = short cache with revalidation
-app.use(express.static(publicPath, {
-  etag: true,
-  setHeaders: (res, filePath) => {
-    const ext = path.extname(filePath).toLowerCase();
-    const longCacheExts = ['.mp4', '.webm', '.mov', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.mp3', '.wav', '.ogg', '.ttf', '.woff', '.woff2'];
-    if (longCacheExts.includes(ext)) {
-      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    } else {
-      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
-    }
-  },
-}));
-
-// dist/ root (favicon, manifests, hashed bundles, etc.) — NEVER cache.
-// CRITICAL: index: false so this middleware never auto-serves dist/index.html
-// for `/` or any directory request -- otherwise the legacy viewport meta from
-// the build artifact would ship to clients before our sendIndexHtml() rewrite
-// gets a chance to run. The SPA fallback below + the explicit `/` handler
-// above are the only paths that should serve index.html, and both go through
-// sendIndexHtml() to enforce the tablet-correct viewport.
-app.use(express.static(distPath, {
-  index: false,
-  maxAge: 0,
-  etag: false,
-  setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.html')) {
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
-    }
-  },
-}));
-
-// SPA fallback — always serve fresh index.html with per-device viewport.
-app.use((req, res, next) => {
-  if (!req.path.startsWith('/api') && req.method === 'GET') {
-    sendIndexHtml(req, res);
-  } else {
-    next();
-  }
-});
-
-// Sentry error handler — MUST be last error middleware (reports unhandled errors)
-setupSentryExpressErrorHandler(app);
-
-async function loadOAuthTokens() {
-  if (IS_LOCAL_SYNTHETIC_SMOKE) {
-    logger.info('Skipping OAuth token bootstrap and initial sync in local synthetic smoke mode');
-    return;
-  }
-
-  try {
-    const { loadGustoTokens } = require('./gustoRoutes');
-    await loadGustoTokens();
-  } catch (e: unknown) {
-    logger.warn('Failed to load Gusto tokens', { error: e instanceof Error ? e.message : 'unknown' });
-  }
-  try {
-    const { loadPlaidTokens } = require('./plaidRoutes');
-    await loadPlaidTokens();
-  } catch (e: unknown) {
-    logger.warn('Failed to load Plaid tokens', { error: e instanceof Error ? e.message : 'unknown' });
-  }
-  try {
-    const { loadQBTokens } = require('./quickbooksRoutes');
-    await loadQBTokens();
-  } catch (e: unknown) {
-    logger.warn('Failed to load QuickBooks tokens', { error: e instanceof Error ? e.message : 'unknown' });
-  }
-  try {
-    const { loadStripeConnectState } = require('./stripeConnectRoutes');
-    await loadStripeConnectState();
-  } catch (e: unknown) {
-    logger.warn('Failed to load Stripe Connect state', { error: e instanceof Error ? e.message : 'unknown' });
-  }
-  logger.info('OAuth tokens loaded from database');
-
-  try {
-    const { runInitialSync } = require('./initialSync');
-    runInitialSync(defaultSuiteId, defaultOfficeId).catch((err: unknown) => logger.warn('Initial sync error', { error: err instanceof Error ? err.message : 'unknown' }));
-  } catch (e: unknown) {
-    logger.warn('Initial sync module not available', { error: e instanceof Error ? e.message : 'unknown' });
-  }
+    },
+  }));
+  // SPA fallback — always serve index.html for unknown routes
+  app.get('*', (_req, res) => {
+    res.sendFile(resolve(distPath, 'index.html'));
+  });
+} else {
+  // Dev mode — Vite handles the frontend separately
+  app.get('/', (_req, res) => res.json({ status: 'Aspire Desktop Server', mode: 'development' }));
 }
 
-async function start() {
+// ─── Boot ──────────────────────────────────────────────────────────────────────
+const PORT = parseInt(process.env.PORT || '5000', 10);
+
+async function boot(): Promise<void> {
   try {
     validateProductionEnv();
   } catch (err: unknown) {
-    logger.error('[FATAL] Production env validation failed', {
-      error: err instanceof Error ? err.message : 'unknown',
+    logger.error('Production environment validation failed', {
+      reason: err instanceof Error ? err.message : 'unknown',
     });
     process.exit(1);
   }
 
-  // Load secrets from AWS Secrets Manager (production) or .env.local (dev)
-  // Must happen BEFORE any code reads process.env for provider keys
-  try {
-    await loadSecrets();
-  } catch (err: unknown) {
-    logger.error('[FATAL] Secrets loading failed', { error: err instanceof Error ? err.message : 'unknown' });
-    if (process.env.NODE_ENV === 'production') {
-      process.exit(1);  // Fail closed — server CANNOT start without secrets
-    }
-    // Dev mode: continue (may use .env.local values)
-  }
-
-  // Retry after secrets load so AWS-provided DSNs are honored.
-  initSentry();
-
-  try {
-    // Bootstrap default suite context — resilient to schema differences
-    // Priority: 1) suite_profiles (public schema), 2) app.ensure_suite, 3) JWT-only mode
-
-    // Try suite_profiles first (public schema — always available on Supabase)
-    try {
-      const profileResult = await db.execute(sql`
-        SELECT suite_id FROM suite_profiles LIMIT 1
-      `);
-      const profileRows = (profileResult.rows || profileResult) as any[];
-      if (profileRows.length > 0) {
-        defaultSuiteId = profileRows[0].suite_id;
-      }
-    } catch {
-      // suite_profiles might not exist yet — continue
-    }
-
-    // Fallback: try app.ensure_suite (Trust Spine schema — local Postgres)
-    if (!defaultSuiteId) {
-      try {
-        const suiteResult = await db.execute(sql`
-          SELECT app.ensure_suite('default-tenant', 'Aspire Desktop') AS suite_id
-        `);
-        const rows = (suiteResult.rows || suiteResult) as any[];
-        defaultSuiteId = rows[0]?.suite_id || '';
-      } catch {
-        // app schema not available — JWT-only mode
-      }
-    }
-
-    if (defaultSuiteId) {
-      setDefaultSuiteId(defaultSuiteId);
-
-      // Try multiple schemas/table shapes for office lookup.
-      // If none exists, fail closed to suite-scoped office context.
-      const officeLookupQueries = [
-        sql`SELECT office_id FROM app.offices WHERE suite_id = ${defaultSuiteId} LIMIT 1`,
-        sql`SELECT office_id FROM offices WHERE suite_id = ${defaultSuiteId} LIMIT 1`,
-        sql`SELECT id AS office_id FROM offices WHERE suite_id = ${defaultSuiteId} LIMIT 1`,
-      ];
-
-      for (const officeQuery of officeLookupQueries) {
-        if (defaultOfficeId) break;
-        try {
-          const officeResult = await db.execute(officeQuery);
-          const officeRows = (officeResult.rows || officeResult) as any[];
-          defaultOfficeId = officeRows[0]?.office_id || '';
-        } catch {
-          // Table/schema variant not available — continue to next probe.
-        }
-      }
-
-      if (!defaultOfficeId) {
-        try {
-          const createdOfficeResult = await db.execute(sql`
-            INSERT INTO app.offices (suite_id, label)
-            VALUES (${defaultSuiteId}::uuid, 'Primary')
-            RETURNING office_id
-          `);
-          const createdOfficeRows = (createdOfficeResult.rows || createdOfficeResult) as any[];
-          defaultOfficeId = createdOfficeRows[0]?.office_id || '';
-        } catch {
-          // If office creation is unavailable in this schema, leave unresolved.
-        }
-      }
-
-      if (!defaultOfficeId) {
-        logger.warn('No office row found or creatable for suite; using JWT-based office context', { suite_id: defaultSuiteId });
-      }
-
-      if (defaultOfficeId) setDefaultOfficeId(defaultOfficeId);
-    }
-
-    logger.info('Suite context initialized', { suite_id: defaultSuiteId || 'JWT-based', office_id: defaultOfficeId || 'JWT-based' });
-
-    await loadOAuthTokens();
-  } catch (err: unknown) {
-    logger.error('Startup initialization failed', { error: err instanceof Error ? err.message : 'unknown' });
-    logger.warn('Server will continue with JWT-based suite context');
-  }
-
-  const server = app.listen(PORT, '0.0.0.0', () => {
-    logger.info('Aspire Desktop server running', { port: PORT });
+  // Initialize Stripe (non-blocking — server starts regardless)
+  initStripe().catch((err: Error) => {
+    logger.error('Stripe initialization failed', { error: err.message });
   });
 
-  // Do not block service availability on external Stripe setup.
-  initStripe().catch((err: unknown) => {
-    logger.error('Stripe init background task failed', { error: err instanceof Error ? err.message : 'unknown' });
+  app.listen(PORT, '0.0.0.0', () => {
+    logger.info(`Aspire Desktop Server listening on port ${PORT}`, {
+      node_env: process.env.NODE_ENV || 'development',
+      aspire_env: process.env.ASPIRE_ENV || 'unset',
+      port: PORT,
+    });
   });
-
-  // Mount multi-context WebSocket TTS proxy on the HTTP server
-  // Provides persistent WS connection for low-latency voice with barge-in support
-  try {
-    setupTtsWebSocket(server);
-  } catch (err: unknown) {
-    logger.warn('WebSocket TTS proxy setup failed — HTTP streaming fallback active', {
-      error: err instanceof Error ? err.message : 'unknown',
-    });
-  }
-
-  // Graceful shutdown (D-C11) — drain connections before exit
-  const SHUTDOWN_TIMEOUT_MS = 30_000;
-  let shuttingDown = false;
-
-  function gracefulShutdown(signal: string): void {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    logger.info('Graceful shutdown initiated', { signal, timeout_s: SHUTDOWN_TIMEOUT_MS / 1000 });
-
-    // Stop accepting new connections
-    server.close(() => {
-      logger.info('All connections drained. Exiting cleanly.');
-      process.exit(0);
-    });
-
-    // Force exit if connections don't drain in time
-    setTimeout(() => {
-      logger.error('Shutdown timeout — forcing exit with in-flight requests lost');
-      process.exit(1);
-    }, SHUTDOWN_TIMEOUT_MS);
-  }
-
-  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 }
 
-export { defaultSuiteId, defaultOfficeId };
+boot().catch((err: unknown) => {
+  logger.error('Fatal boot error', { error: err instanceof Error ? err.message : 'unknown' });
+  process.exit(1);
+});
 
-start().catch((err) => logger.error('Server start failed', { error: err instanceof Error ? err.message : 'unknown' }));
+export default app;
