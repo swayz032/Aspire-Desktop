@@ -25,7 +25,7 @@ import { CanvasTileWrapper } from '@/components/canvas/CanvasTileWrapper';
 import { useImmersion, setStageOpen, setLensOpen, setImmersionMode } from '@/lib/immersionStore';
 import { CanvasWorkspace } from '@/components/canvas/CanvasWorkspace';
 import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
-import { useBreakpoint, useTabletLayout } from '@/lib/useDesktop';
+import { useBreakpoint } from '@/lib/useDesktop';
 import { playSound } from '@/lib/soundManager';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 import { getAuthorityQueue, getCalendarEvents } from '@/lib/api';
@@ -102,11 +102,6 @@ function DesktopHomeInner() {
   const router = useRouter();
   const { mode, stageOpen, runwayState } = useImmersion();
   const { isTablet, isLaptop, width, mounted: bpMounted } = useBreakpoint();
-  // Finer tablet detection — covers iPad portrait (768), iPad landscape (1024),
-  // iPad Pro 11" both orientations (834/1194), iPad mini (744/1133), Android
-  // tablets. The legacy isTablet only catches <768; isTabletAny is the right
-  // signal for "render the tablet layout, not desktop 3-column".
-  const { isTabletAny, isTabletPortrait } = useTabletLayout();
   useGlobalKeyboard();
   const { tenant } = useTenant();
   const { session, suiteId } = useSupabase();
@@ -418,11 +413,7 @@ function DesktopHomeInner() {
     : isLaptop
       ? Canvas.layout.rightColLaptop
       : Canvas.layout.rightColDesktop;
-  // Three-column desktop layout only when NOT on any tablet (was: !isTablet
-  // which only caught <768, leaving iPad portrait (768), iPad landscape
-  // (1024), and iPad Pro 11" landscape (1194) rendering the desktop layout
-  // that doesn't fit those viewports).
-  const showThreeCol = !isTablet && !isTabletAny;
+  const showThreeCol = !isTablet;
   const columnGap = isTablet
     ? Canvas.layout.gapTablet
     : isLaptop
@@ -480,11 +471,7 @@ function DesktopHomeInner() {
               )}
 
               <ImmersionLayer depth={1}>
-              <View style={[
-                styles.threeColWrapper,
-                { gap: columnGap },
-                showThreeCol ? { height: 840 } : styles.tabletStack,
-              ]}>
+              <View style={[styles.threeColWrapper, { gap: columnGap, height: 840 }]}>
                 {showThreeCol && (
                 <View style={[styles.leftCol, { width: leftWidth }]}>
                   <CanvasTileWrapper
@@ -522,9 +509,7 @@ function DesktopHomeInner() {
                 </View>
                 )}
 
-                {/* Tablet: stack Interaction Mode + Today's Plan vertically
-                    above Ava — works on every supported tablet size from
-                    iPad mini portrait (744) to iPad Pro 11" landscape (1194). */}
+                {/* Tablet: left column content stacks above center */}
                 {!showThreeCol && (
                   <View style={styles.tabletTopRow}>
                     <CanvasTileWrapper
@@ -540,36 +525,15 @@ function DesktopHomeInner() {
                         <InteractionModePanel options={INTERACTION_MODES} />
                       </View>
                     </CanvasTileWrapper>
-                    <CanvasTileWrapper
-                      tileId="inbox_setup"
-                      mode={mode}
-                      onPress={handleTilePress}
-                      onHoverIn={handleTileHoverIn}
-                      onHoverOut={handleTileHoverOut}
-                      onContextMenu={handleContextMenu}
-                    >
-                      <View style={styles.section}>
-                        <SectionHeader
-                          title="Today's Plan"
-                          subtitle={`${planItems.length} tasks`}
-                          actionLabel="See all"
-                          onAction={() => router.push('/session/plan' as any)}
-                        />
-                        <TodayPlanTabs planItems={planItems} />
-                      </View>
-                    </CanvasTileWrapper>
                   </View>
                 )}
 
-                <View style={[styles.centerCol, !showThreeCol && styles.centerColTablet]}>
+                <View style={styles.centerCol}>
                   {/* Ava is the brain — NOT wrapped as a tile */}
                   <AvaDeskPanel />
                 </View>
 
-                <View style={[
-                  styles.rightCol,
-                  showThreeCol ? { width: rightWidth } : styles.rightColTablet,
-                ]}>
+                <View style={[styles.rightCol, { width: rightWidth }]}>
                   <View style={styles.opsSnapshotWrap}>
                     <CanvasTileWrapper
                       tileId="finance_hub"
@@ -874,28 +838,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  // ── Tablet layout (iPad mini → iPad Pro 11", Android tablets) ─────────
-  // Wrapper switches from 3-column row to a vertical stack so sections flow
-  // naturally inside the viewport instead of overflowing the hardcoded 840.
-  tabletStack: {
-    flexDirection: 'column',
-    height: 'auto',
-    minHeight: 0,
-  } as any,
   tabletTopRow: {
     width: '100%',
     marginBottom: Spacing.md,
-    gap: Spacing.md,
-  } as any,
-  centerColTablet: {
-    width: '100%',
-    minWidth: 0,
-    minHeight: 560,
-    marginBottom: Spacing.md,
-  } as any,
-  rightColTablet: {
-    width: '100%',
-    gap: Spacing.md,
   } as any,
   greeting: {
     color: Colors.text.primary,
