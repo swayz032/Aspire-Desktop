@@ -292,7 +292,17 @@ function useWebDesktopSetup() {
     const viewport = document.querySelector('meta[name="viewport"]');
     const isGuestJoinPage = window.location.pathname.startsWith('/join/');
     if (viewport && !isGuestJoinPage) {
-      viewport.setAttribute('content', 'width=1440, initial-scale=1, shrink-to-fit=no');
+      // Viewport is now set at served-HTML level (dist/index.html) and enforced
+      // by the server-side rewrite middleware in server/index.ts. Canonical:
+      //   width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content
+      //
+      // Earlier versions patched it here at runtime, but Safari iOS often
+      // ignored the post-hydration mutation -- the page was already laid out
+      // at the wrong width by then, AND minimum-scale=0.5 in the served HTML
+      // let users pinch-zoom and pan the entire app on tablet. Both root
+      // causes are now fixed before the JS bundle even loads.
+      // This block is kept as a hook point for future per-route overrides.
+      void viewport;
     }
   }, []);
 }
