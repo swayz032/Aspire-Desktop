@@ -24,47 +24,19 @@
  *   - Law #7: render layer only — clicks set `useHeroMode` state.
  */
 import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useProjectAddress } from '@/hooks/useProjectAddress';
+import { useProjectAddress, setProjectAddress } from '@/hooks/useProjectAddress';
 import { useHeroMode, type HeroMode } from '@/hooks/useHeroMode';
 import { usePropertyData } from '@/hooks/usePropertyData';
 
-// ---------------------------------------------------------------------------
-// Lazy component resolution — see header comment.
-// ---------------------------------------------------------------------------
-function tryRequire<T = any>(path: string): T | null {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return require(path) as T;
-  } catch {
-    return null;
-  }
-}
-
-const HeroSwitcher: React.ComponentType<any> | null =
-  tryRequire('@/components/service-hub/estimate-studio/visuals/HeroSwitcher')
-    ?.HeroSwitcher ?? null;
-
-const PropertyImagesGrid: React.ComponentType<any> | null =
-  tryRequire('@/components/service-hub/estimate-studio/visuals/PropertyImagesGrid')
-    ?.PropertyImagesGrid ?? null;
-
-const PropertyInsightsCard: React.ComponentType<any> | null =
-  tryRequire('@/components/service-hub/estimate-studio/visuals/PropertyInsightsCard')
-    ?.PropertyInsightsCard ?? null;
-
-const TotalBuildingAreaCard: React.ComponentType<any> | null =
-  tryRequire('@/components/service-hub/estimate-studio/visuals/TotalBuildingAreaCard')
-    ?.TotalBuildingAreaCard ?? null;
-
-const MaterialSignalsCard: React.ComponentType<any> | null =
-  tryRequire('@/components/service-hub/estimate-studio/visuals/MaterialSignalsCard')
-    ?.MaterialSignalsCard ?? null;
-
-const QuickCostIntCard: React.ComponentType<any> | null =
-  tryRequire('@/components/service-hub/estimate-studio/visuals/QuickCostIntCard')
-    ?.QuickCostIntCard ?? null;
+// Static imports — components ship in this same commit (Pass 3.2).
+import { HeroSwitcher } from '@/components/service-hub/estimate-studio/visuals/HeroSwitcher';
+import { PropertyImagesGrid } from '@/components/service-hub/estimate-studio/visuals/PropertyImagesGrid';
+import { PropertyInsightsCard } from '@/components/service-hub/estimate-studio/visuals/PropertyInsightsCard';
+import { TotalBuildingAreaCard } from '@/components/service-hub/estimate-studio/visuals/TotalBuildingAreaCard';
+import { MaterialSignalsCard } from '@/components/service-hub/estimate-studio/visuals/MaterialSignalsCard';
+import { QuickCostIntCard } from '@/components/service-hub/estimate-studio/visuals/QuickCostIntCard';
 
 export default function VisualsTab() {
   const { address } = useProjectAddress();
@@ -94,7 +66,6 @@ export default function VisualsTab() {
         onAccept={(addr) => {
           // Push the corrected address into the shared store; usePropertyData
           // will re-fire automatically.
-          const { setProjectAddress } = require('@/hooks/useProjectAddress');
           setProjectAddress(addr);
         }}
         onDismiss={retry}
@@ -109,69 +80,45 @@ export default function VisualsTab() {
   return (
     <View style={styles.container} testID="estimate-studio-visuals-tab">
       <View style={styles.heroSlot}>
-        {HeroSwitcher ? (
-          <HeroSwitcher
-            mode={mode}
-            onModeChange={setMode}
-            data={data}
-            loading={isLoading}
-          />
-        ) : (
-          <HeroFallback mode={mode} loading={isLoading} />
-        )}
+        <HeroSwitcher
+          mode={mode}
+          onModeChange={setMode}
+          data={data}
+          loading={isLoading}
+        />
       </View>
 
       <View style={styles.gridSlot}>
-        {PropertyImagesGrid ? (
-          <PropertyImagesGrid
-            photos={data?.photos}
-            activeMode={mode}
-            onLaneClick={(lane: HeroMode) => setMode(lane)}
-            loading={isLoading}
-          />
-        ) : (
-          <View style={styles.skeletonRow} />
-        )}
+        <PropertyImagesGrid
+          photos={data?.photos}
+          activeMode={mode}
+          onLaneClick={(lane: HeroMode) => setMode(lane)}
+          loading={isLoading}
+        />
       </View>
 
       <View style={styles.insightCardsRow}>
-        {PropertyInsightsCard ? (
-          <PropertyInsightsCard
-            facts={data?.facts}
-            address={data?.address}
-            loading={isLoading}
-          />
-        ) : (
-          <SkeletonCard />
-        )}
-        {TotalBuildingAreaCard ? (
-          <TotalBuildingAreaCard
-            sqft={data?.facts?.sqft}
-            stories={data?.facts?.stories}
-            loading={isLoading}
-          />
-        ) : (
-          <SkeletonCard />
-        )}
-        {MaterialSignalsCard ? (
-          <MaterialSignalsCard
-            signals={data?.signals?.materials}
-            roofType={data?.signals?.roofType}
-            loading={isLoading}
-          />
-        ) : (
-          <SkeletonCard />
-        )}
-        {QuickCostIntCard ? (
-          <QuickCostIntCard
-            costBand={data?.costBand}
-            evidenceGaps={data?.evidenceGaps}
-            loading={isLoading}
-            onRefresh={forceRefresh}
-          />
-        ) : (
-          <SkeletonCard />
-        )}
+        <PropertyInsightsCard
+          facts={data?.facts}
+          address={data?.address}
+          loading={isLoading}
+        />
+        <TotalBuildingAreaCard
+          sqft={data?.facts?.sqft}
+          stories={data?.facts?.stories}
+          loading={isLoading}
+        />
+        <MaterialSignalsCard
+          signals={data?.signals?.materials}
+          roofType={data?.signals?.roofType}
+          loading={isLoading}
+        />
+        <QuickCostIntCard
+          costBand={data?.costBand}
+          evidenceGaps={data?.evidenceGaps}
+          loading={isLoading}
+          onRefresh={forceRefresh}
+        />
       </View>
 
       {status === 'partial' && (
