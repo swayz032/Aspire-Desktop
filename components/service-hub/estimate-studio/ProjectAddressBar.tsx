@@ -92,10 +92,9 @@ export function ProjectAddressBar({
     const ctrl = new AbortController();
     abortRef.current = ctrl;
 
-    // Express server runs on a separate port (5001) from Metro (8081).
-    // EXPO_PUBLIC_SERVER_URL points at Express in dev; empty in prod (same origin).
-    const apiBase = (process.env.EXPO_PUBLIC_SERVER_URL ?? '').replace(/\/$/, '');
     setIsFetchingSuggestions(true);
+    // Metro proxies /api/* to the Express server (see metro.config.js).
+    // Use relative URL → no CORS preflight, no port mismatch.
     // Places API requires JWT (server gates it to prevent quota exhaustion).
     void (async () => {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -107,7 +106,7 @@ export function ProjectAddressBar({
       } catch {
         // No session — server will 401, dropdown stays empty. Acceptable.
       }
-      return fetch(`${apiBase}/api/places/autocomplete`, {
+      return fetch('/api/places/autocomplete', {
         method: 'POST',
         headers,
         body: JSON.stringify({ input: term }),

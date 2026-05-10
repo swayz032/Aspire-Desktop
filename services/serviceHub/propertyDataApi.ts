@@ -168,13 +168,10 @@ export function __setFetchForTests(impl: FetchFn | null): void {
 // Endpoint
 // ---------------------------------------------------------------------------
 
-// Express server is on a separate port (5001) from Metro (8081) in dev.
-// EXPO_PUBLIC_SERVER_URL points at Express; empty in prod (same origin).
-const API_BASE: string = (
-  process.env.EXPO_PUBLIC_API_URL ||
-  process.env.EXPO_PUBLIC_SERVER_URL ||
-  ''
-).replace(/\/$/, '');
+// In dev, Metro proxies /api/* to Express (see metro.config.js).
+// In prod, the Express server serves both API + static, so same-origin works.
+// Setting EXPO_PUBLIC_API_URL is only needed for unusual deploys.
+const API_BASE: string = (process.env.EXPO_PUBLIC_API_URL || '').replace(/\/$/, '');
 const ENDPOINT = '/api/service-hub/property-data';
 
 /**
