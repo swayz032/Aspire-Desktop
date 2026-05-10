@@ -8,6 +8,7 @@
     "serve": "tsx server/index.ts",
     "dev": "expo start",
     "dev:server": "tsx server/index.ts",
+    "dev:env": "node scripts/dev-env-sync.mjs",
     "dev:all": "npx concurrently -n metro,server -c blue,green \"npm run dev\" \"npm run dev:server\"",
     "build": "npm run build:anam-sdk && npm run build:static",
     "build:anam-sdk": "node scripts/build-anam-sdk.mjs",
