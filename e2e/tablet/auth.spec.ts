@@ -18,7 +18,7 @@
 
 import { expect, test, type Page } from '@playwright/test';
 
-const TOUCH_TARGET_FLOOR_PX = 44; // Apple HIG; Material/our token is 48 — we keep slack.
+const TOUCH_TARGET_FLOOR_PX = 48; // Aspire mandate -- universal floor satisfying Apple HIG (44pt) + Material 3 (48dp) + WCAG 2.2 at once.
 
 async function expectNoHorizontalOverflow(page: Page, label: string): Promise<void> {
   const overflow = await page.evaluate(() => {

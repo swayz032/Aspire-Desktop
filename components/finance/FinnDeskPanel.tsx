@@ -1241,7 +1241,9 @@ const styles = StyleSheet.create({
       maxWidth: 520,
       width: '100%',
       alignSelf: 'center',
-      height: 'calc(100vh - 40px)',
+      // Use --dvh-100 (set by useDynamicViewportHeight in lib/useDesktop.ts) so
+      // Safari iOS URL bar collapse doesn't clip the bottom of this panel on iPad.
+      height: 'calc(var(--dvh-100, 100vh) - 40px)',
       margin: '20px auto',
     } : {
       flex: 1,

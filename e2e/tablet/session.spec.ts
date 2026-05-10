@@ -70,9 +70,9 @@ test.describe('Tablet session screens — layout + viewport + touch targets', ()
     // The fullscreen shell uses position:fixed + top/bottom:0, so it should
     // resolve against window.innerHeight regardless of Safari URL bar state.
     expect(dims.innerH).toBeGreaterThan(0);
-    // Body should not exceed innerHeight by more than 1 viewport (would
-    // indicate the page is scrolling beyond the visible area).
-    expect(dims.bodyH).toBeLessThanOrEqual(dims.innerH * 2);
+    // The fullscreen video shell must fit EXACTLY one viewport height.
+    // 8px tolerance covers sub-pixel rounding + any scrollbar reservation.
+    expect(dims.bodyH).toBeLessThanOrEqual(dims.innerH + 8);
   });
 
   test('conference-lobby page renders without horizontal scroll', async ({ page }) => {

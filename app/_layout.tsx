@@ -750,9 +750,15 @@ function RootLayout() {
       style.id = 'aspire-viewport-lock';
       style.textContent = `
         html, body, #root {
-          overflow: hidden !important;
+          /* overflow:hidden (no !important) so landing.tsx can override with
+             body.style.overflow='auto' for vertical scroll. App routes still get
+             the lock because nothing else sets overflow inline.
+             max-height uses --dvh-100 (set by useDynamicViewportHeight) so on
+             Safari iOS the cap matches the visible viewport, not the inflated
+             100vh that includes the URL bar. */
+          overflow: hidden;
           height: 100% !important;
-          max-height: 100vh !important;
+          max-height: var(--dvh-100, 100vh) !important;
           margin: 0 !important;
           padding: 0 !important;
           width: 100% !important;
@@ -766,6 +772,22 @@ function RootLayout() {
       `;
       document.head.appendChild(style);
     }
+
+    // Eager-install the --dvh-100 CSS var the viewport-lock above depends on.
+    // useDynamicViewportHeight() only installs lazily on first hook call, but
+    // the viewport-lock CSS references --dvh-100 immediately so we set it here
+    // and listen for resize/orientationchange so Safari iOS URL bar collapse
+    // updates the cap in real time.
+    const setDvh = () => {
+      document.documentElement.style.setProperty('--dvh-100', `${window.innerHeight}px`);
+    };
+    setDvh();
+    window.addEventListener('resize', setDvh);
+    window.addEventListener('orientationchange', setDvh);
+    return () => {
+      window.removeEventListener('resize', setDvh);
+      window.removeEventListener('orientationchange', setDvh);
+    };
   }, []);
 
   // Inject Ionicons font via CSS on web — the Metro-bundled .ttf path inside

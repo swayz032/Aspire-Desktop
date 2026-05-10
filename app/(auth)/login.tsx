@@ -19,6 +19,14 @@ import { useTabletLayout, useDynamicViewportHeight, useVisualViewport } from '@/
 import { useSafeAreaInsetsCompat } from '@/lib/safeArea';
 import { TOUCH_TARGET_MIN } from '@/constants/tokens';
 
+// iOS Safari fires synthesized mouseenter/leave events on every tap, which makes
+// any onMouseEnter that mutates style flicker visibly on touch. This helper short-
+// circuits when the device has no real pointer (touch-only tablets/phones).
+const _isFinePointer = (): boolean => {
+  if (typeof window === 'undefined' || !window.matchMedia) return true;
+  return window.matchMedia('(pointer: fine)').matches;
+};
+
 type AuthMode = 'signin' | 'signup';
 type RouteTarget = ReturnType<typeof useRouter>;
 type ErrorSetter = React.Dispatch<React.SetStateAction<string | null>>;
@@ -546,8 +554,8 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive, isTablet = f
                 // Touch-target floor on tablet — meets HIG 44pt + Material 48dp.
                 minHeight: isTablet ? TOUCH_TARGET_MIN : undefined,
               }}
-              onMouseEnter={(e: any) => { e.currentTarget.style.opacity = '0.84'; }}
-              onMouseLeave={(e: any) => { e.currentTarget.style.opacity = '1'; }}
+              onMouseEnter={(e: any) => { if (!_isFinePointer()) return; e.currentTarget.style.opacity = '0.84'; }}
+              onMouseLeave={(e: any) => { if (!_isFinePointer()) return; e.currentTarget.style.opacity = '1'; }}
             >
               Join the Waitlist
             </button>
@@ -649,8 +657,8 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive, isTablet = f
                 letterSpacing: '0.01em',
                 minHeight: isTablet ? TOUCH_TARGET_MIN : undefined,
               }}
-              onMouseEnter={(e: any) => { if (!loading) e.currentTarget.style.opacity = '0.84'; }}
-              onMouseLeave={(e: any) => { if (!loading) e.currentTarget.style.opacity = '1'; }}
+              onMouseEnter={(e: any) => { if (!_isFinePointer() || loading) return; e.currentTarget.style.opacity = '0.84'; }}
+              onMouseLeave={(e: any) => { if (!_isFinePointer() || loading) return; e.currentTarget.style.opacity = '1'; }}
             >
               {loading ? 'Please wait…' : mode === 'signin' ? 'Sign In' : 'Create Account'}
             </button>
@@ -768,9 +776,10 @@ function WebLoginScreen() {
         }
         ::placeholder { color: rgba(255,255,255,0.24) !important; }
         /* Hover styles only fire on devices with a real pointer (mouse/trackpad).
-           Without this guard, iPad Safari treats first-tap as hover and the
-           button visibly dims before the click registers — feels broken. */
-        @media (hover: none) or (pointer: coarse) {
+           Inverted guard was a bug -- it APPLIED hover on touch devices. Now: the
+           hover rule lives ONLY inside the (hover: hover) and (pointer: fine) match
+           block, so iPad Safari first-tap synthesized hover is suppressed entirely. */
+        @media (hover: hover) and (pointer: fine) {
           .aspire-login-arrow:hover { background: rgba(255,255,255,0.07) !important; }
         }
       `}</style>
@@ -850,8 +859,8 @@ function WebLoginScreen() {
                 fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center',
                 justifyContent: 'center', transition: 'background 0.2s', lineHeight: 1,
               }}
-              onMouseEnter={(e: any) => { e.currentTarget.style.background = 'rgba(255,255,255,0.13)'; }}
-              onMouseLeave={(e: any) => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; }}
+              onMouseEnter={(e: any) => { if (!_isFinePointer()) return; e.currentTarget.style.background = 'rgba(255,255,255,0.13)'; }}
+              onMouseLeave={(e: any) => { if (!_isFinePointer()) return; e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; }}
             >
               ‹
             </button>
@@ -872,8 +881,8 @@ function WebLoginScreen() {
                 fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center',
                 justifyContent: 'center', transition: 'background 0.2s', lineHeight: 1,
               }}
-              onMouseEnter={(e: any) => { e.currentTarget.style.background = 'rgba(255,255,255,0.13)'; }}
-              onMouseLeave={(e: any) => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; }}
+              onMouseEnter={(e: any) => { if (!_isFinePointer()) return; e.currentTarget.style.background = 'rgba(255,255,255,0.13)'; }}
+              onMouseLeave={(e: any) => { if (!_isFinePointer()) return; e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; }}
             >
               ›
             </button>
