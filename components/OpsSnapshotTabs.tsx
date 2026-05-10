@@ -303,11 +303,13 @@ const styles = StyleSheet.create({
   },
   cashContainer: {
     padding: Spacing.md,
+    flex: 1,
+    justifyContent: 'center',
   },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 200,
+    flex: 1,
     paddingHorizontal: Spacing.lg,
   },
   emptyStateIcon: {
@@ -651,6 +653,8 @@ const styles = StyleSheet.create({
   },
   hubContainer: {
     padding: Spacing.md,
+    flex: 1,
+    justifyContent: 'center',
   },
   hubCardWrapper: {
     borderRadius: BorderRadius.lg,
