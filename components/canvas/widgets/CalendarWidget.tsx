@@ -196,6 +196,8 @@ const s = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: Colors.surface.cardBorder,  // #2C2C2E — visible lighter border (2-tone)
+    backgroundColor: Colors.surface.card,    // restore lighter gray fill (was getting eaten by Card style override)
+    borderRadius: 16,
   },
 
   // ── Month nav ─────────────────────────────────────────────────────

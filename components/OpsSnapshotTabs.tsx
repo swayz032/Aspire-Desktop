@@ -304,7 +304,8 @@ const styles = StyleSheet.create({
   cashContainer: {
     padding: Spacing.md,
     flex: 1,
-    justifyContent: 'center',
+    display: 'flex',
+    flexDirection: 'column',
   },
   emptyContainer: {
     alignItems: 'center',
@@ -348,11 +349,13 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(79, 172, 254, 0.2)',
     overflow: 'hidden',
     marginBottom: Spacing.md,
+    flex: 1,
   },
   cashHero: {
     borderRadius: BorderRadius.lg - 1,
     padding: Spacing.xl,
     overflow: 'hidden',
+    flex: 1,
     position: 'relative',
   },
   heroGlowPrimary: {
@@ -654,7 +657,8 @@ const styles = StyleSheet.create({
   hubContainer: {
     padding: Spacing.md,
     flex: 1,
-    justifyContent: 'center',
+    display: 'flex',
+    flexDirection: 'column',
   },
   hubCardWrapper: {
     borderRadius: BorderRadius.lg,
