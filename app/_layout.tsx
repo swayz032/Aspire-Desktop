@@ -923,3 +923,4 @@ const biometricStyles = StyleSheet.create({
 
 // Wrap with Sentry error tracking (graceful — works even without DSN)
 export default Sentry.wrap(RootLayout);
+// rebuild: 2026-05-10T18:16:07Z — force fresh JS bundle for tablet fixes
