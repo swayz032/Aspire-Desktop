@@ -118,12 +118,21 @@ import { getBiometricPreference, authenticateWithBiometrics } from '@/lib/biomet
 import { useSupabaseDevTools } from '@/lib/devtools/supabasePlugin';
 import { useStoreDevTools } from '@/lib/devtools/storePlugin';
 import { prefetchCriticalAssets } from '@/lib/assetPrefetch';
+import { ensureLiveVideoCssInstalled } from '@/lib/liveVideoCss';
 
 // Initialize Sentry before any component renders
 configureSentry();
 
 // Start prefetching critical assets immediately (before any component mounts)
 prefetchCriticalAssets();
+
+// Inject the global CSS that hides UA-rendered media controls (play overlay,
+// scrubber, fullscreen button, etc.) on every <video class="aspire-live-video">.
+// Required for live MediaStream tiles (Anam Ava video chat, local camera preview)
+// and looping avatars (Ava orb / Finn orb) -- on iPad Safari and Android Chrome
+// these otherwise render a giant native play button overlay that breaks the
+// "this is a live video, not playback" mental model.
+ensureLiveVideoCssInstalled();
 
 /**
  * Global Error Boundary — prevents white screen on uncaught errors.

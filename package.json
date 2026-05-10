@@ -32,7 +32,8 @@
     "sync-agent:eli": "node scripts/sync-elevenlabs-eli.mjs",
     "sync-agent:nora": "node scripts/sync-elevenlabs-nora.mjs",
     "sync-agent:sarah-receptionist": "node scripts/sync-elevenlabs-sarah-receptionist.mjs",
-    "sync-agent:sarah-frontdesk": "node scripts/sync-elevenlabs-sarah-frontdesk.mjs"
+    "sync-agent:sarah-frontdesk": "node scripts/sync-elevenlabs-sarah-frontdesk.mjs",
+    "test:tablet": "playwright test --project=ipad-portrait --project=ipad-landscape --project=ipad-pro-12-portrait --project=ipad-pro-12-landscape --project=android-tablet-landscape --project=android-tablet-portrait"
   },
   "jest": {
     "preset": "jest-expo"
