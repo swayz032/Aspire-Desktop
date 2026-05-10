@@ -42,9 +42,12 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     backgroundColor: Colors.background.primary,
-    ...(Platform.OS === 'web' ? { 
-      height: '100vh', 
-      maxHeight: '100vh',
+    ...(Platform.OS === 'web' ? {
+      // Use --dvh-100 (eager-installed in app/_layout.tsx) so iPad Safari
+      // URL-bar visibility doesn't clip the bottom of the host shell --
+      // this wraps every authenticated screen (inbox, hubs, settings).
+      height: 'var(--dvh-100, 100vh)' as any,
+      maxHeight: 'var(--dvh-100, 100vh)' as any,
       overflow: 'hidden',
       width: '100vw',
       maxWidth: '100vw',
