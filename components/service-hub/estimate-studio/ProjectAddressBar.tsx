@@ -62,8 +62,10 @@ export function ProjectAddressBar({
   const [isFetchingSuggestions, setIsFetchingSuggestions] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
+  const [dropdownRect, setDropdownRect] = useState<{ left: number; top: number; width: number } | null>(null);
 
   const inputRef = useRef<TextInput>(null);
+  const wrapperRef = useRef<View>(null);
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -130,6 +132,26 @@ export function ProjectAddressBar({
 
     return () => ctrl.abort();
   }, [debouncedDraft]);
+
+  // Measure the input's viewport rect so the dropdown can render via fixed
+  // positioning — escapes any parent stacking context (tabs, hero, etc.).
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    if (!showDropdown) return;
+    const el = (wrapperRef.current as unknown as HTMLElement | null);
+    if (!el || typeof (el as any).getBoundingClientRect !== 'function') return;
+    const measure = () => {
+      const r = (el as any).getBoundingClientRect();
+      setDropdownRect({ left: r.left, top: r.bottom + 4, width: r.width });
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    window.addEventListener('scroll', measure, true);
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('scroll', measure, true);
+    };
+  }, [showDropdown, suggestions.length]);
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
@@ -202,7 +224,7 @@ export function ProjectAddressBar({
 
   return (
     <View style={styles.container} testID="estimate-studio-project-address-bar">
-      <View style={styles.searchWrap}>
+      <View style={styles.searchWrap} ref={wrapperRef as any}>
         <View style={styles.searchInner}>
           <Ionicons name="location-outline" size={16} color="rgba(255,255,255,0.45)" />
           <TextInput
@@ -236,7 +258,19 @@ export function ProjectAddressBar({
         </View>
 
         {dropdownVisible && (
-          <View style={styles.dropdown} testID="estimate-studio-address-suggestions">
+          <View
+            style={[
+              styles.dropdown,
+              Platform.OS === 'web' && dropdownRect
+                ? {
+                    position: 'fixed' as any,
+                    left: dropdownRect.left,
+                    top: dropdownRect.top,
+                    width: dropdownRect.width,
+                  }
+                : null,
+            ]}
+            testID="estimate-studio-address-suggestions">
             {suggestions.length === 0 && isFetchingSuggestions && (
               <View style={styles.dropdownEmpty}>
                 <ActivityIndicator size="small" color="rgba(255,255,255,0.45)" />
@@ -386,15 +420,18 @@ const styles = StyleSheet.create({
     top: 'calc(100% + 4px)' as any,
     left: 0,
     right: 0,
-    backgroundColor: '#161616',
+    // Fully opaque background — no rgba transparency, sits over tabs cleanly.
+    backgroundColor: '#0F0F11',
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.10)',
     paddingVertical: 4,
-    boxShadow: '0 8px 24px rgba(0,0,0,0.5)' as any,
+    boxShadow: '0 12px 32px rgba(0,0,0,0.65), 0 2px 6px rgba(0,0,0,0.4)' as any,
     zIndex: 10000,
     elevation: 10,
-    maxHeight: 320,
+    // minHeight prevents the dropdown from shaking when suggestions stream in.
+    minHeight: 56,
+    maxHeight: 360,
     overflow: 'hidden' as any,
   },
   dropdownEmpty: {
