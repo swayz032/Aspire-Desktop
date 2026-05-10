@@ -1,34 +1,189 @@
-import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+/**
+ * Project address bar with Google Places autocomplete dropdown.
+ *
+ * Critical UX rule: typing must NOT fire `usePropertyData`. The property
+ * fetch only runs against a **picked** (canonical) address — not partial
+ * keystrokes. Two-state model:
+ *
+ *   - `draft`        local input value (uncontrolled by store) — user typing
+ *   - `submitted`    `useProjectAddress` store — only set when user picks
+ *                    a suggestion or presses Enter on a complete address
+ *
+ * Address Validation (Stage 1 gate in propertyAggregator) verifies the
+ * picked address is real before any downstream API spends a token.
+ */
+
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  Pressable,
+  Platform,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useProjectAddress } from '@/hooks/useProjectAddress';
+import { useProjectAddress, setProjectAddress } from '@/hooks/useProjectAddress';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+type PlaceSuggestion = {
+  placeId: string;
+  mainText: string;
+  secondaryText: string;
+  fullText: string;
+};
 
 interface ProjectAddressBarProps {
-  /** Optional override (mostly for tests / Storybook). When omitted, the
-   *  bar reads + writes the shared `useProjectAddress` store. */
   initialAddress?: string;
   onAddressChange?: (address: string) => void;
   onNewProject?: () => void;
 }
+
+// ─── Component ───────────────────────────────────────────────────────────────
 
 export function ProjectAddressBar({
   initialAddress,
   onAddressChange,
   onNewProject,
 }: ProjectAddressBarProps) {
-  const { address: storedAddress, setAddress: setStoredAddress } =
-    useProjectAddress();
+  const { address: storedAddress } = useProjectAddress();
 
-  // If a parent passed `initialAddress` we honor it on mount but otherwise
-  // stay in sync with the store. Most callers use the store directly.
-  const value = initialAddress !== undefined && storedAddress.length === 0
-    ? initialAddress
-    : storedAddress;
+  // Local draft = what's in the box. Initialized to the submitted address
+  // (or initialAddress override) so a hard refresh restores the field.
+  const [draft, setDraft] = useState<string>(
+    storedAddress.length > 0 ? storedAddress : initialAddress ?? '',
+  );
+  const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [isFetchingSuggestions, setIsFetchingSuggestions] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
+
+  const inputRef = useRef<TextInput>(null);
+  const blurTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Sync draft when the store changes from elsewhere (URL deep-link).
+  useEffect(() => {
+    if (storedAddress && storedAddress !== draft && document?.activeElement !== inputRef.current) {
+      setDraft(storedAddress);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storedAddress]);
+
+  // Debounce the user's typing for autocomplete fetches.
+  const debouncedDraft = useDebouncedValue(draft, 200);
+
+  // Fetch autocomplete suggestions from /api/places/autocomplete
+  useEffect(() => {
+    const term = debouncedDraft.trim();
+    if (term.length < 2) {
+      setSuggestions([]);
+      setIsFetchingSuggestions(false);
+      return;
+    }
+
+    // Cancel any in-flight request when input changes
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
+    setIsFetchingSuggestions(true);
+    void fetch('/api/places/autocomplete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: term }),
+      signal: ctrl.signal,
+      credentials: 'include',
+    })
+      .then((r) => r.json())
+      .then((data: { suggestions?: unknown[] }) => {
+        if (ctrl.signal.aborted) return;
+        const parsed = parseSuggestions(data.suggestions ?? []);
+        setSuggestions(parsed);
+        setHighlightedIndex(parsed.length > 0 ? 0 : -1);
+        setIsFetchingSuggestions(false);
+      })
+      .catch((err) => {
+        if ((err as Error)?.name === 'AbortError') return;
+        setSuggestions([]);
+        setIsFetchingSuggestions(false);
+      });
+
+    return () => ctrl.abort();
+  }, [debouncedDraft]);
+
+  // ─── Handlers ─────────────────────────────────────────────────────────────
 
   const handleChange = (next: string) => {
-    setStoredAddress(next);
+    setDraft(next);
     onAddressChange?.(next);
+    setShowDropdown(next.trim().length >= 2);
   };
+
+  const handleFocus = () => {
+    if (blurTimerRef.current) {
+      clearTimeout(blurTimerRef.current);
+      blurTimerRef.current = null;
+    }
+    if (draft.trim().length >= 2 && suggestions.length > 0) {
+      setShowDropdown(true);
+    }
+  };
+
+  const handleBlur = () => {
+    // Delay so a click on a suggestion can register before we hide.
+    blurTimerRef.current = setTimeout(() => setShowDropdown(false), 150);
+  };
+
+  const pickSuggestion = (s: PlaceSuggestion) => {
+    setDraft(s.fullText);
+    setShowDropdown(false);
+    setSuggestions([]);
+    setHighlightedIndex(-1);
+    // Submit the canonical address to the store — this triggers usePropertyData.
+    setProjectAddress(s.fullText);
+    onAddressChange?.(s.fullText);
+    inputRef.current?.blur();
+  };
+
+  const handleSubmitEditing = () => {
+    if (highlightedIndex >= 0 && suggestions[highlightedIndex]) {
+      pickSuggestion(suggestions[highlightedIndex]);
+      return;
+    }
+    // No suggestion picked — submit raw draft. The Address Validation gate
+    // will catch malformed inputs server-side.
+    if (draft.trim().length >= 5) {
+      setProjectAddress(draft.trim());
+      setShowDropdown(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showDropdown || suggestions.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex((i) => (i + 1) % suggestions.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex((i) =>
+        i <= 0 ? suggestions.length - 1 : i - 1,
+      );
+    } else if (e.key === 'Escape') {
+      setShowDropdown(false);
+      setHighlightedIndex(-1);
+    }
+  };
+
+  // ─── Render ───────────────────────────────────────────────────────────────
+
+  const showRecentChip = draft.length === 0;
+  const dropdownVisible =
+    showDropdown && draft.trim().length >= 2 && (isFetchingSuggestions || suggestions.length > 0);
 
   return (
     <View style={styles.container} testID="estimate-studio-project-address-bar">
@@ -36,21 +191,71 @@ export function ProjectAddressBar({
         <View style={styles.searchInner}>
           <Ionicons name="location-outline" size={16} color="rgba(255,255,255,0.45)" />
           <TextInput
-            value={value}
+            ref={inputRef}
+            value={draft}
             onChangeText={handleChange}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            onSubmitEditing={handleSubmitEditing}
             placeholder="Enter property address..."
             placeholderTextColor="rgba(255,255,255,0.35)"
             style={styles.input}
             testID="estimate-studio-address-input"
+            // Keyboard nav (web only)
+            {...(Platform.OS === 'web'
+              ? { onKeyDown: handleKeyDown as unknown as undefined }
+              : {})}
+            autoCapitalize="words"
+            autoCorrect={false}
           />
-          {value.length === 0 && (
+          {showRecentChip && (
             <View style={styles.recentChip}>
               <Ionicons name="time-outline" size={12} color="rgba(255,255,255,0.45)" />
               <Text style={styles.recentChipText}>Recent</Text>
               <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.45)" />
             </View>
           )}
+          {isFetchingSuggestions && (
+            <ActivityIndicator size="small" color="rgba(255,255,255,0.45)" />
+          )}
         </View>
+
+        {dropdownVisible && (
+          <View style={styles.dropdown} testID="estimate-studio-address-suggestions">
+            {suggestions.length === 0 && isFetchingSuggestions && (
+              <View style={styles.dropdownEmpty}>
+                <ActivityIndicator size="small" color="rgba(255,255,255,0.45)" />
+                <Text style={styles.dropdownEmptyText}>Searching…</Text>
+              </View>
+            )}
+            {suggestions.map((s, i) => (
+              <Pressable
+                key={s.placeId}
+                onPress={() => pickSuggestion(s)}
+                onHoverIn={() => setHighlightedIndex(i)}
+                style={[
+                  styles.suggestionRow,
+                  highlightedIndex === i && styles.suggestionRowActive,
+                ]}
+                testID={`address-suggestion-${i}`}
+              >
+                <Ionicons
+                  name="location"
+                  size={14}
+                  color={highlightedIndex === i ? '#fbbf24' : 'rgba(255,255,255,0.45)'}
+                />
+                <View style={styles.suggestionTextWrap}>
+                  <Text style={styles.suggestionMain} numberOfLines={1}>
+                    {s.mainText}
+                  </Text>
+                  <Text style={styles.suggestionSecondary} numberOfLines={1}>
+                    {s.secondaryText}
+                  </Text>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        )}
       </View>
 
       <TouchableOpacity
@@ -75,16 +280,53 @@ export function ProjectAddressBar({
   );
 }
 
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Parse Google Places API (New) v1 autocomplete response into a normalized
+ * shape. Tolerates missing nested fields so a partial response doesn't crash.
+ */
+function parseSuggestions(raw: unknown[]): PlaceSuggestion[] {
+  const out: PlaceSuggestion[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== 'object') continue;
+    const pred = (r as Record<string, unknown>).placePrediction;
+    if (!pred || typeof pred !== 'object') continue;
+    const p = pred as Record<string, unknown>;
+    const placeId = typeof p.placeId === 'string' ? p.placeId : '';
+    if (!placeId) continue;
+
+    const textObj = p.text as Record<string, unknown> | undefined;
+    const fullText = typeof textObj?.text === 'string' ? textObj.text : '';
+
+    const sf = p.structuredFormat as Record<string, unknown> | undefined;
+    const mainTextObj = sf?.mainText as Record<string, unknown> | undefined;
+    const secondaryTextObj = sf?.secondaryText as Record<string, unknown> | undefined;
+    const mainText =
+      typeof mainTextObj?.text === 'string' ? mainTextObj.text : fullText;
+    const secondaryText =
+      typeof secondaryTextObj?.text === 'string' ? secondaryTextObj.text : '';
+
+    out.push({ placeId, mainText, secondaryText, fullText });
+  }
+  return out;
+}
+
+// ─── Styles ─────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
     paddingVertical: 8,
     marginBottom: 16,
+    zIndex: 100,
   },
   searchWrap: {
     flex: 1,
+    position: 'relative',
+    zIndex: 100,
   },
   searchInner: {
     flexDirection: 'row',
@@ -120,6 +362,56 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: 'rgba(255,255,255,0.55)',
     fontWeight: '500',
+  },
+  dropdown: {
+    position: 'absolute',
+    top: 'calc(100% + 4px)' as any,
+    left: 0,
+    right: 0,
+    backgroundColor: '#161616',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    paddingVertical: 4,
+    boxShadow: '0 8px 24px rgba(0,0,0,0.5)' as any,
+    zIndex: 200,
+    maxHeight: 320,
+    overflow: 'hidden' as any,
+  },
+  dropdownEmpty: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  dropdownEmptyText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.55)',
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  suggestionRowActive: {
+    backgroundColor: 'rgba(251,191,36,0.08)',
+  },
+  suggestionTextWrap: {
+    flex: 1,
+    gap: 1,
+  },
+  suggestionMain: {
+    fontSize: 13,
+    color: '#ffffff',
+    fontWeight: '500',
+    letterSpacing: -0.1,
+  },
+  suggestionSecondary: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.55)',
   },
   uploadButton: {
     flexDirection: 'row',
