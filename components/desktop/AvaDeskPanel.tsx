@@ -97,13 +97,9 @@ function LocalCameraPreview() {
       ) : (
         <video
           ref={videoRef as any}
-          className="aspire-live-video"
           autoPlay
           playsInline
           muted
-          controls={false}
-          disablePictureInPicture
-          disableRemotePlayback
           style={{
             width: '100%',
             height: '100%',
@@ -162,7 +158,7 @@ function AvaOrbVideoInline({ size = 320 }: { size?: number }) {
     <div style={{ position: 'relative', width: size, height: size }}>
       <video
         ref={videoRef as any}
-        className="ava-orb-video aspire-live-video"
+        className="ava-orb-video"
         src={orbSrc}
         autoPlay
         loop
@@ -170,8 +166,6 @@ function AvaOrbVideoInline({ size = 320 }: { size?: number }) {
         playsInline
         preload="auto"
         controls={false}
-        disablePictureInPicture
-        disableRemotePlayback
         style={{
           width: size,
           height: size,
@@ -1079,8 +1073,10 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     backgroundColor: '#1C1C1E',
     flex: 1,
-    height: 840,
-    maxHeight: 840,
+    // Lowered from 840 so iPad portrait + tablet viewports don't overflow.
+    // Desktop still gets 840 because threeColWrapper sets height:840 and
+    // flex:1 fills that. On tablet, parent (centerColTablet) caps at 560.
+    minHeight: 560,
   } as any,
   header: {
     paddingHorizontal: 16,
