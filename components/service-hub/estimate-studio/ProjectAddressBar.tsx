@@ -246,6 +246,8 @@ export function ProjectAddressBar({
             {suggestions.map((s, i) => (
               <Pressable
                 key={s.placeId}
+                // onPressIn fires on mousedown — beats the input's onBlur race on web.
+                onPressIn={() => pickSuggestion(s)}
                 onPress={() => pickSuggestion(s)}
                 onHoverIn={() => setHighlightedIndex(i)}
                 style={[
@@ -336,12 +338,13 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 8,
     marginBottom: 16,
-    zIndex: 100,
+    zIndex: 9999,
+    position: 'relative',
   },
   searchWrap: {
     flex: 1,
     position: 'relative',
-    zIndex: 100,
+    zIndex: 9999,
   },
   searchInner: {
     flexDirection: 'row',
@@ -389,7 +392,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
     paddingVertical: 4,
     boxShadow: '0 8px 24px rgba(0,0,0,0.5)' as any,
-    zIndex: 200,
+    zIndex: 10000,
+    elevation: 10,
     maxHeight: 320,
     overflow: 'hidden' as any,
   },
