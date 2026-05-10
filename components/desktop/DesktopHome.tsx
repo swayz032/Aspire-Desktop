@@ -471,7 +471,7 @@ function DesktopHomeInner() {
               )}
 
               <ImmersionLayer depth={1}>
-              <View style={[styles.threeColWrapper, { gap: columnGap, minHeight: 840 }]}>
+              <View style={[styles.threeColWrapper, { gap: columnGap, height: 840 }]}>
                 {showThreeCol && (
                 <View style={[styles.leftCol, { width: leftWidth }]}>
                   <CanvasTileWrapper
@@ -534,23 +534,25 @@ function DesktopHomeInner() {
                 </View>
 
                 <View style={[styles.rightCol, { width: rightWidth }]}>
-                  <CanvasTileWrapper
-                    tileId="finance_hub"
-                    mode={mode}
-                    onPress={handleTilePress}
-                    onHoverIn={handleTileHoverIn}
-                    onHoverOut={handleTileHoverOut}
-                    onContextMenu={handleContextMenu}
-                  >
-                    <View style={styles.section}>
-                      <SectionHeader title="Ops Snapshot" />
-                      <OpsSnapshotTabs
-                        cashData={liveCashData}
-                        pipelineStages={pipelineStages}
-                        businessScore={businessScore}
-                      />
-                    </View>
-                  </CanvasTileWrapper>
+                  <View style={styles.opsSnapshotWrap}>
+                    <CanvasTileWrapper
+                      tileId="finance_hub"
+                      mode={mode}
+                      onPress={handleTilePress}
+                      onHoverIn={handleTileHoverIn}
+                      onHoverOut={handleTileHoverOut}
+                      onContextMenu={handleContextMenu}
+                    >
+                      <View style={[styles.section, styles.flexSection, { height: '100%', overflow: 'hidden' }]}>
+                        <SectionHeader title="Ops Snapshot" />
+                        <OpsSnapshotTabs
+                          cashData={liveCashData}
+                          pipelineStages={pipelineStages}
+                          businessScore={businessScore}
+                        />
+                      </View>
+                    </CanvasTileWrapper>
+                  </View>
 
                   <View style={styles.calendarContainer}>
                     <CalendarWidget suiteId={tenant?.suiteId || ''} officeId="" />
@@ -758,8 +760,15 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface.card,
   },
   calendarContainer: {
-    flex: 1,
+    height: 380,
+    flexShrink: 0,
   },
+  opsSnapshotWrap: {
+    flex: 1,
+    minHeight: 0,
+    display: 'flex',
+    flexDirection: 'column',
+  } as any,
   flexSection: {
     flex: 1,
     display: 'flex',

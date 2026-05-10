@@ -328,6 +328,8 @@ const styles = StyleSheet.create({
   container: {
     padding: 0,
     overflow: 'hidden',
+    flex: 1,
+    minHeight: 0,
   },
   tabHeader: {
     flexDirection: 'row',
