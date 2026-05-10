@@ -979,7 +979,19 @@ const TERMS_HTML = `<!DOCTYPE html>
 // (A future "real" tablet design would use width=device-width + a CSS grid
 // that gracefully renders at 768-1366 widths. That's a refactor; this is
 // the production-grade fix for shipping today.)
-const TABLET_VIEWPORT = 'width=1280, initial-scale=1, shrink-to-fit=no, viewport-fit=cover';
+// IMPORTANT differences vs desktop:
+//   - shrink-to-fit DROPPED (Safari default = yes). With shrink-to-fit=no,
+//     Safari rendered 1280 of layout in the iPad's smaller visual viewport
+//     and forced a horizontal scrollbar -- user had to swipe to reach the
+//     Sign In button. shrink-to-fit=yes lets Safari auto-zoom-down so the
+//     entire 1280 layout fits in whatever the iPad screen width is.
+//   - initial-scale DROPPED. Safari computes the scale that makes the layout
+//     viewport (1280) fit in the visual viewport (834-1366 depending on iPad
+//     model + orientation). No more "page is smaller than screen with margin".
+//   - minimum-scale DROPPED -- if we lock min=initial we kill accessibility
+//     pinch-zoom. WCAG 1.4.4 requires user-zoom available.
+//   - viewport-fit=cover kept for safe-area-insets on notched iPads.
+const TABLET_VIEWPORT = 'width=1280, viewport-fit=cover';
 const DESKTOP_VIEWPORT = 'width=1280, initial-scale=1, minimum-scale=0.5, shrink-to-fit=no';
 const VIEWPORT_META_REGEX = /<meta\s+name="viewport"\s+content="[^"]*"\s*\/?>/i;
 
