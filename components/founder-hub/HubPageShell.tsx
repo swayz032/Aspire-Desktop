@@ -4,6 +4,7 @@ import { DesktopHeader } from '@/components/desktop/DesktopHeader';
 import { HubSidebar } from './HubSidebar';
 import { Colors } from '@/constants/tokens';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { useSafeAreaInsetsCompat } from '@/lib/safeArea';
 
 type Props = {
   children: React.ReactNode;
@@ -11,8 +12,9 @@ type Props = {
 };
 
 function HubPageShellInner({ children, rightRail }: Props) {
+  const insets = useSafeAreaInsetsCompat();
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }]}>
       <HubSidebar />
       <View style={styles.rightSection}>
         <DesktopHeader />

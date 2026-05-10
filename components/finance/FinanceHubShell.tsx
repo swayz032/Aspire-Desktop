@@ -3,8 +3,11 @@ import { View, StyleSheet, ScrollView, useWindowDimensions } from 'react-native'
 import { FinanceTopNav } from './FinanceTopNav';
 import { Colors } from '@/constants/tokens';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { useSafeAreaInsetsCompat } from '@/lib/safeArea';
 
-const RIGHT_RAIL_BREAKPOINT = 1100;
+// Lowered from 1100 -> 1024 so iPad portrait (1024 CSS px) keeps the right rail
+// visible instead of stacking it inline. Desktop behavior (>=1280) unchanged.
+const RIGHT_RAIL_BREAKPOINT = 1024;
 const BREAKPOINT_LAPTOP = 960;
 const BREAKPOINT_TABLET = 768;
 
@@ -15,11 +18,12 @@ type Props = {
 
 function FinanceHubShellInner({ children, rightRail }: Props) {
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsetsCompat();
   const showRailColumn = width >= RIGHT_RAIL_BREAKPOINT;
   const isTabletOrSmaller = width < BREAKPOINT_LAPTOP;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }]}>
       <FinanceTopNav isTablet={isTabletOrSmaller} />
       <View style={[styles.content, !showRailColumn && styles.contentStacked]}>
         <View style={styles.mainArea}>
