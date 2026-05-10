@@ -471,11 +471,7 @@ function DesktopHomeInner() {
               )}
 
               <ImmersionLayer depth={1}>
-              <View style={[
-                styles.threeColWrapper,
-                { gap: columnGap },
-                showThreeCol ? { height: 840 } : styles.tabletStack,
-              ]}>
+              <View style={[styles.threeColWrapper, { gap: columnGap, height: 840 }]}>
                 {showThreeCol && (
                 <View style={[styles.leftCol, { width: leftWidth }]}>
                   <CanvasTileWrapper
@@ -513,8 +509,7 @@ function DesktopHomeInner() {
                 </View>
                 )}
 
-                {/* Tablet: stack Interaction Mode + Today's Plan side-by-side
-                    above Ava on landscape, full-width-stacked on portrait. */}
+                {/* Tablet: left column content stacks above center */}
                 {!showThreeCol && (
                   <View style={styles.tabletTopRow}>
                     <CanvasTileWrapper
@@ -530,37 +525,16 @@ function DesktopHomeInner() {
                         <InteractionModePanel options={INTERACTION_MODES} />
                       </View>
                     </CanvasTileWrapper>
-                    <CanvasTileWrapper
-                      tileId="inbox_setup"
-                      mode={mode}
-                      onPress={handleTilePress}
-                      onHoverIn={handleTileHoverIn}
-                      onHoverOut={handleTileHoverOut}
-                      onContextMenu={handleContextMenu}
-                    >
-                      <View style={styles.section}>
-                        <SectionHeader
-                          title="Today's Plan"
-                          subtitle={`${planItems.length} tasks`}
-                          actionLabel="See all"
-                          onAction={() => router.push('/session/plan' as any)}
-                        />
-                        <TodayPlanTabs planItems={planItems} />
-                      </View>
-                    </CanvasTileWrapper>
                   </View>
                 )}
 
-                <View style={[styles.centerCol, !showThreeCol && styles.centerColTablet]}>
+                <View style={styles.centerCol}>
                   {/* Ava is the brain — NOT wrapped as a tile */}
                   <AvaDeskPanel />
                 </View>
 
-                <View style={[
-                  styles.rightCol,
-                  showThreeCol ? { width: rightWidth } : styles.rightColTablet,
-                ]}>
-                  <View style={[styles.opsSnapshotWrap, !showThreeCol && styles.opsSnapshotWrapTablet]}>
+                <View style={[styles.rightCol, { width: rightWidth }]}>
+                  <View style={styles.opsSnapshotWrap}>
                     <CanvasTileWrapper
                       tileId="finance_hub"
                       mode={mode}
@@ -786,14 +760,14 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface.card,
   },
   calendarContainer: {
-    height: 360,
+    height: 410,
     flexShrink: 0,
     // Outer frame matches the section pattern (lighter gray edges around
     // the darker calendar inside) — same shell as Founder/Finance Hub +
-    // Today's Plan + Interaction Mode sections. Tighter padding so the
-    // calendar grid keeps room without growing the column.
+    // Today's Plan + Interaction Mode. Restored Spacing.lg outer padding
+    // so the light-gray frame reads as thick like Founder Hub does.
     borderRadius: BorderRadius.xl,
-    padding: Spacing.sm,
+    padding: Spacing.lg,
     borderWidth: 1,
     borderColor: Colors.surface.cardBorder,
     backgroundColor: Colors.surface.card,
@@ -864,39 +838,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  // ── Tablet layout (iPad mini → iPad Pro 11" landscape, Android tablets) ──
-  // Wrapper switches from 3-column row to a vertical stack so sections flow
-  // naturally inside the viewport instead of overflowing the hardcoded 840px.
-  tabletStack: {
-    flexDirection: 'column',
-    height: 'auto',
-    minHeight: 0,
-  } as any,
-  // Tablet stacks all sections vertically — simple and works on every
-  // supported tablet size from iPad mini portrait (744) to iPad Pro 11"
-  // landscape (1194). Side-by-side optimization can be added later for
-  // landscape orientations if needed.
   tabletTopRow: {
     width: '100%',
     marginBottom: Spacing.md,
-    gap: Spacing.md,
-  } as any,
-  // Ava center column drops its 840 minHeight on tablet so it doesn't push
-  // the page past viewport. The chat dock still scrolls internally.
-  centerColTablet: {
-    width: '100%',
-    minWidth: 0,
-    minHeight: 560,
-    marginBottom: Spacing.md,
-  } as any,
-  // Right column on tablet: full-width stack of OpsSnapshot + Calendar
-  // (no fixed pixel width that would overflow portrait).
-  rightColTablet: {
-    width: '100%',
-    gap: Spacing.md,
-  } as any,
-  opsSnapshotWrapTablet: {
-    minHeight: 360,
   } as any,
   greeting: {
     color: Colors.text.primary,
