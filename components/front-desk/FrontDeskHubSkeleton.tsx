@@ -1,26 +1,26 @@
 import React from 'react';
 import { View, StyleSheet, useWindowDimensions } from 'react-native';
+import { TiffanySarahOrbVideo } from '@/components/front-desk/TiffanySarahOrbVideo';
 
 const CARD_BG = '#1C1C1E';
 const CARD_BORDER = 'rgba(255,255,255,0.07)';
 const CARD_RADIUS = 14;
+const STAGE_BG = '#000000';
 
-// Breakpoint above which we render the right rail next to the main column.
-// Below this (tablet portrait / phone) we stack vertically and let internal
-// flex ratios scale.
 const BREAKPOINT_TWO_COL = 1100;
 
 export function FrontDeskHubSkeleton() {
   const { width } = useWindowDimensions();
   const twoCol = width >= BREAKPOINT_TWO_COL;
 
-  // Card flex ratios mirror the mockup proportions (stage:workstrip ~ 7:3,
-  // messages:dialpad ~ 6:4) so all four cards fit a single viewport on any
-  // screen ≥ ~720px tall (typical desktop / laptop / tablet).
   return (
     <View style={[styles.root, twoCol ? styles.rootRow : styles.rootStack]}>
       <View style={styles.mainCol}>
-        <View style={[styles.card, { flex: 7 }]} />
+        <View style={[styles.card, styles.stageCard, { flex: 7 }]}>
+          <View style={styles.stageCenter}>
+            <TiffanySarahOrbVideo state="idle" size={360} />
+          </View>
+        </View>
         <View style={[styles.card, { flex: 3 }]} />
       </View>
       <View style={twoCol ? styles.railCol : styles.railColStacked}>
@@ -69,5 +69,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: CARD_BORDER,
     borderRadius: CARD_RADIUS,
+  },
+  stageCard: {
+    backgroundColor: STAGE_BG,
+    overflow: 'hidden',
+  },
+  stageCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
