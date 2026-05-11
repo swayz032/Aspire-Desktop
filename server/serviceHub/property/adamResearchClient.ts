@@ -27,7 +27,7 @@
  *
  * Endpoint:
  *   POST {ORCHESTRATOR_URL}/v1/agents/invoke
- *   Body: { agent, task, details: { address }, suite_id, office_id, correlation_id }
+ *   Body: { agent, task, details: "<full address string>", suite_id, office_id, correlation_id }
  */
 
 import { logger } from '../../logger';
@@ -372,7 +372,7 @@ export async function fetchAdamPropertyResearch(
   const requestBody = {
     agent: AGENT_NAME,
     task: TASK_NAME,
-    details: { address: cleanAddress },
+    details: cleanAddress,
     suite_id: suiteId,
     office_id: officeId,
     correlation_id: correlationId,
