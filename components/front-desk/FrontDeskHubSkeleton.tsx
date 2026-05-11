@@ -37,6 +37,9 @@ const styles = StyleSheet.create({
     gap: 16,
     padding: 16,
     minHeight: 0,
+    width: '100%',
+    maxWidth: 1280,
+    alignSelf: 'center',
   },
   rootRow: {
     flexDirection: 'row',
