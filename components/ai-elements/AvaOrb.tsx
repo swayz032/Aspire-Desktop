@@ -64,7 +64,7 @@ function AvaOrbInner({ size = 320 }: AvaOrbProps) {
     <div style={{ position: 'relative', width: size, height: size }}>
       <video
         ref={videoRef as any}
-        className="ava-orb-shared"
+        className="ava-orb-shared aspire-live-video"
         src={orbSrc}
         autoPlay
         loop
@@ -72,6 +72,8 @@ function AvaOrbInner({ size = 320 }: AvaOrbProps) {
         playsInline
         preload="auto"
         controls={false}
+        disablePictureInPicture
+        disableRemotePlayback
         style={{
           width: size,
           height: size,

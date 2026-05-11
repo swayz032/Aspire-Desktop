@@ -15,6 +15,17 @@ import { supabase } from '@/lib/supabase';
 import { getValidatedSession } from '@/lib/auth/validatedSession';
 import { signInWithVerifiedSession } from '@/lib/auth/passwordAuthFlow';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { useTabletLayout, useDynamicViewportHeight, useVisualViewport } from '@/lib/useDesktop';
+import { useSafeAreaInsetsCompat } from '@/lib/safeArea';
+import { TOUCH_TARGET_MIN } from '@/constants/tokens';
+
+// iOS Safari fires synthesized mouseenter/leave events on every tap, which makes
+// any onMouseEnter that mutates style flicker visibly on touch. This helper short-
+// circuits when the device has no real pointer (touch-only tablets/phones).
+const _isFinePointer = (): boolean => {
+  if (typeof window === 'undefined' || !window.matchMedia) return true;
+  return window.matchMedia('(pointer: fine)').matches;
+};
 
 type AuthMode = 'signin' | 'signup';
 type RouteTarget = ReturnType<typeof useRouter>;
@@ -294,9 +305,14 @@ interface CardProps {
   index: number;
   activeIndex: number;
   onSetActive: (i: number) => void;
+  /** True when running on iPad / Android tablet viewport (768-1279px). */
+  isTablet?: boolean;
+  /** Carousel slot horizontal stride in px — narrows on tablet to keep
+   *  neighboring (preview) cards within viewport bounds. */
+  slotStride?: number;
 }
 
-function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps) {
+function ConsoleCard({ consoleDef, index, activeIndex, onSetActive, isTablet = false, slotStride = 760 }: CardProps) {
   const router = useRouter();
   const isActive = index === activeIndex;
   const total = CONSOLES.length;
@@ -395,8 +411,13 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
     background: 'rgba(255,255,255,0.07)',
     border: `1px solid ${focused === field ? consoleDef.accent : 'rgba(255,255,255,0.11)'}`,
     borderRadius: 10,
-    padding: '13px 15px',
-    fontSize: 14,
+    // Tablet: pad to 14px vertical + 16px font => >= 48px tall hit target.
+    // Also bump font-size to >=16px on tablet so iOS Safari does NOT auto-zoom
+    // when the input gains focus (auto-zoom is the #1 cause of "form
+    // disappears under the keyboard" complaints on iPad).
+    padding: isTablet ? '14px 16px' : '13px 15px',
+    fontSize: isTablet ? 16 : 14,
+    minHeight: isTablet ? TOUCH_TARGET_MIN : undefined,
     color: '#fff',
     outline: 'none',
     boxSizing: 'border-box' as const,
@@ -416,7 +437,7 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
     fontFamily: 'inherit',
   };
 
-  const tx = offset * 760;
+  const tx = offset * slotStride;
   const scale = isActive ? 1 : 0.86;
   const opacity = isActive ? 1 : Math.abs(offset) <= 1 ? 0.5 : 0;
   const arcY = offset === 0 ? 0 : -offset * 32;
@@ -438,8 +459,20 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
         transition: 'transform 0.58s cubic-bezier(0.34,1.12,0.64,1), opacity 0.4s ease',
         opacity,
         zIndex: isActive ? 10 : 1,
-        width: 'clamp(780px, 72vw, 940px)',
-        height: 'clamp(460px, 70vh, 560px)',
+        // Tablet: card must fit inside the smallest tablet viewport (768px
+        // portrait iPad) WITHOUT triggering horizontal overflow. Floor at
+        // calc(100vw - 24px) so we always leave 12px of breathing room on
+        // each side for safe-area + arrow buttons. Desktop floor stays at
+        // 780px so the layout is byte-identical at >= 1280px (clamp picks
+        // the largest of all three values, then capped to 940px).
+        width: isTablet
+          ? 'min(calc(100vw - 24px), 940px)'
+          : 'clamp(780px, 72vw, 940px)',
+        // Tablet: cap height to dvh so Safari URL bar doesn't push the form
+        // under the chrome when it shrinks/expands.
+        height: isTablet
+          ? 'min(calc(var(--dvh-100, 100vh) - 120px), 560px)'
+          : 'clamp(460px, 70vh, 560px)',
         display: 'flex',
         flexDirection: 'row',
         borderRadius: 22,
@@ -457,8 +490,11 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
     >
       {/* ── LEFT: Form ── */}
       <div style={{
-        width: '42%',
-        padding: '52px 44px',
+        // Tablet: give the form column more breathing room (48% vs 42%) and
+        // tighter padding so 16px inputs don't cramp inside a narrow card.
+        // Desktop unchanged at 42%.
+        width: isTablet ? '48%' : '42%',
+        padding: isTablet ? '36px 28px' : '52px 44px',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
@@ -515,9 +551,11 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
                 padding: '14px 0', fontSize: 14, fontWeight: 700, color: '#fff',
                 cursor: 'pointer', border: 'none', marginTop: 2, fontFamily: 'inherit',
                 letterSpacing: '0.01em', transition: 'opacity 0.2s',
+                // Touch-target floor on tablet — meets HIG 44pt + Material 48dp.
+                minHeight: isTablet ? TOUCH_TARGET_MIN : undefined,
               }}
-              onMouseEnter={(e: any) => { e.currentTarget.style.opacity = '0.84'; }}
-              onMouseLeave={(e: any) => { e.currentTarget.style.opacity = '1'; }}
+              onMouseEnter={(e: any) => { if (!_isFinePointer()) return; e.currentTarget.style.opacity = '0.84'; }}
+              onMouseLeave={(e: any) => { if (!_isFinePointer()) return; e.currentTarget.style.opacity = '1'; }}
             >
               Join the Waitlist
             </button>
@@ -528,9 +566,12 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
             <div style={{ display: 'flex', flexDirection: 'row', borderBottom: '1px solid rgba(255,255,255,0.09)', marginBottom: 24, position: 'relative' }}>
               {(['signin', 'signup'] as AuthMode[]).map(m => (
                 <button key={m} onClick={() => switchMode(m)} style={{
-                  flex: 1, background: 'none', border: 'none', padding: '9px 0 11px',
+                  flex: 1, background: 'none', border: 'none',
+                  // Tablet: 14px vertical padding => >= 48px tap target.
+                  padding: isTablet ? '14px 0' : '9px 0 11px',
                   fontSize: 13, fontWeight: 600, color: mode === m ? '#fff' : 'rgba(255,255,255,0.35)',
                   cursor: 'pointer', transition: 'color 0.2s', fontFamily: 'inherit',
+                  minHeight: isTablet ? TOUCH_TARGET_MIN : undefined,
                 }}>
                   {m === 'signin' ? 'Sign In' : 'Sign Up'}
                 </button>
@@ -614,9 +655,10 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
                 marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 gap: 8, transition: 'opacity 0.2s, background 0.2s', fontFamily: 'inherit',
                 letterSpacing: '0.01em',
+                minHeight: isTablet ? TOUCH_TARGET_MIN : undefined,
               }}
-              onMouseEnter={(e: any) => { if (!loading) e.currentTarget.style.opacity = '0.84'; }}
-              onMouseLeave={(e: any) => { if (!loading) e.currentTarget.style.opacity = '1'; }}
+              onMouseEnter={(e: any) => { if (!_isFinePointer() || loading) return; e.currentTarget.style.opacity = '0.84'; }}
+              onMouseLeave={(e: any) => { if (!_isFinePointer() || loading) return; e.currentTarget.style.opacity = '1'; }}
             >
               {loading ? 'Please wait…' : mode === 'signin' ? 'Sign In' : 'Create Account'}
             </button>
@@ -677,6 +719,37 @@ function WebLoginScreen() {
   const [activeIndex, setActiveIndex] = useState(0);
   const active = CONSOLES[activeIndex];
 
+  // Tablet awareness — drives input/button sizing and card width clamp.
+  const { isTabletAny, width: vw } = useTabletLayout();
+  // Pre-warm the --dvh-100 CSS var (and snapshot height for layout decisions).
+  useDynamicViewportHeight();
+  // Visual viewport — true visible height on iPad Safari when the on-screen
+  // keyboard is up. `useWindowDimensions().height` does NOT shrink there.
+  const vv = useVisualViewport();
+  // Safe-area insets — non-zero on iPad with home indicator + on iPad
+  // landscape with Magic Keyboard (left/right gutters).
+  const sai = useSafeAreaInsetsCompat();
+
+  // Carousel slot stride. Desktop spec = 760px (each side card is offset by a
+  // full card-width). On tablet the card itself can be < 760, so neighboring
+  // preview cards would render off-canvas and the active card itself can spill
+  // when 100vw < 780. Narrow the stride to (cardWidth * 0.85) so previews
+  // peek in instead of disappearing entirely. Min 360 keeps separation.
+  const slotStride = isTabletAny
+    ? Math.max(360, Math.min(vw - 24, 940) * 0.85)
+    : 760;
+
+  // Keyboard avoidance: when the iOS on-screen keyboard appears, the visual
+  // viewport shrinks but window.innerHeight does NOT. Translate the carousel
+  // stage upward by half the keyboard occlusion so the focused input isn't
+  // hidden under the keyboard. Falls back to 0 on browsers without
+  // visualViewport (most desktop and all native).
+  const keyboardOffset = vv.available
+    ? Math.max(0, (typeof window !== 'undefined' ? window.innerHeight : 0) - vv.height - vv.offsetTop)
+    : 0;
+  // Only translate when occlusion exceeds 80px (filters out URL-bar resize).
+  const stageTranslateY = keyboardOffset > 80 ? -Math.round(keyboardOffset / 2) : 0;
+
   return (
     <>
       <style>{`
@@ -702,15 +775,34 @@ function WebLoginScreen() {
           transition: background-color 9999s ease-in-out 0s;
         }
         ::placeholder { color: rgba(255,255,255,0.24) !important; }
+        /* Hover styles only fire on devices with a real pointer (mouse/trackpad).
+           Inverted guard was a bug -- it APPLIED hover on touch devices. Now: the
+           hover rule lives ONLY inside the (hover: hover) and (pointer: fine) match
+           block, so iPad Safari first-tap synthesized hover is suppressed entirely. */
+        @media (hover: hover) and (pointer: fine) {
+          .aspire-login-arrow:hover { background: rgba(255,255,255,0.07) !important; }
+        }
       `}</style>
 
       <div
         data-testid="smoke-login-root"
         style={{
-        width: '100vw', height: '100vh', background: '#000000', overflow: 'hidden',
+        // Width: 100vw is fine on desktop but on iPad with Magic Keyboard the
+        // safe-area-inset-left/right are non-zero — pad them in so content
+        // doesn't sit under the rounded display corners.
+        width: '100vw',
+        // Height: use --dvh-100 on tablet (true visible viewport, no Safari
+        // URL-bar inflation). Desktop keeps 100vh — byte-identical.
+        height: isTabletAny ? 'var(--dvh-100, 100vh)' : '100vh',
+        background: '#000000', overflow: 'hidden',
         display: 'flex', flexDirection: 'column',
+        // Honor safe-area insets on tablet only (desktop is unchanged).
+        paddingTop: isTabletAny ? sai.top : 0,
+        paddingBottom: isTabletAny ? sai.bottom : 0,
+        paddingLeft: isTabletAny ? sai.left : 0,
+        paddingRight: isTabletAny ? sai.right : 0,
         fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif',
-      }}
+      } as React.CSSProperties}
       >
         {/* CAROUSEL STAGE — full viewport, no header */}
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
@@ -731,9 +823,23 @@ function WebLoginScreen() {
               transforms with backdrop-filter blur fighting on every frame
               produced jitter. Per-card animation (perspective, tilt) and
               the globe's own floatGlobe still provide motion. */}
-          <div style={{ position: 'absolute', inset: 0 } as React.CSSProperties}>
+          <div style={{
+            position: 'absolute', inset: 0,
+            // Lift the stage when the iPad on-screen keyboard is occluding the
+            // form. Smooth so the focus->translate transition isn't jarring.
+            transform: stageTranslateY ? `translateY(${stageTranslateY}px)` : undefined,
+            transition: 'transform 0.2s ease-out',
+          } as React.CSSProperties}>
             {CONSOLES.map((c, i) => (
-              <ConsoleCard key={c.id} consoleDef={c} index={i} activeIndex={activeIndex} onSetActive={setActiveIndex} />
+              <ConsoleCard
+                key={c.id}
+                consoleDef={c}
+                index={i}
+                activeIndex={activeIndex}
+                onSetActive={setActiveIndex}
+                isTablet={isTabletAny}
+                slotStride={slotStride}
+              />
             ))}
           </div>
 
@@ -741,16 +847,20 @@ function WebLoginScreen() {
           {activeIndex > 0 && (
             <button
               aria-label="Previous console"
+              className="aspire-login-arrow"
               onClick={() => setActiveIndex(i => Math.max(0, i - 1))}
               style={{
                 position: 'absolute', left: 18, top: '50%', transform: 'translateY(-50%)', zIndex: 50,
-                width: 42, height: 42, borderRadius: '50%', background: 'rgba(255,255,255,0.07)',
+                // Tablet: bump to 48x48 to meet TOUCH_TARGET_MIN. Desktop unchanged at 42.
+                width: isTabletAny ? TOUCH_TARGET_MIN : 42,
+                height: isTabletAny ? TOUCH_TARGET_MIN : 42,
+                borderRadius: '50%', background: 'rgba(255,255,255,0.07)',
                 border: '1px solid rgba(255,255,255,0.13)', color: 'rgba(255,255,255,0.72)',
                 fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center',
                 justifyContent: 'center', transition: 'background 0.2s', lineHeight: 1,
               }}
-              onMouseEnter={(e: any) => { e.currentTarget.style.background = 'rgba(255,255,255,0.13)'; }}
-              onMouseLeave={(e: any) => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; }}
+              onMouseEnter={(e: any) => { if (!_isFinePointer()) return; e.currentTarget.style.background = 'rgba(255,255,255,0.13)'; }}
+              onMouseLeave={(e: any) => { if (!_isFinePointer()) return; e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; }}
             >
               ‹
             </button>
@@ -760,16 +870,19 @@ function WebLoginScreen() {
           {activeIndex < CONSOLES.length - 1 && (
             <button
               aria-label="Next console"
+              className="aspire-login-arrow"
               onClick={() => setActiveIndex(i => Math.min(CONSOLES.length - 1, i + 1))}
               style={{
                 position: 'absolute', right: 18, top: '50%', transform: 'translateY(-50%)', zIndex: 50,
-                width: 42, height: 42, borderRadius: '50%', background: 'rgba(255,255,255,0.07)',
+                width: isTabletAny ? TOUCH_TARGET_MIN : 42,
+                height: isTabletAny ? TOUCH_TARGET_MIN : 42,
+                borderRadius: '50%', background: 'rgba(255,255,255,0.07)',
                 border: '1px solid rgba(255,255,255,0.13)', color: 'rgba(255,255,255,0.72)',
                 fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center',
                 justifyContent: 'center', transition: 'background 0.2s', lineHeight: 1,
               }}
-              onMouseEnter={(e: any) => { e.currentTarget.style.background = 'rgba(255,255,255,0.13)'; }}
-              onMouseLeave={(e: any) => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; }}
+              onMouseEnter={(e: any) => { if (!_isFinePointer()) return; e.currentTarget.style.background = 'rgba(255,255,255,0.13)'; }}
+              onMouseLeave={(e: any) => { if (!_isFinePointer()) return; e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; }}
             >
               ›
             </button>
@@ -992,21 +1105,26 @@ function LoginContent() {
 // ─── Native Styles ────────────────────────────────────────────────────────────
 const nStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0a0a0a' },
-  inner: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32, maxWidth: 420, alignSelf: 'center', width: '100%' },
+  // maxWidth bumped to 480 so it fits comfortably on tablet portrait while
+  // staying capped well below tablet landscape so the form doesn't sprawl.
+  inner: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32, maxWidth: 480, alignSelf: 'center', width: '100%' },
   logoSection: { alignItems: 'center', marginBottom: 40 },
   logoCircle: { width: 72, height: 72, borderRadius: 36, backgroundColor: '#00BCD4', justifyContent: 'center', alignItems: 'center', marginBottom: 16, shadowColor: '#00BCD4', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.4, shadowRadius: 20, elevation: 8 },
   logoText: { fontSize: 32, fontWeight: '700', color: '#fff' },
   brandName: { fontSize: 28, fontWeight: '700', color: '#fff', letterSpacing: 1 },
   tagline: { fontSize: 14, color: '#888', marginTop: 8 },
   tabContainer: { flexDirection: 'row', width: '100%', marginBottom: 24, position: 'relative', borderBottomWidth: 1, borderBottomColor: '#222' },
-  tab: { flex: 1, paddingVertical: 12, alignItems: 'center' },
+  // 14px vertical padding + 15px font => >= 48px tap target.
+  tab: { flex: 1, paddingVertical: 14, alignItems: 'center', minHeight: TOUCH_TARGET_MIN, justifyContent: 'center' },
   tabText: { fontSize: 15, fontWeight: '600', color: '#666' },
   tabTextActive: { color: '#fff' },
   tabUnderline: { position: 'absolute', bottom: 0, width: '50%', height: 2, backgroundColor: '#00BCD4' },
   formSection: { width: '100%' },
   label: { fontSize: 13, fontWeight: '600', color: '#aaa', marginBottom: 6, marginTop: 16 },
-  input: { backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#333', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, color: '#fff' },
-  actionButton: { backgroundColor: '#00BCD4', borderRadius: 10, paddingVertical: 16, alignItems: 'center', marginTop: 28 },
+  // 14px vert padding + 16px text + line-height => ~48px tall already; pin
+  // explicitly so RN web doesn't shrink below the touch-target floor.
+  input: { backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#333', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, color: '#fff', minHeight: TOUCH_TARGET_MIN },
+  actionButton: { backgroundColor: '#00BCD4', borderRadius: 10, paddingVertical: 16, alignItems: 'center', marginTop: 28, minHeight: TOUCH_TARGET_MIN, justifyContent: 'center' },
   actionButtonDisabled: { opacity: 0.6 },
   actionButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   errorBox: { backgroundColor: 'rgba(239, 68, 68, 0.15)', borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.3)', borderRadius: 8, padding: 12 },

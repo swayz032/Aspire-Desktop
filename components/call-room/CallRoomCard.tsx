@@ -9,7 +9,7 @@ import { KeypadPanel } from './KeypadPanel';
 import { TransferPanel } from './TransferPanel';
 import { ContactsPanel } from './ContactsPanel';
 import { CallRoomControls } from './CallRoomControls';
-import { useCardTilt, TILT_AMPLITUDE } from './hooks/useCardTilt';
+import { useCardTiltRef, TILT_AMPLITUDE } from './hooks/useCardTilt';
 import { useBreakpoint } from '../../lib/useDesktop';
 import type { TimeOfDayState } from './types';
 
@@ -70,7 +70,9 @@ export function CallRoomCard({
 }: CallRoomCardProps): React.ReactElement {
   const { width } = useBreakpoint();
   const sizing = useMemo(() => pickSizing(width), [width]);
-  const tilt = useCardTilt(sizing.tilt);
+  // Render-free 3D tilt — writes transform directly to the DOM via rAF
+  // instead of round-tripping through React state. See useCardTiltRef.
+  const tiltRef = useCardTiltRef(sizing.tilt);
   const isWeb = Platform.OS === 'web';
   const [rightPanel, setRightPanel] = useState<RightPanel>('ai-assist');
 
@@ -78,26 +80,21 @@ export function CallRoomCard({
     setRightPanel((current) => (current === panel ? 'ai-assist' : panel));
   const backToAssist = () => setRightPanel('ai-assist');
 
-  // Web-only: 3D card tilt for depth.
-  // NOTE: perspective is applied on the PARENT (CallRoom.cardWrap), not
-  // baked into this transform string. Safari refuses to honor a
-  // perspective() on the same element that paints backdrop-filter — that
-  // is what made the tilt look "barely moving" in canary. Keeping the
-  // transform here as pure rotateX/rotateY with the parent providing
-  // perspective is the canonical fix and works in Safari, Chrome, FF.
+  // Web-only: 3D card tilt setup styles. The transform itself is written
+  // directly to the element by useCardTiltRef on each animation frame —
+  // do NOT include `transform` here or it'll fight the rAF writes. The
+  // previous `transition: transform 220ms` was the source of visible lag:
+  // every cursor frame fought a 220ms ease-out, producing chase jitter.
+  // perspective() lives on the PARENT (CallRoom.cardWrap) — Safari refuses
+  // to honor perspective on the same element that paints backdrop-filter.
   const dynamicCardStyle =
     isWeb
       ? ({
-          transform: `rotateX(${tilt.rotateX.toFixed(2)}deg) rotateY(${tilt.rotateY.toFixed(2)}deg)`,
-          WebkitTransform: `rotateX(${tilt.rotateX.toFixed(2)}deg) rotateY(${tilt.rotateY.toFixed(2)}deg)`,
           transformStyle: 'preserve-3d',
           WebkitTransformStyle: 'preserve-3d',
           backfaceVisibility: 'hidden',
           WebkitBackfaceVisibility: 'hidden',
-          // GPU compositor hint — keeps the card on its own layer so
-          // transform updates don't repaint the page.
           willChange: 'transform',
-          transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
         } as object)
       : undefined;
 
@@ -108,6 +105,7 @@ export function CallRoomCard({
 
   return (
     <View
+      ref={tiltRef as any}
       style={[styles.card, responsiveCardStyle, dynamicCardStyle]}
       testID="call-room-card"
     >

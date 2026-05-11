@@ -318,26 +318,38 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any, suiteId?: str
           // Keep this block in pure JS.
           var midToolTimers = [];
           var lastPersonaSpeechAt = 0;
-          var FILLER_FAST_TOOLS = { 'show_cards': 1 };
-          // 2026-05-10 (W12.1): more natural, contraction-heavy phrasing.
-          // Old phrases sounded robot-stiff stacked back-to-back. New set
-          // mirrors the casual cadence in Ava_Voice_Rules_v6 (contractions,
-          // "Yeah", "Alright", "Hang on" — used sparingly, not every turn).
+          // 2026-05-10 (W12.4): expanded skip list. Knowledge_Ava is an
+          // internal RAG lookup the user never sees — narrating "Let me
+          // check that" before EVERY workflow lookup is wrong context
+          // (user asked to send an invoice, doesn't expect Ava to "check"
+          // anything). ava_get_context fires once at session start, also
+          // background. show_cards was always exempt (instant frontend).
+          var FILLER_FAST_TOOLS = {
+            'show_cards': 1,
+            'Knowledge_Ava': 1,
+            'ava_get_context': 1,
+          };
+          // 2026-05-10 (W12.4): universal preambles that work for both
+          // lookup tools (invoke_adam research) AND action tools
+          // (invoke_quinn invoice creation, invoke_tec document drafting).
+          // Prior pool had "Let me check" / "Looking into that" / "Pulling
+          // that up" — all lookup-only. Wrong context when user asked to
+          // SEND an invoice. New pool is action-flexible.
           var PREAMBLE_POOL = [
-            "Alright, let me check on that.",
-            "Yeah, hang on a sec.",
-            "Looking that up real quick.",
-            "Let me see what I can find."
+            "One moment.",
+            "Sure thing.",
+            "On it.",
+            "Got it."
           ];
           var FILLER_POOL_FIRST = [
-            "Yeah, hang on — almost there.",
-            "One sec, still pulling that.",
-            "Almost got it."
+            "Still working on it.",
+            "One moment.",
+            "Just a second."
           ];
           var FILLER_POOL_SECOND = [
-            "Yeah, still digging — hang tight.",
-            "Just another sec — close now.",
-            "Almost there, hang on."
+            "Bear with me.",
+            "Just another moment.",
+            "Almost done."
           ];
           // 2026-05-06: tool-error recovery pool. Production transcript
           // 51eb43c3 showed a 34-second silence after invoke_adam returned
@@ -388,42 +400,21 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any, suiteId?: str
           //
           // Skipped for: show_cards (instant), end_session (terminal),
           // ava_get_context (background, no user-visible action).
-          // 2026-05-10 (W12.1): warmer hold lines. Production transcript
-          // f4df1564 graded F because "Almost ready — one sec." sounds
-          // robotic stacked on top of the brain's "On it — one moment."
-          // pre-tool ack. New phrases lean casual + contraction-heavy
-          // matching the v6 voice-rules tone ("Yeah", "Hang on", "Alright").
+          // 2026-05-10 (W12.3): brief acknowledgments — not promises of
+          // imminent completion. "Almost there" implies the tool is still
+          // running, but the tool has already returned at this point. The
+          // hold is just covering the brain's compose latency. Real EA
+          // says "Okay" / "Got it" while thinking, not "almost there".
+          // Universal short acks work for any tool — no need for per-tool
+          // pools that all sound the same anyway.
           var TOOL_SUCCESS_HOLD_POOL = {
-            invoke_adam: [
-              "Yeah, hang on — almost there.",
-              "Reading through this real quick.",
-              "Alright, almost got it."
-            ],
-            invoke_quinn: [
-              "Yeah, hang on a sec.",
-              "Alright, just looking at this.",
-              "Hold on — almost there."
-            ],
-            invoke_tec: [
-              "Yeah, putting that together now.",
-              "One sec — almost done."
-            ],
-            invoke_clara: [
-              "Yeah, hang on — looking at this.",
-              "Hold on, almost there."
-            ],
-            ava_search: [
-              "Yeah, looking at it now.",
-              "Hang on, almost there."
-            ],
-            Knowledge_Ava: [
-              "Yeah, one sec.",
-              "Hang on."
-            ],
-            generic: [
-              "Yeah, hang on a sec.",
-              "Alright, almost there."
-            ]
+            invoke_adam: [ "Okay.", "Got it.", "Mm-hm." ],
+            invoke_quinn: [ "Okay.", "Got it.", "Right." ],
+            invoke_tec: [ "Okay.", "Got it." ],
+            invoke_clara: [ "Okay.", "Got it." ],
+            ava_search: [ "Okay.", "Got it." ],
+            Knowledge_Ava: [ "Okay.", "Got it." ],
+            generic: [ "Okay.", "Got it." ]
           };
           var successHoldIdxRefs = {
             invoke_adam: { idx: -1 },
@@ -439,6 +430,12 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any, suiteId?: str
             end_session: 1,
             ava_get_context: 1,
             ava_request_approval: 1,
+            // 2026-05-10 (W12.4): Knowledge_Ava is an internal RAG lookup
+            // — the brain follows up with its own contextual response per
+            // the prompt's WORKFLOW TRIGGER RULE. A generic "Okay." hold
+            // here is wrong because the brain is about to say "Sure thing.
+            // Who's it for?" (Step 1 of the invoice workflow).
+            Knowledge_Ava: 1,
           };
           function pickFromPool(pool, lastIdxRef) {
             if (!pool.length) return null;
@@ -544,39 +541,30 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any, suiteId?: str
             //
             // Skip for fast/terminal/background tools where a hold line is
             // either superfluous or actively wrong (end_session, show_cards).
+            // 2026-05-10 (W12.3): less aggressive hold. With GPT-4.1 the
+            // brain composes faster, so the prior 4s-then-retry-3-times
+            // approach was overkill — hold lines piled up. Now: 6s wait,
+            // single short acknowledgment if brain is still silent, no
+            // retry. If brain hasn't spoken in 6s we fire once and let
+            // the brain take over from there.
             if (SUCCESS_HOLD_SKIP_TOOLS[completedToolName]) return;
-            var tCompleteStart = Date.now();
-            var holdAttempt = 0;
-            var MAX_HOLD_ATTEMPTS = 3;
-            var SPEECH_RECENT_MS = 8000; // brain spoke within 8s = suppress
-            var HOLD_INITIAL_DELAY_MS = 4000;
-            var HOLD_RETRY_DELAY_MS = 5000;
-            function tryHoldLine() {
-              holdAttempt += 1;
+            var SPEECH_RECENT_MS = 6000; // brain spoke within 6s = suppress
+            var HOLD_DELAY_MS = 6000;
+            setTimeout(function () {
               var nowTs = Date.now();
               var msSinceLastSpeech = nowTs - lastPersonaSpeechAt;
               if (msSinceLastSpeech < SPEECH_RECENT_MS) {
                 post({ type: 'tool_success_hold_skipped', payload: {
-                  reason: 'persona_spoke_within_8s',
+                  reason: 'persona_spoke_within_6s',
                   toolName: completedToolName,
-                  attempt: holdAttempt,
                   msSinceLastSpeech: msSinceLastSpeech,
                 } });
-                if (holdAttempt < MAX_HOLD_ATTEMPTS) {
-                  setTimeout(tryHoldLine, HOLD_RETRY_DELAY_MS);
-                }
                 return;
               }
               var pool = TOOL_SUCCESS_HOLD_POOL[completedToolName] || TOOL_SUCCESS_HOLD_POOL.generic;
               var idxRef = successHoldIdxRefs[completedToolName] || successHoldIdxRefs.generic;
               speakNarration(pickFromPool(pool, idxRef), 'tool_success_hold');
-              // After firing a hold, give the brain 5s to take over;
-              // if still silent, fire one more hold (max 3 total).
-              if (holdAttempt < MAX_HOLD_ATTEMPTS) {
-                setTimeout(tryHoldLine, HOLD_RETRY_DELAY_MS);
-              }
-            }
-            setTimeout(tryHoldLine, HOLD_INITIAL_DELAY_MS);
+            }, HOLD_DELAY_MS);
           });
           client.addListener(AnamEvent.TOOL_CALL_FAILED, function (event) {
             clearMidToolTimers();
@@ -656,12 +644,30 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any, suiteId?: str
                }
             }, 1000);
 
-            // 2026 SDK OFFICIAL PATTERN: addContext and triggerGreeting
+            // 2026-05-10 (W12.4): deterministic greeting via client.talk().
+            // Production transcript on tablet showed Ava saying "Mr. Scott"
+            // without the "Good morning," prefix — first chunks of audio
+            // were being clipped because:
+            //   (1) triggerGreeting() routes through the LLM brain, which
+            //       takes 1-3s to compose the greeting → first chunks
+            //       arrive before the audio device finishes acquiring
+            //   (2) tablet autoplay policy can pause the <video> element
+            //       even after audio stream begins → first second of TTS
+            //       gets buffered but not played
+            //
+            // Fix: skip triggerGreeting (brain compose). Build the greeting
+            // text deterministically from the profile, wait for both
+            // audio_started AND a 1.5s settle window, THEN call client.talk().
+            // This guarantees:
+            //   - greeting text is correct (no LLM drift to wrong phrasing)
+            //   - greeting starts AFTER audio device is hot
+            //   - English-only (no locale drift)
+            //   - resilient to tablet autoplay policy
             if (profile) {
               const now = new Date();
               const fullDate = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
               const timeOfDay = now.getHours() < 12 ? 'morning' : now.getHours() < 17 ? 'afternoon' : 'evening';
-              
+
               const context = {
                 salutation: profile.salutation || '',
                 lastName: profile.lastName || '',
@@ -674,22 +680,60 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any, suiteId?: str
                 timeOfDay: timeOfDay
               };
 
-              // Inject context into the persona brain
+              // Inject context into the persona brain so subsequent turns
+              // have the user's name, business, etc. for substitution.
               if (typeof client.addContext === 'function') {
                 client.addContext(context);
               }
 
-              // Explicitly trigger the greeting sequence
-              if (typeof client.triggerGreeting === 'function') {
-                client.triggerGreeting();
-              } else if (typeof client.talk === 'function') {
-                // Fallback for older/middle versions of SDK
-                const greeting = "Good " + timeOfDay + ", " + (profile.salutation || "") + " " + (profile.lastName || "") + ".";
-                client.talk(greeting);
+              // Build the deterministic greeting text per the prompt's
+              // greeting hierarchy (PRIMARY → FALLBACK 1 → LAST RESORT).
+              const sal = String(profile.salutation || '').trim();
+              const last = String(profile.lastName || '').trim();
+              const first = String(profile.firstName || '').trim();
+              let greetingText;
+              if (sal && last) {
+                greetingText = "Good " + timeOfDay + ", " + sal + " " + last + ".";
+              } else if (first) {
+                greetingText = "Good " + timeOfDay + ", " + first + ".";
               } else {
-                // Ultra-fallback: send as user message to prime
-                const primeMsg = "Note to AI: The user is " + (profile.salutation || "") + " " + (profile.lastName || "") + ". Business: " + (profile.businessName || "") + ". Date: " + fullDate + ". Camera: " + (profile.hasCamera ? "true" : "false") + ". Please greet the user now.";
-                client.sendUserMessage(primeMsg);
+                greetingText = "Good " + timeOfDay + ".";
+              }
+
+              // Wait for audio pipeline + 1.5s settle window, then speak.
+              // If audio already started (desktop fast path), the 1500ms
+              // delay alone is enough. On tablet, audio_started may fire
+              // late — the greetingFired guard prevents double-speaking.
+              let greetingFired = false;
+              const fireGreeting = function (reason) {
+                if (greetingFired) return;
+                greetingFired = true;
+                console.log('[AvaIframe] firing greeting (' + reason + '): ' + greetingText);
+                try {
+                  if (typeof client.talk === 'function') {
+                    client.talk(greetingText);
+                  } else if (typeof client.triggerGreeting === 'function') {
+                    // Fallback for SDK builds without talk()
+                    client.triggerGreeting();
+                  }
+                } catch (e) {
+                  console.warn('[AvaIframe] greeting fire failed', e);
+                }
+              };
+
+              // Primary path: 1.5s after SESSION_READY.
+              setTimeout(function () { fireGreeting('settle_timer'); }, 1500);
+
+              // Backup path: if audio_started fires later than 1.5s
+              // (typical on tablet under autoplay restriction), the
+              // greetingFired guard means the talk call has already
+              // happened. If for some reason the settle timer never
+              // fired, audio_started gets a chance to fire it.
+              if (AnamEvent.AUDIO_STREAM_STARTED) {
+                client.addListener(AnamEvent.AUDIO_STREAM_STARTED, function () {
+                  // Add 200ms cushion to let the first audio packet flush
+                  setTimeout(function () { fireGreeting('audio_started'); }, 200);
+                });
               }
             }
           });

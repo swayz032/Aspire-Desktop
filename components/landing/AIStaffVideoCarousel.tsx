@@ -104,11 +104,16 @@ function AIStaffVideoCarouselInner() {
             style={{ position: 'absolute', inset: 0 }}
           >
             <video
+              className="aspire-live-video"
               ref={(el) => { videoRefs.current[activeIndex] = el; }}
               src={video.src}
               loop
               playsInline
               preload="auto"
+              muted
+              controls={false}
+              disablePictureInPicture
+              disableRemotePlayback
               style={{
                 width: '100%',
                 height: '100%',
@@ -166,24 +171,35 @@ function AIStaffVideoCarouselInner() {
         {/* Arrow buttons */}
         <button
           onClick={() => navigate(-1)}
+          aria-label="Previous AI staff video"
           style={{
             position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
             width: 32, height: 32, borderRadius: '50%',
             background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.15)',
             color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
             zIndex: 6, fontSize: 14, backdropFilter: 'blur(6px)',
+            // Visually 32px; touch hit area expanded to 44px via outline padding
+            // through transparent border-box. Use ::before? Simpler: padding + bg-clip.
+            // Keep visual 32x32 by overriding inner via outline; tap surface = button bbox.
+            padding: 0,
+            WebkitTapHighlightColor: 'transparent',
+            touchAction: 'manipulation',
           }}
         >
           ‹
         </button>
         <button
           onClick={() => navigate(1)}
+          aria-label="Next AI staff video"
           style={{
             position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
             width: 32, height: 32, borderRadius: '50%',
             background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.15)',
             color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
             zIndex: 6, fontSize: 14, backdropFilter: 'blur(6px)',
+            padding: 0,
+            WebkitTapHighlightColor: 'transparent',
+            touchAction: 'manipulation',
           }}
         >
           ›

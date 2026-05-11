@@ -235,12 +235,16 @@ function OrbVideo({
         >
           <video
             ref={videoRef as any}
+            className="aspire-live-video"
             src={src}
             autoPlay
             loop
             muted
             playsInline
             preload="auto"
+            controls={false}
+            disablePictureInPicture
+            disableRemotePlayback
             style={{
               width: '100%',
               height: '100%',
@@ -319,12 +323,16 @@ function MiniOrbThumb({
     >
       <video
         ref={videoRef as any}
+        className="aspire-live-video"
         src={src}
         autoPlay
         loop
         muted
         playsInline
         preload="auto"
+        controls={false}
+        disablePictureInPicture
+        disableRemotePlayback
         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
       />
     </div>

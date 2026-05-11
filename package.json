@@ -8,7 +8,6 @@
     "serve": "tsx server/index.ts",
     "dev": "expo start",
     "dev:server": "tsx server/index.ts",
-    "dev:env": "node scripts/dev-env-sync.mjs",
     "dev:all": "npx concurrently -n metro,server -c blue,green \"npm run dev\" \"npm run dev:server\"",
     "build": "npm run build:anam-sdk && npm run build:static",
     "build:anam-sdk": "node scripts/build-anam-sdk.mjs",
@@ -33,7 +32,9 @@
     "sync-agent:eli": "node scripts/sync-elevenlabs-eli.mjs",
     "sync-agent:nora": "node scripts/sync-elevenlabs-nora.mjs",
     "sync-agent:sarah-receptionist": "node scripts/sync-elevenlabs-sarah-receptionist.mjs",
-    "sync-agent:sarah-frontdesk": "node scripts/sync-elevenlabs-sarah-frontdesk.mjs"
+    "sync-agent:sarah-frontdesk": "node scripts/sync-elevenlabs-sarah-frontdesk.mjs",
+    "test:tablet": "playwright test --project=ipad-portrait --project=ipad-landscape --project=ipad-pro-12-portrait --project=ipad-pro-12-landscape --project=android-tablet-landscape --project=android-tablet-portrait",
+    "dev:env": "node scripts/dev-env-sync.mjs"
   },
   "jest": {
     "preset": "jest-expo"
@@ -76,7 +77,6 @@
     "@zoom/videosdk": "^2.3.15",
     "@zoom/videosdk-ui-toolkit": "2.3.15-1",
     "ai": "^6.0.105",
-    "cesium": "^1.141.0",
     "cockatiel": "^3.2.1",
     "compression": "^1.8.1",
     "cors": "^2.8.6",
@@ -142,7 +142,8 @@
     "three": "^0.182.0",
     "tsx": "^4.21.0",
     "twilio": "^5.13.1",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "cesium": "^1.141.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

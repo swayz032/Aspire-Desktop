@@ -197,6 +197,10 @@ function FeatureSectionInner({ feature, index }: FeatureSectionProps) {
               background: `${feature.accentLight}`,
               border: `1px solid ${feature.accent}33`,
               transition: 'all 0.2s ease',
+              minHeight: 44, // tablet tap target
+              boxSizing: 'border-box',
+              WebkitTapHighlightColor: 'transparent',
+              touchAction: 'manipulation',
             }}
             onMouseEnter={(e) => {
               const el = e.currentTarget as HTMLAnchorElement;

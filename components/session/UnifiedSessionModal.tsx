@@ -584,7 +584,8 @@ const styles = StyleSheet.create({
       top: 0,
       left: 0,
       width: '100vw',
-      height: '100vh',
+      // Use --dvh-100 so the modal doesn't clip below Safari iOS URL bar on iPad.
+      height: 'var(--dvh-100, 100vh)' as any,
       display: 'flex',
       justifyContent: 'center',
       alignItems: 'center',

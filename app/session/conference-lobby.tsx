@@ -79,6 +79,10 @@ function injectLobbyKeyframes() {
   if (document.getElementById('aspire-lobby-keyframes')) return;
   const style = document.createElement('style');
   style.id = 'aspire-lobby-keyframes';
+  // Hover styles wrapped in `(hover: hover) and (pointer: fine)` so a tap on
+  // tablet (coarse pointer, no hover) does NOT leave the button stuck in its
+  // hover state until the next tap elsewhere. :active states stay outside the
+  // guard so press feedback works on touch.
   style.textContent = `
     @keyframes lobbyStartGlow {
       0%, 100% { box-shadow: 0 4px 20px rgba(37, 99, 235, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset; }
@@ -89,11 +93,6 @@ function injectLobbyKeyframes() {
       transition: transform 0.2s ease, box-shadow 0.2s ease !important;
       cursor: pointer;
     }
-    .lobby-start-btn:hover {
-      transform: translateY(-2px) !important;
-      box-shadow: 0 6px 32px rgba(37, 99, 235, 0.55), 0 0 48px rgba(59, 130, 246, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.2) inset !important;
-      animation: none;
-    }
     .lobby-start-btn:active {
       transform: translateY(0) scale(0.98) !important;
     }
@@ -101,35 +100,19 @@ function injectLobbyKeyframes() {
       transition: transform 0.2s ease, box-shadow 0.2s ease !important;
       cursor: pointer;
     }
-    .lobby-join-btn:hover {
-      transform: translateY(-1px) !important;
-      box-shadow: 0 6px 24px rgba(37, 99, 235, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.15) inset !important;
-    }
     .lobby-join-btn:active {
       transform: translateY(0) scale(0.98) !important;
     }
     .lobby-flip-card {
       transition: box-shadow 0.3s ease !important;
     }
-    .lobby-flip-card:hover {
-      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06) inset !important;
-    }
     .lobby-authority-card {
       transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease !important;
       cursor: default;
     }
-    .lobby-authority-card:hover {
-      transform: translateY(-2px) !important;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3) !important;
-      border-color: ${Colors.border.strong} !important;
-    }
     .lobby-approve-btn {
       transition: all 0.15s ease !important;
       cursor: pointer;
-    }
-    .lobby-approve-btn:hover {
-      box-shadow: 0 4px 16px rgba(37, 99, 235, 0.35) !important;
-      transform: translateY(-1px);
     }
     .lobby-approve-btn:active {
       transform: translateY(0) scale(0.97);
@@ -138,30 +121,54 @@ function injectLobbyKeyframes() {
       transition: all 0.15s ease !important;
       cursor: pointer;
     }
-    .lobby-deny-btn:hover {
-      background-color: ${Colors.background.elevated} !important;
-      border-color: ${Colors.border.strong} !important;
-    }
     .lobby-exit-btn {
       transition: all 0.15s ease !important;
       cursor: pointer;
-    }
-    .lobby-exit-btn:hover {
-      background-color: ${Colors.background.elevated} !important;
-      border-color: ${Colors.border.strong} !important;
-      transform: scale(1.05);
     }
     .lobby-exit-btn:active { transform: scale(0.95); }
     .lobby-menu-btn {
       transition: all 0.15s ease !important;
       cursor: pointer;
     }
-    .lobby-menu-btn:hover {
-      background-color: ${Colors.background.elevated} !important;
-      border-color: ${Colors.border.strong} !important;
-      transform: scale(1.05);
-    }
     .lobby-menu-btn:active { transform: scale(0.95); }
+
+    @media (hover: hover) and (pointer: fine) {
+      .lobby-start-btn:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 32px rgba(37, 99, 235, 0.55), 0 0 48px rgba(59, 130, 246, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.2) inset !important;
+        animation: none;
+      }
+      .lobby-join-btn:hover {
+        transform: translateY(-1px) !important;
+        box-shadow: 0 6px 24px rgba(37, 99, 235, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.15) inset !important;
+      }
+      .lobby-flip-card:hover {
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06) inset !important;
+      }
+      .lobby-authority-card:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3) !important;
+        border-color: ${Colors.border.strong} !important;
+      }
+      .lobby-approve-btn:hover {
+        box-shadow: 0 4px 16px rgba(37, 99, 235, 0.35) !important;
+        transform: translateY(-1px);
+      }
+      .lobby-deny-btn:hover {
+        background-color: ${Colors.background.elevated} !important;
+        border-color: ${Colors.border.strong} !important;
+      }
+      .lobby-exit-btn:hover {
+        background-color: ${Colors.background.elevated} !important;
+        border-color: ${Colors.border.strong} !important;
+        transform: scale(1.05);
+      }
+      .lobby-menu-btn:hover {
+        background-color: ${Colors.background.elevated} !important;
+        border-color: ${Colors.border.strong} !important;
+        transform: scale(1.05);
+      }
+    }
   `;
   document.head.appendChild(style);
 }

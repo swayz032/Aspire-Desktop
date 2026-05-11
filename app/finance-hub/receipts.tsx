@@ -110,8 +110,11 @@ function DocCard({ doc, onOpen }: { doc: DocItem; onOpen?: (doc: DocItem) => voi
   return (
     <div
       onClick={() => onOpen?.(doc)}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      // Touch devices fire synthesized mouseenter on tap and never fire
+      // mouseleave -- card would stay visually lifted forever. Gate behind
+      // a real (fine) pointer so only mouse/trackpad users see hover state.
+      onMouseEnter={() => { if (typeof window !== 'undefined' && window.matchMedia && !window.matchMedia('(pointer: fine)').matches) return; setHovered(true); }}
+      onMouseLeave={() => { if (typeof window !== 'undefined' && window.matchMedia && !window.matchMedia('(pointer: fine)').matches) return; setHovered(false); }}
       style={{
         borderRadius: 14,
         border: `1px solid ${hovered ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.07)'}`,
@@ -347,8 +350,8 @@ function FinanceMemoryContent() {
                   cursor: 'pointer',
                   transition: 'all 0.15s ease',
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.09)'; e.currentTarget.style.color = '#fff'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; }}
+                onMouseEnter={(e) => { if (typeof window !== 'undefined' && window.matchMedia && !window.matchMedia('(pointer: fine)').matches) return; e.currentTarget.style.background = 'rgba(255,255,255,0.09)'; e.currentTarget.style.color = '#fff'; }}
+                onMouseLeave={(e) => { if (typeof window !== 'undefined' && window.matchMedia && !window.matchMedia('(pointer: fine)').matches) return; e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; }}
               >
                 <Ionicons name="arrow-back" size={13} color="currentColor" />
                 Back

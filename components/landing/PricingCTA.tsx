@@ -80,7 +80,7 @@ function PricingCTAInner() {
             position: 'relative', zIndex: 1,
             background: '#0a0a12',
             borderRadius: 24,
-            padding: '56px 64px',
+            padding: 'clamp(36px, 5vw, 56px) clamp(28px, 5vw, 64px)',
             overflow: 'hidden',
           }}>
             {/* Background glow */}

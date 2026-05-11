@@ -12,11 +12,11 @@ function LandingFooterInner() {
     <footer style={{
       background: '#050508',
       borderTop: '1px solid rgba(255,255,255,0.06)',
-      padding: '64px 80px 40px',
+      padding: 'clamp(48px, 6vw, 64px) clamp(20px, 5vw, 80px) clamp(32px, 4vw, 40px)',
       fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif',
     }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr', gap: 48, marginBottom: 64 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr', gap: 'clamp(20px, 3vw, 48px)', marginBottom: 64 }}>
           {/* Brand */}
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>

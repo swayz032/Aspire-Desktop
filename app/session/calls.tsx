@@ -28,7 +28,9 @@ import { useSupabase } from '@/providers/SupabaseProvider';
 import { useTenant } from '@/providers/TenantProvider';
 import { fetchFrontDeskConfig, type AspireNumberInfo } from '@/lib/api/frontDesk';
 import { AspireNumberPill } from '@/components/calls/AspireNumberPill';
-import { fetchVoiceToken, VoiceTokenError } from '@/lib/api/voice';
+// Voice token mint moved into /call-room route — keeps dial-pad navigation
+// instant and avoids the pre-navigation HTTP wait that produced black-screen
+// lag on the call transition.
 
 // ---------------------------------------------------------------------------
 // Hero image
@@ -40,7 +42,12 @@ const callsHero = require('@/assets/images/calls-hero.jpg');
 // DTMF Dialpad Audio (Web Audio API) -- copied exactly from working version
 // ---------------------------------------------------------------------------
 
-const DTMF_FREQUENCIES: Record<string, [number, number]> = {
+// Pass 1 of front-desk-hub extraction (2026-05-11): added `export` keywords to
+// DTMF/dialpad helpers so the new `components/front-desk/DialPadCard.tsx` can
+// import them without duplicating logic. Pure additive change — the legacy
+// `/session/calls` route still owns + uses these symbols. Pass 5 will redirect
+// `/session/calls` to `/session/front-desk` and these can move out of this file.
+export const DTMF_FREQUENCIES: Record<string, [number, number]> = {
   '1': [697, 1209], '2': [697, 1336], '3': [697, 1477],
   '4': [770, 1209], '5': [770, 1336], '6': [770, 1477],
   '7': [852, 1209], '8': [852, 1336], '9': [852, 1477],
@@ -66,7 +73,7 @@ const getAudioContext = (): AudioContext | null => {
   }
 };
 
-const resumeAudioContextFromGesture = async (): Promise<void> => {
+export const resumeAudioContextFromGesture = async (): Promise<void> => {
   const audioCtx = getAudioContext();
   if (!audioCtx) return;
   if (audioCtx.state !== 'suspended') return;
@@ -77,7 +84,7 @@ const resumeAudioContextFromGesture = async (): Promise<void> => {
   }
 };
 
-const playDTMFTone = (digit: string) => {
+export const playDTMFTone = (digit: string) => {
   const frequencies = DTMF_FREQUENCIES[digit];
   if (!frequencies) return;
 
@@ -151,7 +158,7 @@ const stopRinging = () => {
 // Dial pad layout
 // ---------------------------------------------------------------------------
 
-const DIAL_PAD = [
+export const DIAL_PAD = [
   { digit: '1', letters: '' },
   { digit: '2', letters: 'ABC' },
   { digit: '3', letters: 'DEF' },
@@ -242,7 +249,7 @@ function getRelativeTime(isoDate: string): string {
   return `${days}d ago`;
 }
 
-function formatE164Display(number: string): string {
+export function formatE164Display(number: string): string {
   const cleaned = number.replace(/\D/g, '');
   if (cleaned.length === 11 && cleaned.startsWith('1')) {
     return `+1 (${cleaned.slice(1, 4)}) ${cleaned.slice(4, 7)}-${cleaned.slice(7)}`;
@@ -253,7 +260,7 @@ function formatE164Display(number: string): string {
   return number;
 }
 
-function formatPhoneNumber(number: string): string {
+export function formatPhoneNumber(number: string): string {
   const cleaned = number.replace(/\D/g, '');
   if (cleaned.length <= 3) return cleaned;
   if (cleaned.length <= 6) return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3)}`;
@@ -625,81 +632,40 @@ function CallsScreen() {
     }
   }, []);
 
-  const handleCall = async () => {
+  const handleCall = () => {
     if (phoneNumber.length === 0) return;
     void resumeAudioContextFromGesture();
     setCallError(null);
     setOutboundBlocked(false);
     setCallingName(null);
-    setIsCalling(true);
 
-    // Snapshot the button rect BEFORE the await chain — once the user starts
-    // scrolling or React re-renders mid-mint, the rect can shift.
+    const officeId = tenant?.officeId;
+    if (!officeId) {
+      setCallError('Your office is still loading — try again in a moment.');
+      return;
+    }
+
+    const cleaned = phoneNumber.replace(/\D/g, '');
+    const toE164 = cleaned.startsWith('1') ? `+${cleaned}` : `+1${cleaned}`;
+
+    // Snapshot the button rect BEFORE navigating so the portal-reveal
+    // animation has the source coordinates.
     const origin = captureOriginParams();
 
-    try {
-      const cleaned = phoneNumber.replace(/\D/g, '');
-      const toE164 = cleaned.startsWith('1') ? `+${cleaned}` : `+1${cleaned}`;
-
-      const officeId = tenant?.officeId;
-      if (!officeId) {
-        setCallError('Your office is still loading — try again in a moment.');
-        setIsCalling(false);
-        return;
-      }
-
-      // 1) PRIMARY PATH — mint the Voice SDK token. If this fails, the
-      //    call cannot proceed; surface the reason clearly.
-      let voiceToken: string;
-      let voiceCallerId: string;
-      try {
-        const tok = await fetchVoiceToken({ authenticatedFetch, officeId });
-        voiceToken = tok.token;
-        voiceCallerId = tok.caller_id;
-      } catch (tokErr) {
-        if (tokErr instanceof VoiceTokenError) {
-          if (tokErr.code === 'NO_ASPIRE_NUMBER') {
-            setCallError(tokErr.message);
-          } else if (tokErr.code === 'VOICE_NOT_CONFIGURED') {
-            setCallError(
-              'In-browser calls aren’t configured for this account yet. Contact support.',
-            );
-          } else {
-            setCallError(tokErr.message || 'Couldn’t set up the call.');
-          }
-        } else {
-          setCallError('Network error — could not set up the call.');
-        }
-        setIsCalling(false);
-        return;
-      }
-
-      // The legacy outbox endpoint /api/frontdesk/outbound-call is not
-      // deployed in production (404 on every account) and the 403
-      // inbound-only check it implemented is redundant with the
-      // server-side voice-token mint guard. Removed entirely to stop
-      // the console-noise 404 that was confusing users into thinking
-      // calls were failing for that reason.
-      //
-      // FOLLOW-UP: ensure backend mint_voice_token() rejects when the
-      // office is in inbound-only mode (see plan §6 — owner preflight).
-
-      router.push({
-        pathname: '/call-room',
-        params: {
-          phone: toE164,
-          voiceToken,
-          callerId: voiceCallerId,
-          ...origin,
-        },
-      } as never);
-      // Local "calling" overlay state is no longer the primary UX; reset
-      // so returning to this screen doesn't show a stale spinner.
-      setIsCalling(false);
-    } catch (_e) {
-      setCallError('Network error -- could not initiate call');
-      setIsCalling(false);
-    }
+    // Navigate INSTANTLY — voice token is fetched inside /call-room so the
+    // 200-800ms HTTP round-trip happens behind the connecting UI instead of
+    // freezing the dial pad on a black screen. Removed previous pre-fetch
+    // pattern (legacy comment cited iOS Safari mic gesture, but mic perms
+    // are requested by Twilio's Device.register() inside useVoiceCall, which
+    // still runs inside the click gesture chain after router.push.)
+    router.push({
+      pathname: '/call-room',
+      params: {
+        phone: toE164,
+        officeId,
+        ...origin,
+      },
+    } as never);
   };
 
   // ---------------------------------------------------------------------------
@@ -708,75 +674,32 @@ function CallsScreen() {
   // audit-trail hop (mirrors handleCall's structure).
   // ---------------------------------------------------------------------------
 
-  const handleReturnCall = async (call: FormattedCall) => {
+  const handleReturnCall = (call: FormattedCall) => {
     void resumeAudioContextFromGesture();
     setCallError(null);
     setOutboundBlocked(false);
     setCallingName(call.name);
     setPhoneNumber(call.rawNumber.replace(/\D/g, ''));
-    setIsCalling(true);
 
-    try {
-      const cleaned = call.rawNumber.replace(/\D/g, '');
-      const toE164 = cleaned.startsWith('1') ? `+${cleaned}` : `+1${cleaned}`;
-
-      const officeId = tenant?.officeId;
-      if (!officeId) {
-        setCallError('Your office is still loading — try again in a moment.');
-        setIsCalling(false);
-        return;
-      }
-
-      // 1) PRIMARY — Voice SDK token.
-      let voiceToken: string;
-      let voiceCallerId: string;
-      try {
-        const tok = await fetchVoiceToken({ authenticatedFetch, officeId });
-        voiceToken = tok.token;
-        voiceCallerId = tok.caller_id;
-      } catch (tokErr) {
-        if (tokErr instanceof VoiceTokenError) {
-          if (tokErr.code === 'NO_ASPIRE_NUMBER') {
-            setCallError(tokErr.message);
-          } else if (tokErr.code === 'VOICE_NOT_CONFIGURED') {
-            setCallError(
-              'In-browser calls aren’t configured for this account yet. Contact support.',
-            );
-          } else {
-            setCallError(tokErr.message || 'Couldn’t set up the return call.');
-          }
-        } else {
-          setCallError('Network error — could not return call');
-        }
-        setIsCalling(false);
-        return;
-      }
-
-      // Legacy /api/frontdesk/return-call audit hop removed — endpoint
-      // is not deployed in production and the 403 inbound-only check
-      // will be re-implemented server-side in mint_voice_token() so it
-      // applies uniformly across every entry point. See handleCall()
-      // above for the same removal rationale.
-
-      // Return-call rows don't expose a tracked button ref — the
-      // /call-room route gracefully falls back to a 200ms accent cross-fade
-      // when no origin rect is provided. (Adding per-row refs would require
-      // restructuring the FormattedCall list; not in scope for this change.)
-      router.push({
-        pathname: '/call-room',
-        params: {
-          phone: toE164,
-          name: call.name,
-          callId: call.callSessionId,
-          voiceToken,
-          callerId: voiceCallerId,
-        },
-      } as never);
-      setIsCalling(false);
-    } catch (_e) {
-      setCallError('Network error -- could not return call');
-      setIsCalling(false);
+    const officeId = tenant?.officeId;
+    if (!officeId) {
+      setCallError('Your office is still loading — try again in a moment.');
+      return;
     }
+
+    const cleaned = call.rawNumber.replace(/\D/g, '');
+    const toE164 = cleaned.startsWith('1') ? `+${cleaned}` : `+1${cleaned}`;
+
+    // Navigate instantly — same rationale as handleCall().
+    router.push({
+      pathname: '/call-room',
+      params: {
+        phone: toE164,
+        name: call.name,
+        callId: call.callSessionId,
+        officeId,
+      },
+    } as never);
   };
 
   const handleEndCall = () => {
@@ -1237,6 +1160,13 @@ function CallsScreen() {
                     ))}
                   </View>
 
+                  {/* Scrollable list region — fixed height, invisible scrollbar */}
+                  <ScrollView
+                    style={desktopStyles.recentList}
+                    contentContainerStyle={desktopStyles.recentListContent}
+                    showsVerticalScrollIndicator={false}
+                    nestedScrollEnabled
+                  >
                   {/* Loading state */}
                   {callsLoading && allCalls.length === 0 && (
                     <View style={desktopStyles.loadingContainer}>
@@ -1311,6 +1241,7 @@ function CallsScreen() {
                       <Ionicons name="chevron-forward" size={16} color={Colors.accent.cyan} />
                     </TouchableOpacity>
                   )}
+                  </ScrollView>
                 </View>
               </View>
             </View>
@@ -2097,7 +2028,18 @@ const desktopStyles = StyleSheet.create({
   },
   rightColumn: {
     flex: 1,
+    maxHeight: 720,
+    overflow: 'hidden',
   },
+  recentList: {
+    flex: 1,
+    maxHeight: 620,
+    ...(Platform.OS === 'web' ? ({ scrollbarWidth: 'none' } as any) : {}),
+  } as any,
+  recentListContent: {
+    paddingBottom: 12,
+    gap: 8,
+  } as any,
   sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -11,6 +11,21 @@ function HeroSectionInner() {
   useEffect(() => {
     setReducedMotion(window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     setIsTouchDevice(navigator.maxTouchPoints > 0);
+
+    // Upgrade hero min-height from 100vh -> 100dvh on supporting browsers.
+    // 100dvh tracks the dynamic viewport on iOS/Android tablets (URL bar
+    // collapse), preventing the hero from being cut off or leaving dead space.
+    const HERO_DVH_ID = 'aspire-hero-dvh';
+    if (!document.getElementById(HERO_DVH_ID)) {
+      const s = document.createElement('style');
+      s.id = HERO_DVH_ID;
+      s.textContent = `
+        @supports (height: 100dvh) {
+          .aspire-hero-section { min-height: 100dvh !important; }
+        }
+      `;
+      document.head.appendChild(s);
+    }
   }, []);
 
   const mouseX = useMotionValue(0);
@@ -34,7 +49,7 @@ function HeroSectionInner() {
   };
 
   return (
-    <section style={{
+    <section className="aspire-hero-section" style={{
       position: 'relative',
       // 100svh = small-viewport-height -- excludes Safari 26 Liquid Glass tab-bar
       // inflation (iPadOS 26 / iOS 26). Supported in all modern browsers
@@ -48,14 +63,18 @@ function HeroSectionInner() {
       background: '#050508',
       paddingTop: 48,
       paddingBottom: 0,
-    }}>
+    } as React.CSSProperties}>
       {/* Video background */}
       <video
+        className="aspire-live-video"
         autoPlay
         muted
         loop
         playsInline
         preload="auto"
+        controls={false}
+        disablePictureInPicture
+        disableRemotePlayback
         style={{
           position: 'absolute',
           inset: 0,
@@ -185,7 +204,11 @@ function HeroSectionInner() {
               boxShadow: '0 0 30px rgba(59,130,246,0.45), 0 4px 16px rgba(0,0,0,0.3)',
               transition: 'all 0.2s ease',
               fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',
-              display: 'inline-block',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: 48,
+              boxSizing: 'border-box',
             }}
             onMouseEnter={(e) => {
               const el = e.currentTarget as HTMLAnchorElement;
@@ -211,7 +234,11 @@ function HeroSectionInner() {
               border: '1px solid rgba(255,255,255,0.12)',
               transition: 'all 0.2s ease',
               fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',
-              display: 'inline-block',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: 48,
+              boxSizing: 'border-box',
             }}
             onMouseEnter={(e) => {
               const el = e.currentTarget as HTMLAnchorElement;
@@ -269,7 +296,16 @@ function HeroSectionInner() {
               zIndex: 1,
               display: 'flex',
               justifyContent: 'center',
-            }}
+              // Allow the mockup (1036px scaled) to scroll horizontally inside
+              // its own container on tablets without forcing the page itself
+              // to scroll. Desktop (>= 1280) shows everything in-frame.
+              overflowX: 'auto',
+              overflowY: 'visible',
+              WebkitOverflowScrolling: 'touch',
+              // Hide scrollbar visually — landing already injects ::-webkit-scrollbar
+              // suppression in app/index.tsx, this just keeps Firefox quiet.
+              scrollbarWidth: 'none',
+            } as React.CSSProperties}
           >
             <motion.div
               style={{

@@ -97,9 +97,13 @@ function LocalCameraPreview() {
       ) : (
         <video
           ref={videoRef as any}
+          className="aspire-live-video"
           autoPlay
           playsInline
           muted
+          controls={false}
+          disablePictureInPicture
+          disableRemotePlayback
           style={{
             width: '100%',
             height: '100%',
@@ -158,7 +162,7 @@ function AvaOrbVideoInline({ size = 320 }: { size?: number }) {
     <div style={{ position: 'relative', width: size, height: size }}>
       <video
         ref={videoRef as any}
-        className="ava-orb-video"
+        className="ava-orb-video aspire-live-video"
         src={orbSrc}
         autoPlay
         loop
@@ -166,6 +170,8 @@ function AvaOrbVideoInline({ size = 320 }: { size?: number }) {
         playsInline
         preload="auto"
         controls={false}
+        disablePictureInPicture
+        disableRemotePlayback
         style={{
           width: size,
           height: size,
@@ -1073,7 +1079,8 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     backgroundColor: '#1C1C1E',
     flex: 1,
-    minHeight: 840,
+    height: 840,
+    maxHeight: 840,
   } as any,
   header: {
     paddingHorizontal: 16,

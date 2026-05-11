@@ -762,14 +762,14 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface.card,
   },
   calendarContainer: {
-    height: 360,
+    height: 410,
     flexShrink: 0,
     // Outer frame matches the section pattern (lighter gray edges around
     // the darker calendar inside) — same shell as Founder/Finance Hub +
-    // Today's Plan + Interaction Mode sections. Tighter padding so the
-    // calendar grid keeps room without growing the column.
+    // Today's Plan + Interaction Mode. Restored Spacing.lg outer padding
+    // so the light-gray frame reads as thick like Founder Hub does.
     borderRadius: BorderRadius.xl,
-    padding: Spacing.sm,
+    padding: Spacing.lg,
     borderWidth: 1,
     borderColor: Colors.surface.cardBorder,
     backgroundColor: Colors.surface.card,

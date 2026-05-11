@@ -174,6 +174,9 @@ function MeetTheTeamInner() {
                       borderRadius: 8, padding: '10px 0', cursor: 'pointer',
                       transition: 'all 0.2s ease',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      minHeight: 44, // tablet tap target
+                      WebkitTapHighlightColor: 'transparent',
+                      touchAction: 'manipulation',
                     }}
                     onMouseEnter={(e) => {
                       const el = e.currentTarget as HTMLButtonElement;

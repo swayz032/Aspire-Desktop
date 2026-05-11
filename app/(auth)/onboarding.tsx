@@ -31,6 +31,7 @@ import { PremiumLoadingScreen } from '@/components/PremiumLoadingScreen';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { devError } from '@/lib/devLog';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/tokens';
+import { useDynamicViewportHeight } from '@/lib/useDesktop';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -603,6 +604,10 @@ const si = StyleSheet.create({
 function OnboardingContent() {
   const router = useRouter();
   const { suiteId, session } = useSupabase();
+  // Pre-warm `--dvh-100` so the modal scroll-area maxHeight resolves to the
+  // true visible viewport on iPad Safari (Safari URL bar would otherwise push
+  // the modal footer off-screen).
+  useDynamicViewportHeight();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1961,7 +1966,11 @@ const s = StyleSheet.create({
   stepScrollView: {
     flex: 1,
     ...(Platform.OS === 'web'
-      ? ({ maxHeight: 'calc(92vh - 180px)' } as unknown as ViewStyle)
+      // Use the dynamic-viewport CSS var (`--dvh-100`, installed by
+      // useDynamicViewportHeight()) so the modal scroll area doesn't extend
+      // under Safari's URL bar on iPad. Falls back to 92vh on browsers that
+      // haven't initialized the var yet (e.g. SSR, first paint).
+      ? ({ maxHeight: 'calc(0.92 * var(--dvh-100, 100vh) - 180px)' } as unknown as ViewStyle)
       : {}),
   },
   stepScrollContent: {

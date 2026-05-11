@@ -82,7 +82,7 @@ function AvaOrbVideoInner({ state, size = 300 }: AvaOrbVideoProps) {
       <View style={[styles.videoContainer, { width: size, height: size, borderRadius: size / 2 }]}>
         <video
           ref={videoRef}
-          className="ava-orb-video"
+          className="ava-orb-video aspire-live-video"
           src={orbSrc}
           autoPlay
           loop
@@ -90,6 +90,8 @@ function AvaOrbVideoInner({ state, size = 300 }: AvaOrbVideoProps) {
           playsInline
           preload="auto"
           controls={false}
+          disablePictureInPicture
+          disableRemotePlayback
           style={{
             width: size * 1.5,
             height: size * 1.5,
