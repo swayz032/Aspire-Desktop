@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, Platform, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import { useRouter, usePathname, type Href } from 'expo-router';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { useSafeAreaInsetsCompat } from '@/lib/safeArea';
+// ScrollView no longer used — body is a flex View so cards size to viewport.
 
 type NavPill = {
   id: string;
@@ -122,13 +123,7 @@ function FrontDeskShellInner({ children }: Props) {
         </div>
       </div>
 
-      <ScrollView
-        style={styles.body}
-        contentContainerStyle={styles.bodyContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {children}
-      </ScrollView>
+      <View style={styles.body}>{children}</View>
     </View>
   );
 }
