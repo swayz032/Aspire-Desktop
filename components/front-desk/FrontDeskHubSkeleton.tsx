@@ -28,9 +28,11 @@ function StageBlob() {
     return null;
   }
 
-  // Hardcoded absolute path — resolvePublicAssetUrl() joins against document.baseURI
-  // which on /session/front-desk produces /session/tiffany-sarah-orb.mp4 (404).
-  const src = '/tiffany-sarah-orb.mp4';
+  // Seamless palindrome (forward+reverse concat via ffmpeg) — eliminates the
+  // visible loop seam. 1080p / 282KB / 5.84s (was 4K / 5.3MB / 2.93s).
+  // Hardcoded absolute path — resolvePublicAssetUrl() joins against
+  // document.baseURI which on /session/front-desk produced /session/...mp4 (404).
+  const src = '/tiffany-sarah-orb-loop.mp4';
 
   return (
     <video
