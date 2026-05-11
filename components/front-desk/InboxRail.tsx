@@ -5,33 +5,43 @@ import { Ionicons } from '@expo/vector-icons';
 /**
  * InboxRail — unified Front Desk Inbox card (right rail, top).
  *
- * Per spec PDF §4 + §10: ONE rail card for everything. 6 filter pills
- * (All / Missed / Incoming / Outgoing / Voicemail / SMS) with All as the
- * default mixed-events feed. Selecting SMS swaps the content area into
- * thread + composer mode — that workspace lands in a later pass.
- *
- * This pass: skeleton only — glassy black card frame matching the dial
- * pad, header strip with title + 3 icon affordances, 6 filter pills,
- * empty content slot below.
+ * Pattern: ONE rail card for everything. Header has a section selector
+ * trigger; tapping it opens a floating menu CENTERED inside the rail
+ * with all inbox sections. Picking one closes the menu and swaps the
+ * content area below the header to that section's workspace. Each
+ * section will own its own filters/search/setup (skeleton only here).
  */
 
-type Filter = 'all' | 'missed' | 'incoming' | 'outgoing' | 'voicemail' | 'sms';
+type Section =
+  | 'all'
+  | 'sms'
+  | 'missed'
+  | 'incoming'
+  | 'outgoing'
+  | 'voicemail'
+  | 'contacts'
+  | 'callback_queue';
 
-const FILTERS: { id: Filter; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'missed', label: 'Missed' },
-  { id: 'incoming', label: 'Incoming' },
-  { id: 'outgoing', label: 'Outgoing' },
-  { id: 'voicemail', label: 'Voicemail' },
-  { id: 'sms', label: 'SMS' },
+const SECTIONS: { id: Section; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { id: 'all', label: 'All', icon: 'apps-outline' },
+  { id: 'sms', label: 'SMS', icon: 'chatbubble-ellipses-outline' },
+  { id: 'missed', label: 'Missed', icon: 'call-outline' },
+  { id: 'incoming', label: 'Incoming', icon: 'arrow-down-circle-outline' },
+  { id: 'outgoing', label: 'Outgoing', icon: 'arrow-up-circle-outline' },
+  { id: 'voicemail', label: 'Voicemail', icon: 'mic-outline' },
+  { id: 'contacts', label: 'Contacts', icon: 'people-outline' },
+  { id: 'callback_queue', label: 'Callback Queue', icon: 'time-outline' },
 ];
 
 export function InboxRail() {
-  const [active, setActive] = useState<Filter>('all');
+  const [section, setSection] = useState<Section>('all');
+  const [menuOpen, setMenuOpen] = useState(false);
 
   if (Platform.OS !== 'web') {
     return <View style={styles.card} />;
   }
+
+  const activeMeta = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
 
   return (
     <View style={styles.card}>
@@ -39,45 +49,106 @@ export function InboxRail() {
       <div style={header}>
         <span style={title}>Front Desk Inbox</span>
         <div style={iconRow}>
-          <HeaderIcon name="funnel-outline" label="Filter" />
           <HeaderIcon name="search-outline" label="Search" />
           <HeaderIcon name="create-outline" label="Compose" />
         </div>
       </div>
 
-      {/* Filter pills */}
-      <div style={pillRow}>
-        {FILTERS.map((f) => {
-          const isActive = active === f.id;
-          return (
-            <button
-              key={f.id}
-              onClick={() => setActive(f.id)}
-              style={{ ...pillBtn, ...(isActive ? pillBtnActive : null) }}
-              onMouseEnter={(e) => {
-                if (!isActive) {
-                  (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.06)';
-                  (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.85)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) {
-                  (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)';
-                  (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.55)';
-                }
-              }}
-            >
-              {f.label}
-            </button>
-          );
-        })}
-      </div>
+      {/* Section selector pill — opens the floating menu */}
+      <button
+        onClick={() => setMenuOpen((v) => !v)}
+        style={{ ...sectionPill, ...(menuOpen ? sectionPillActive : null) }}
+        onMouseEnter={(e) => {
+          if (!menuOpen) {
+            (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.06)';
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!menuOpen) {
+            (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)';
+          }
+        }}
+      >
+        <Ionicons name={activeMeta.icon} size={14} color="#ffffff" />
+        <span style={sectionPillLabel}>{activeMeta.label}</span>
+        <Ionicons
+          name={menuOpen ? 'chevron-up' : 'chevron-down'}
+          size={14}
+          color="rgba(255,255,255,0.55)"
+        />
+      </button>
 
-      {/* Divider — separates filter pills from the log/feed below */}
+      {/* Divider */}
       <div style={divider} />
 
-      {/* Empty content slot — rows / SMS workspace land in later passes */}
-      <div style={contentSlot} />
+      {/* Content area + centered floating menu overlay */}
+      <div style={contentWrap}>
+        <div style={contentSlot} />
+
+        {menuOpen ? (
+          <>
+            <button
+              aria-label="Close menu"
+              onClick={() => setMenuOpen(false)}
+              style={backdrop}
+            />
+            <div style={floatingMenu}>
+              <div style={menuHeader}>
+                <span style={menuTitle}>Inbox sections</span>
+                <button
+                  aria-label="Close"
+                  onClick={() => setMenuOpen(false)}
+                  style={menuCloseBtn}
+                >
+                  <Ionicons name="close" size={16} color="rgba(255,255,255,0.7)" />
+                </button>
+              </div>
+              <div style={menuList}>
+                {SECTIONS.map((s) => {
+                  const isActive = s.id === section;
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() => {
+                        setSection(s.id);
+                        setMenuOpen(false);
+                      }}
+                      style={{ ...menuItem, ...(isActive ? menuItemActive : null) }}
+                      onMouseEnter={(e) => {
+                        if (!isActive)
+                          (e.currentTarget as HTMLElement).style.background =
+                            'rgba(255,255,255,0.05)';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isActive)
+                          (e.currentTarget as HTMLElement).style.background = 'transparent';
+                      }}
+                    >
+                      <Ionicons
+                        name={s.icon}
+                        size={16}
+                        color={isActive ? '#3B82F6' : 'rgba(255,255,255,0.55)'}
+                      />
+                      <span
+                        style={{
+                          ...menuItemLabel,
+                          color: isActive ? '#ffffff' : 'rgba(255,255,255,0.85)',
+                          fontWeight: isActive ? 600 : 500,
+                        }}
+                      >
+                        {s.label}
+                      </span>
+                      {isActive ? (
+                        <Ionicons name="checkmark" size={16} color="#3B82F6" />
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        ) : null}
+      </div>
     </View>
   );
 }
@@ -167,37 +238,35 @@ const iconBtn: React.CSSProperties = {
   transition: 'background 0.15s ease, color 0.15s ease',
 };
 
-const pillRow: React.CSSProperties = {
+const sectionPill: React.CSSProperties = {
+  alignSelf: 'flex-start',
   display: 'flex',
-  flexWrap: 'wrap',
-  gap: 6,
-  flexShrink: 0,
-};
-
-const pillBtn: React.CSSProperties = {
+  alignItems: 'center',
+  gap: 8,
   fontFamily: 'Inter, system-ui, sans-serif',
   fontSize: 12,
   fontWeight: 500,
-  color: 'rgba(255,255,255,0.55)',
+  color: '#ffffff',
   background: 'rgba(255,255,255,0.03)',
-  border: '1px solid rgba(255,255,255,0.06)',
+  border: '1px solid rgba(255,255,255,0.08)',
   borderRadius: 999,
-  paddingTop: 5,
-  paddingBottom: 5,
+  paddingTop: 6,
+  paddingBottom: 6,
   paddingLeft: 11,
-  paddingRight: 11,
+  paddingRight: 9,
   cursor: 'pointer',
   outline: 'none',
   transition: 'all 0.15s ease',
-  letterSpacing: -0.1,
+  flexShrink: 0,
 };
 
-const pillBtnActive: React.CSSProperties = {
-  color: '#0a0a0a',
-  background: 'linear-gradient(135deg, #ffffff 0%, #e8e8e8 100%)',
-  borderColor: 'rgba(255,255,255,0.20)',
-  fontWeight: 600,
-  boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
+const sectionPillActive: React.CSSProperties = {
+  background: 'rgba(255,255,255,0.08)',
+  borderColor: 'rgba(255,255,255,0.15)',
+};
+
+const sectionPillLabel: React.CSSProperties = {
+  letterSpacing: -0.1,
 };
 
 const divider: React.CSSProperties = {
@@ -208,7 +277,118 @@ const divider: React.CSSProperties = {
     'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.10) 20%, rgba(255,255,255,0.10) 80%, rgba(255,255,255,0) 100%)',
 };
 
-const contentSlot: React.CSSProperties = {
+const contentWrap: React.CSSProperties = {
+  position: 'relative',
   flex: 1,
   minHeight: 0,
+};
+
+const contentSlot: React.CSSProperties = {
+  width: '100%',
+  height: '100%',
+};
+
+const backdrop: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  background: 'rgba(0,0,0,0.55)',
+  backdropFilter: 'blur(4px)',
+  WebkitBackdropFilter: 'blur(4px)',
+  border: 'none',
+  outline: 'none',
+  cursor: 'pointer',
+  padding: 0,
+  zIndex: 10,
+};
+
+const floatingMenu: React.CSSProperties = {
+  position: 'absolute',
+  top: '50%',
+  left: '50%',
+  transform: 'translate(-50%, -50%)',
+  width: 'min(86%, 280px)',
+  maxHeight: '92%',
+  background:
+    'linear-gradient(180deg, #1a1a1d 0%, #131316 100%)',
+  border: '1px solid rgba(255,255,255,0.10)',
+  borderRadius: 14,
+  boxShadow:
+    '0 16px 40px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)',
+  backdropFilter: 'blur(24px)',
+  WebkitBackdropFilter: 'blur(24px)',
+  zIndex: 11,
+  display: 'flex',
+  flexDirection: 'column',
+  overflow: 'hidden',
+};
+
+const menuHeader: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  paddingTop: 10,
+  paddingBottom: 10,
+  paddingLeft: 14,
+  paddingRight: 8,
+  borderBottom: '1px solid rgba(255,255,255,0.06)',
+};
+
+const menuTitle: React.CSSProperties = {
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 12,
+  fontWeight: 600,
+  color: 'rgba(255,255,255,0.55)',
+  letterSpacing: 0.4,
+  textTransform: 'uppercase',
+};
+
+const menuCloseBtn: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  outline: 'none',
+  cursor: 'pointer',
+  width: 26,
+  height: 26,
+  borderRadius: 6,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
+
+const menuList: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 1,
+  padding: 6,
+  overflowY: 'auto',
+};
+
+const menuItem: React.CSSProperties = {
+  boxSizing: 'border-box',
+  width: '100%',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 12,
+  paddingTop: 9,
+  paddingBottom: 9,
+  paddingLeft: 12,
+  paddingRight: 12,
+  border: 'none',
+  outline: 'none',
+  cursor: 'pointer',
+  background: 'transparent',
+  borderRadius: 8,
+  transition: 'background 0.12s ease',
+  textAlign: 'left',
+};
+
+const menuItemActive: React.CSSProperties = {
+  background: 'rgba(59,130,246,0.12)',
+};
+
+const menuItemLabel: React.CSSProperties = {
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 13,
+  flex: 1,
+  letterSpacing: -0.1,
 };
