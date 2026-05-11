@@ -457,7 +457,7 @@ app.use(helmet({
       // If any future feature needs esm.sh, prefer self-hosting via the same
       // /vendor pattern instead of widening CSP.
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:", "https://cdn.plaid.com", "https://elevenlabs.io", "https://unpkg.com", "https://cdn.jsdelivr.net", "https://source.zoom.us", "https://zoom.us", "https://*.zoom.us"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://source.zoom.us", "https://zoom.us"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://source.zoom.us", "https://zoom.us", "https://cdn.jsdelivr.net"],
       imgSrc: ["'self'", "data:", "blob:", "https:"],
       connectSrc: [
         "'self'",
@@ -480,6 +480,7 @@ app.use(helmet({
         "https://*.plaid.com",
         "https://maps.googleapis.com",
         "https://aerialview.googleapis.com",
+        "https://tile.googleapis.com",
         "https://api.deepgram.com",
         "wss://api.deepgram.com",
         "https://cdn.jsdelivr.net",
@@ -497,7 +498,7 @@ app.use(helmet({
       ],
       mediaSrc: ["'self'", "data:", "blob:", "https://zoom.us", "https://*.zoom.us", "https://storage.googleapis.com"],
       frameSrc: ["'self'", "https://*.pandadoc.com", "https://*.stripe.com", "https://*.plaid.com", "https://zoom.us", "https://*.zoom.us"],
-      workerSrc: ["'self'", "blob:", "https://source.zoom.us"],
+      workerSrc: ["'self'", "blob:", "https://source.zoom.us", "https://cdn.jsdelivr.net"],
       fontSrc: ["'self'", "data:", "https://cdn.jsdelivr.net", "https://unpkg.com", "https://source.zoom.us"],
       objectSrc: ["'none'"],
       upgradeInsecureRequests: [],

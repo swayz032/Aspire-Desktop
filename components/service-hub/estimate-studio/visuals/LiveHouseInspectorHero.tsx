@@ -425,7 +425,11 @@ export function LiveHouseInspectorHero({ coords, address, loading, onReturn }: P
         }
 
         if (!cancelled) setStatus('ready');
-      } catch {
+      } catch (err) {
+        // Surface the real error in dev so we can debug instead of silently
+        // landing on the generic "Could not load House Inspector" overlay.
+        // eslint-disable-next-line no-console
+        console.error('[LiveHouseInspectorHero] init failed:', err);
         if (!cancelled) setStatus('error');
       }
     })();
