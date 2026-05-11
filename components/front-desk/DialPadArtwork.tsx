@@ -152,7 +152,9 @@ const styles = StyleSheet.create({
 });
 
 const screen: React.CSSProperties = {
+  boxSizing: 'border-box',
   width: '100%',
+  maxWidth: '100%',
   height: 44,
   borderRadius: 12,
   background:
@@ -168,16 +170,23 @@ const screen: React.CSSProperties = {
   paddingLeft: 14,
   paddingRight: 10,
   flexShrink: 0,
+  overflow: 'hidden',
+  minWidth: 0,
 };
 
 function screenText(empty: boolean): React.CSSProperties {
   return {
+    flex: 1,
+    minWidth: 0,
     fontFamily: 'Inter, system-ui, sans-serif',
     fontSize: empty ? 13 : 18,
     fontWeight: empty ? 400 : 600,
     letterSpacing: empty ? 0 : 0.4,
     color: empty ? 'rgba(255,255,255,0.35)' : '#ffffff',
     fontVariantNumeric: 'tabular-nums',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   };
 }
 
@@ -238,7 +247,9 @@ const keySub: React.CSSProperties = {
 };
 
 const callBtn: React.CSSProperties = {
+  boxSizing: 'border-box',
   width: '100%',
+  maxWidth: '100%',
   height: 44,
   borderRadius: 22,
   border: 'none',
