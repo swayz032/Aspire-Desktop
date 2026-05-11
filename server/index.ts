@@ -787,6 +787,16 @@ try {
   });
 }
 
+try {
+  const buildingFootprintRoute = require('./serviceHub/property/buildingFootprintRoute').default;
+  app.use(buildingFootprintRoute);
+  logger.info('[INFO] Building footprint route registered (GET /api/property/building-footprint)');
+} catch (e) {
+  logger.warn('Building footprint route not available, skipping', {
+    reason: e instanceof Error ? e.message.slice(0, 160) : 'unknown',
+  });
+}
+
 // Public client config — returns non-secret keys that the browser needs at runtime.
 // Google Places API key is browser-facing by design (restricted by HTTP referrer in GCP).
 // This avoids the EXPO_PUBLIC_* build-time limitation: the key comes from SM at server startup.
