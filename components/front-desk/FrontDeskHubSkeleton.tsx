@@ -157,21 +157,6 @@ function VoiceTapButton() {
         (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px) scale(1.04)';
       }}
     >
-      {/* glossy top highlight overlay */}
-      <span
-        aria-hidden
-        style={{
-          position: 'absolute',
-          top: 4,
-          left: 8,
-          right: 8,
-          height: 22,
-          borderRadius: 22,
-          background:
-            'linear-gradient(180deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0) 100%)',
-          pointerEvents: 'none',
-        }}
-      />
       <Ionicons name="call" size={28} color="#ffffff" />
     </button>
   );
