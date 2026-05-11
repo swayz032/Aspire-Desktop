@@ -480,7 +480,7 @@ export async function fetchAdamPropertyResearch(
   const requestBody = {
     agent: AGENT_NAME,
     task: TASK_NAME,
-    details: { address: cleanAddress },
+    details: cleanAddress,
     suite_id: suiteId,
     office_id: officeId,
     correlation_id: correlationId,
