@@ -38,7 +38,7 @@ const styles = StyleSheet.create({
     padding: 16,
     minHeight: 0,
     width: '100%',
-    maxWidth: 1280,
+    maxWidth: 1440,
     alignSelf: 'center',
   },
   rootRow: {
