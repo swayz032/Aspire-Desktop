@@ -18,6 +18,9 @@ function StageBlob() {
     v.muted = true;
     v.loop = true;
     v.playsInline = true;
+    // Slightly slower than 1.0 reads as graceful idle motion (matches the
+    // AvaOrbVideo idle profile) without making the blob feel sluggish.
+    try { v.playbackRate = 0.85; } catch {}
     v.play().catch(() => {});
   }, []);
 
@@ -48,6 +51,13 @@ function StageBlob() {
         objectFit: 'contain',
         pointerEvents: 'none',
         background: 'transparent',
+        // GPU-accelerated compositing — fixes the stutter/lag the founder
+        // saw at 5.3MB MP4 size. translateZ(0) promotes the video into its
+        // own compositing layer so the GPU decodes + paints without the
+        // CPU-fallback path that React Native Web's parent View triggers.
+        transform: 'translateZ(0)',
+        willChange: 'transform',
+        backfaceVisibility: 'hidden',
       }}
     />
   );
