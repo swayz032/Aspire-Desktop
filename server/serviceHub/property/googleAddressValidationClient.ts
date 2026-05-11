@@ -111,7 +111,8 @@ function mapVerdict(raw: Record<string, unknown>): AddressValidationVerdict {
   const address = result?.address ?? {};
 
   const addressComplete: boolean = verdict.addressComplete === true;
-  const hasInferred: boolean = verdict.hasInferredComponents === true;
+  // hasInferredComponents intentionally not gated on (see mapping note below).
+  void verdict.hasInferredComponents;
   const hasUnconfirmed: boolean = verdict.hasUnconfirmedComponents === true;
 
   const formatted: string = address.formattedAddress ?? '';
@@ -130,13 +131,22 @@ function mapVerdict(raw: Record<string, unknown>): AddressValidationVerdict {
   let status: AddressValidationVerdict['status'];
   let suggestedAddress: string | undefined;
 
+  // Address Validation gate — must be permissive enough to let real
+  // addresses through. `hasInferredComponents=true` is normal for any
+  // address where Google fills in "+4" ZIP suffix, country, or an
+  // implicit subpremise — none of which the user can meaningfully
+  // "correct" via a prompt. We only block on `addressComplete=false`
+  // (genuinely incomplete) or `hasUnconfirmedComponents=true` (Google
+  // is uncertain about a street/city/state — user input ambiguous).
+  // Inferred is surfaced as confidence='medium' downstream, never as
+  // a hard short-circuit. (Founder fix 2026-05-10: loosened from the
+  // original strict mapping that prevented Adam/Apify from ever firing
+  // for valid US addresses with +4 ZIP suffixes.)
   if (!addressComplete) {
     status = 'invalid';
-  } else if (hasInferred) {
+  } else if (hasUnconfirmed) {
     status = 'needs_correction';
     suggestedAddress = formatted || undefined;
-  } else if (hasUnconfirmed) {
-    status = 'unconfirmed';
   } else {
     status = 'valid';
   }

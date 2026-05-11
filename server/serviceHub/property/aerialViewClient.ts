@@ -37,7 +37,11 @@ import { logger } from '../../logger';
 const AERIAL_VIEW_BASE = 'https://aerialview.googleapis.com/v1/videos';
 const PROVIDER_TIMEOUT_MS = 4_500;   // per individual HTTP call (<5s Law #10)
 const POLL_INTERVAL_MS   = 2_000;   // between polling attempts
-const POLL_BUDGET_MS     = 25_000;  // total polling window before returning 'processing'
+// Backend poll budget MUST stay well under any upstream proxy idle timeout
+// (Metro dev proxy = ~30s, prod CDN = ~60s). The frontend polls progressively
+// (5s × 6 = 30s) on top of this, so combined cover Google's 30-60s render
+// window without ever blocking a single HTTP request long enough to time out.
+const POLL_BUDGET_MS     = 8_000;
 const ADDRESS_LOG_MAX    = 100;     // chars — truncate before logging (Law #9)
 
 /* -------------------------------------------------------------------------- */
@@ -71,14 +75,29 @@ export const enum AerialViewErrorCode {
 
 type GoogleVideoState = 'PROCESSING' | 'ACTIVE' | 'FAILED';
 
-type GoogleVideoUri = {
-  mediaLink?: string;
+// Google's actual response shape (verified live 2026-05-10 against
+// https://aerialview.googleapis.com/v1/videos:lookupVideo):
+//   {
+//     "uris": {
+//       "MP4_HIGH":   { "landscapeUri": "...", "portraitUri": "..." },
+//       "MP4_MEDIUM": { ... },
+//       "MP4_LOW":    { ... },
+//       "IMAGE":      { "landscapeUri": "...thumbnail...", "portraitUri": "..." }
+//     }
+//   }
+// The old field names (videoH264/videoH265/image with mediaLink) came from
+// an outdated docs draft and silently dropped every URL — videos rendered
+// on Google's side but our parser returned undefined.
+type GoogleAerialUri = {
+  landscapeUri?: string;
+  portraitUri?: string;
 };
 
 type GoogleVideoUris = {
-  videoH264?: GoogleVideoUri;
-  videoH265?: GoogleVideoUri;
-  image?:     GoogleVideoUri;
+  MP4_HIGH?:   GoogleAerialUri;
+  MP4_MEDIUM?: GoogleAerialUri;
+  MP4_LOW?:    GoogleAerialUri;
+  IMAGE?:      GoogleAerialUri;
 };
 
 type GoogleVideoResponse = {
@@ -131,16 +150,25 @@ async function timedFetch(
   }
 }
 
-/** Extract normalized video URLs from a ACTIVE Google response. */
+/** Extract normalized video URLs from an ACTIVE Google response.
+ *  Prefer landscape orientation (16:9) for the desktop hero zone — falls
+ *  back to portrait if landscape is missing for a given quality tier. */
 function extractUrls(uris: GoogleVideoUris | undefined): {
   videoUrl:    string | undefined;
-  videoH265Url: string | undefined;
+  videoH265Url: string | undefined;  // kept in API for back-compat — Google no longer ships HEVC separately
   thumbnailUrl: string | undefined;
 } {
+  const high = uris?.MP4_HIGH;
+  const med  = uris?.MP4_MEDIUM;
+  const low  = uris?.MP4_LOW;
+  const img  = uris?.IMAGE;
   return {
-    videoUrl:     uris?.videoH264?.mediaLink,
-    videoH265Url: uris?.videoH265?.mediaLink,
-    thumbnailUrl: uris?.image?.mediaLink,
+    videoUrl:
+      high?.landscapeUri ?? high?.portraitUri ??
+      med?.landscapeUri  ?? med?.portraitUri  ??
+      low?.landscapeUri  ?? low?.portraitUri,
+    videoH265Url: undefined,
+    thumbnailUrl: img?.landscapeUri ?? img?.portraitUri,
   };
 }
 

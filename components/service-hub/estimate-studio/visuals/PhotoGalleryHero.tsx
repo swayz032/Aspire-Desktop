@@ -143,7 +143,12 @@ export function PhotoGalleryHero({
         <Image
           source={{ uri: current.url }}
           style={styles.mainImage}
-          resizeMode="cover"
+          // `contain` shows the full photo without cropping (Zillow shots
+          // are landscape AND portrait — `cover` was stretching portrait
+          // shots into a blurry mess on the 12:5 hero). The dark wrap
+          // letterboxes the empty space so the photo always reads as
+          // intentional framing, not broken layout.
+          resizeMode="contain"
           accessibilityLabel={current.caption ?? `${title} photo ${index + 1} of ${total}`}
         />
 

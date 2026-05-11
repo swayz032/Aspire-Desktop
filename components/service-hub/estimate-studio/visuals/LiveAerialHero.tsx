@@ -38,6 +38,10 @@ import { useAuthFetch } from '@/lib/authenticatedFetch';
 
 interface Props {
   coords?: { lat: number; lng: number };
+  /** Server-validated canonical address (e.g. "123 Main St, City, ST 12345-6789, USA").
+   *  Optional fallback to the raw store address — but Google Aerial View's
+   *  lookup table only hits when fed the canonical form. */
+  canonicalAddress?: string;
   loading: boolean;
   onReturn?: () => void;
 }
@@ -55,10 +59,19 @@ type AerialVideoResponse = {
 
 type LoadStatus = 'idle' | 'loading' | 'processing' | 'ready' | 'unavailable' | 'error';
 
-const PROCESSING_RETRY_MS = 3000;
+const PROCESSING_RETRY_MS = 5000;
+// Google Aerial View first-time renders for residential addresses can take
+// 3-5 minutes (verified live 2026-05-10 against a Forest Park GA address —
+// still PROCESSING at 10 min). 60 attempts × 5s = 5 minutes of patient
+// polling, then we surrender to the soft skeleton (user can navigate away
+// and come back — by then it's cached and instant).
+const MAX_RETRIES = 60;
 
-export function LiveAerialHero({ coords, loading, onReturn }: Props) {
-  const { address } = useProjectAddress();
+export function LiveAerialHero({ coords, canonicalAddress, loading, onReturn }: Props) {
+  const { address: storeAddress } = useProjectAddress();
+  // Prefer the server-validated canonical address (full +4 ZIP) — falls back
+  // to the raw store address only if the parent hasn't validated yet.
+  const address = canonicalAddress || storeAddress;
   const { authenticatedFetch } = useAuthFetch();
 
   const [status, setStatus] = useState<LoadStatus>('idle');
@@ -75,7 +88,7 @@ export function LiveAerialHero({ coords, loading, onReturn }: Props) {
 
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
-    let retried = false;
+    let retryCount = 0;
 
     setStatus('loading');
 
@@ -106,15 +119,16 @@ export function LiveAerialHero({ coords, loading, onReturn }: Props) {
           case 'processing': {
             setThumbnailUrl(body.thumbnailUrl);
             setStatus('processing');
-            // Single retry only — no infinite poll.
-            if (!retried) {
-              retried = true;
+            // Bounded progressive polling — never infinite, never gives up
+            // before Google's typical 60-120s render window for new addresses.
+            if (retryCount < MAX_RETRIES) {
+              retryCount += 1;
               retryTimer = setTimeout(() => {
                 if (!cancelled) void run();
               }, PROCESSING_RETRY_MS);
             } else {
-              // Still processing after one retry → leave the soft skeleton in
-              // place; user can switch back to Street View.
+              // Genuinely stuck after the budget — leave skeleton in place;
+              // user can switch back to Street View.
               setStatus('processing');
             }
             return;
