@@ -88,35 +88,40 @@ export function FrontDeskHeader({ personaName, personaResolved = true }: FrontDe
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: 16,
-    marginBottom: 16,
+    marginBottom: 8,
     flexWrap: 'wrap',
   },
   titleBlock: {
     flex: 1,
     minWidth: 280,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 12,
+    flexWrap: 'wrap',
   },
+  // Reduced from 26 -> 18 + dropped bottom margin so this reads as a
+  // page-section title, NOT a second header bar competing with the
+  // global Aspire DesktopHeader. Subtitle inlines next to the title.
   title: {
     color: Colors.text.primary,
-    fontSize: 26,
-    fontWeight: '700',
-    letterSpacing: -0.4,
-    marginBottom: 4,
+    fontSize: 18,
+    fontWeight: '600',
+    letterSpacing: -0.2,
   },
   subtitle: {
     color: Colors.text.tertiary,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 16,
   },
   subtitleSkeleton: {
-    height: 13,
-    width: 280,
-    maxWidth: '90%',
+    height: 12,
+    width: 240,
+    maxWidth: '70%',
     borderRadius: 4,
     backgroundColor: 'rgba(255,255,255,0.06)',
-    marginTop: 4,
   },
   actions: {
     flexDirection: 'row',
@@ -127,10 +132,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingVertical: 9,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    minHeight: 38,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    minHeight: 32,
     ...(Platform.OS === 'web'
       ? ({ cursor: 'pointer', transition: 'all 0.15s ease' } as any)
       : {}),
