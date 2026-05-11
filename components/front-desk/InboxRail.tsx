@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { SmsWorkspace } from '@/components/front-desk/SmsWorkspace';
 
 /**
  * InboxRail — unified Front Desk Inbox card (right rail, top).
@@ -135,9 +136,10 @@ function SectionMode({
       {/* Divider */}
       <div style={divider} />
 
-      {/* Empty section workspace — each section will own its own filters
-          / search / setup in later passes. */}
-      <div style={sectionSlot} />
+      {/* Section workspace */}
+      <div style={sectionSlot}>
+        {section === 'sms' ? <SmsWorkspace /> : null}
+      </div>
     </>
   );
 }

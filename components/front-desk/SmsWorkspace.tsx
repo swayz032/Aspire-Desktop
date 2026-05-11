@@ -1,0 +1,719 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { View, StyleSheet, Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+
+/**
+ * SmsWorkspace — SMS section content for the Inbox Rail.
+ *
+ * Three view modes, all stacked inside the rail content slot:
+ *   - LIST    (default) — scrollable list of thread rows
+ *   - DETAIL  — open thread with bubble history + composer
+ *   - NEW     — recipient field + composer for a fresh message
+ *
+ * Visual-design pass: everything is MOCK. No backend wiring. Send / Delete
+ * don't persist. Tap-states + scroll + composer focus all work.
+ */
+
+type Mode =
+  | { kind: 'list' }
+  | { kind: 'detail'; threadId: string }
+  | { kind: 'new' };
+
+type Bubble = {
+  id: string;
+  side: 'them' | 'you';
+  text: string;
+  time: string;
+  read?: boolean;
+};
+
+type Thread = {
+  id: string;
+  name: string;
+  initials: string;
+  avatarColor: string;
+  phone: string;
+  preview: string;
+  time: string;
+  unread: boolean;
+  bubbles: Bubble[];
+};
+
+const MOCK_THREADS: Thread[] = [
+  {
+    id: 't1',
+    name: 'Brighton Office Build',
+    initials: 'BO',
+    avatarColor: '#22C55E',
+    phone: '(617) 555-0188',
+    preview: "Thanks! We'll be there at 10am.",
+    time: '2 min',
+    unread: true,
+    bubbles: [
+      { id: 'b1', side: 'them', text: "Hi, can you confirm what time you'll be onsite tomorrow?", time: 'Yesterday 9:15 AM' },
+      { id: 'b2', side: 'you', text: 'Hi! Yes, our team will arrive around 10am.', time: '9:16 AM', read: true },
+      { id: 'b3', side: 'them', text: 'Perfect, thanks!', time: '9:17 AM' },
+      { id: 'b4', side: 'them', text: 'Also, can you send over the final invoice when you have a moment?', time: 'Today 9:24 AM' },
+      { id: 'b5', side: 'you', text: "Absolutely. I'll send that over right after we wrap up.", time: '9:27 AM', read: true },
+      { id: 'b6', side: 'them', text: "Thanks! We'll be there at 10am.", time: '9:28 AM' },
+    ],
+  },
+  {
+    id: 't2',
+    name: 'Maria Lewis',
+    initials: 'ML',
+    avatarColor: '#F59E0B',
+    phone: '(617) 555-0142',
+    preview: 'Can you send over the access code for tomorrow morning?',
+    time: '15 min',
+    unread: true,
+    bubbles: [
+      { id: 'b1', side: 'them', text: 'Can you send over the access code for tomorrow morning?', time: '15 min ago' },
+    ],
+  },
+  {
+    id: 't3',
+    name: 'David Reed',
+    initials: 'DR',
+    avatarColor: '#8B5CF6',
+    phone: '(617) 555-0319',
+    preview: "We'll need to reschedule tomorrow's appointment.",
+    time: '1 hr',
+    unread: false,
+    bubbles: [
+      { id: 'b1', side: 'them', text: "We'll need to reschedule tomorrow's appointment.", time: '1 hr ago' },
+    ],
+  },
+  {
+    id: 't4',
+    name: 'John Carter',
+    initials: 'JC',
+    avatarColor: '#3B82F6',
+    phone: '(617) 555-0721',
+    preview: 'Perfect, thank you!',
+    time: '1 hr',
+    unread: false,
+    bubbles: [
+      { id: 'b1', side: 'them', text: 'Perfect, thank you!', time: '1 hr ago' },
+    ],
+  },
+  {
+    id: 't5',
+    name: 'Coastal Roofing Supply',
+    initials: 'CS',
+    avatarColor: '#06B6D4',
+    phone: '(617) 555-0455',
+    preview: 'When will the materials be ready for pickup?',
+    time: 'Yesterday',
+    unread: false,
+    bubbles: [
+      { id: 'b1', side: 'them', text: 'When will the materials be ready for pickup?', time: 'Yesterday' },
+    ],
+  },
+  {
+    id: 't6',
+    name: 'Amanda Hill',
+    initials: 'AH',
+    avatarColor: '#EC4899',
+    phone: '(617) 555-0892',
+    preview: 'Thanks again!',
+    time: '2 days',
+    unread: false,
+    bubbles: [
+      { id: 'b1', side: 'them', text: 'Thanks again!', time: '2 days ago' },
+    ],
+  },
+  {
+    id: 't7',
+    name: 'Michael Tan',
+    initials: 'MT',
+    avatarColor: '#EF4444',
+    phone: '(617) 555-0608',
+    preview: 'Invoice received, thank you.',
+    time: '2 days',
+    unread: false,
+    bubbles: [
+      { id: 'b1', side: 'them', text: 'Invoice received, thank you.', time: '2 days ago' },
+    ],
+  },
+];
+
+export function SmsWorkspace({
+  onRequestNew,
+}: {
+  /** Hook for the rail header ✎ icon to push us into NEW mode externally. */
+  onRequestNew?: () => void;
+}) {
+  const [mode, setMode] = useState<Mode>({ kind: 'list' });
+  // Expose a way for the parent to flip us into NEW (compose) — wired by ref.
+  useEffect(() => {
+    void onRequestNew; // currently unused — parent will trigger via the prop pattern in a follow-up
+  }, [onRequestNew]);
+
+  if (Platform.OS !== 'web') {
+    return <View style={styles.fill} />;
+  }
+
+  if (mode.kind === 'list') {
+    return <ThreadList onPick={(id) => setMode({ kind: 'detail', threadId: id })} onNew={() => setMode({ kind: 'new' })} />;
+  }
+  if (mode.kind === 'detail') {
+    const thread = MOCK_THREADS.find((t) => t.id === mode.threadId);
+    if (!thread) return <ThreadList onPick={(id) => setMode({ kind: 'detail', threadId: id })} onNew={() => setMode({ kind: 'new' })} />;
+    return <ThreadDetail thread={thread} onBack={() => setMode({ kind: 'list' })} />;
+  }
+  return <NewMessage onBack={() => setMode({ kind: 'list' })} />;
+}
+
+function ThreadList({ onPick, onNew }: { onPick: (id: string) => void; onNew: () => void }) {
+  return (
+    <div style={listWrap}>
+      <div style={listScroll}>
+        {MOCK_THREADS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => onPick(t.id)}
+            style={threadRow}
+            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)')}
+            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
+          >
+            <Avatar initials={t.initials} color={t.avatarColor} />
+            <div style={threadRowText}>
+              <div style={threadRowTopLine}>
+                <span style={threadName(t.unread)}>{t.name}</span>
+                <span style={threadTime}>{t.time}</span>
+              </div>
+              <div style={threadPreview(t.unread)}>{t.preview}</div>
+            </div>
+            {t.unread ? <div style={unreadDot} /> : null}
+          </button>
+        ))}
+      </div>
+      <button
+        aria-label="New message"
+        onClick={onNew}
+        style={fab}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px) scale(1.04)';
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLElement).style.transform = 'translateY(0) scale(1)';
+        }}
+      >
+        <Ionicons name="create-outline" size={18} color="#fff" />
+      </button>
+    </div>
+  );
+}
+
+function ThreadDetail({ thread, onBack }: { thread: Thread; onBack: () => void }) {
+  const [draft, setDraft] = useState('');
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [thread.id]);
+
+  return (
+    <div style={detailWrap}>
+      <div style={detailHeader}>
+        <button aria-label="Back to threads" onClick={onBack} style={detailBackBtn}>
+          <Ionicons name="chevron-back" size={18} color="rgba(255,255,255,0.85)" />
+        </button>
+        <Avatar initials={thread.initials} color={thread.avatarColor} size={32} />
+        <div style={detailHeaderText}>
+          <div style={detailHeaderName}>{thread.name}</div>
+          <div style={detailHeaderPhone}>{thread.phone}</div>
+        </div>
+        <button aria-label="Call" style={detailIconBtn}>
+          <Ionicons name="call-outline" size={16} color="rgba(255,255,255,0.7)" />
+        </button>
+        <button aria-label="Info" style={detailIconBtn}>
+          <Ionicons name="ellipsis-horizontal" size={16} color="rgba(255,255,255,0.7)" />
+        </button>
+      </div>
+
+      <div ref={scrollRef} style={bubbleScroll}>
+        {thread.bubbles.map((b, i) => {
+          const prev = thread.bubbles[i - 1];
+          const showStamp = !prev || prev.time !== b.time;
+          return (
+            <React.Fragment key={b.id}>
+              {showStamp ? <div style={dateStamp}>{b.time}</div> : null}
+              <div style={b.side === 'you' ? bubbleRowYou : bubbleRowThem}>
+                <div style={b.side === 'you' ? bubbleYou : bubbleThem}>
+                  <span style={bubbleText}>{b.text}</span>
+                </div>
+                {b.side === 'you' && b.read ? (
+                  <div style={readReceipt}>
+                    Read {b.time} <Ionicons name="checkmark-done" size={11} color="#3B82F6" />
+                  </div>
+                ) : null}
+              </div>
+            </React.Fragment>
+          );
+        })}
+      </div>
+
+      <div style={composer}>
+        <button aria-label="Emoji" style={composerIconBtn}>
+          <Ionicons name="happy-outline" size={18} color="rgba(255,255,255,0.55)" />
+        </button>
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Type a message..."
+          style={composerInput}
+        />
+        <button aria-label="Attach" style={composerIconBtn}>
+          <Ionicons name="image-outline" size={18} color="rgba(255,255,255,0.55)" />
+        </button>
+        <button
+          aria-label="Send"
+          onClick={() => setDraft('')}
+          disabled={draft.trim().length === 0}
+          style={{
+            ...sendBtn,
+            opacity: draft.trim().length === 0 ? 0.4 : 1,
+            cursor: draft.trim().length === 0 ? 'not-allowed' : 'pointer',
+          }}
+        >
+          <Ionicons name="arrow-up" size={16} color="#fff" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function NewMessage({ onBack }: { onBack: () => void }) {
+  const [to, setTo] = useState('');
+  const [draft, setDraft] = useState('');
+  return (
+    <div style={detailWrap}>
+      <div style={detailHeader}>
+        <button aria-label="Back to threads" onClick={onBack} style={detailBackBtn}>
+          <Ionicons name="chevron-back" size={18} color="rgba(255,255,255,0.85)" />
+        </button>
+        <div style={detailHeaderText}>
+          <div style={detailHeaderName}>New Message</div>
+        </div>
+      </div>
+
+      <div style={newToRow}>
+        <span style={newToLabel}>To:</span>
+        <input
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          placeholder="Phone number or contact"
+          style={newToInput}
+        />
+      </div>
+
+      <div style={newBody} />
+
+      <div style={composer}>
+        <button aria-label="Emoji" style={composerIconBtn}>
+          <Ionicons name="happy-outline" size={18} color="rgba(255,255,255,0.55)" />
+        </button>
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Type a message..."
+          style={composerInput}
+        />
+        <button aria-label="Attach" style={composerIconBtn}>
+          <Ionicons name="image-outline" size={18} color="rgba(255,255,255,0.55)" />
+        </button>
+        <button
+          aria-label="Send"
+          onClick={() => { setDraft(''); setTo(''); }}
+          disabled={draft.trim().length === 0 || to.trim().length === 0}
+          style={{
+            ...sendBtn,
+            opacity: draft.trim().length === 0 || to.trim().length === 0 ? 0.4 : 1,
+            cursor: draft.trim().length === 0 || to.trim().length === 0 ? 'not-allowed' : 'pointer',
+          }}
+        >
+          <Ionicons name="arrow-up" size={16} color="#fff" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Avatar({ initials, color, size = 36 }: { initials: string; color: string; size?: number }) {
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        background: color,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -1px 0 rgba(0,0,0,0.18)',
+      }}
+    >
+      <span
+        style={{
+          color: '#ffffff',
+          fontFamily: 'Inter, system-ui, sans-serif',
+          fontSize: size * 0.38,
+          fontWeight: 600,
+          letterSpacing: 0.2,
+        }}
+      >
+        {initials}
+      </span>
+    </div>
+  );
+}
+
+const styles = StyleSheet.create({
+  fill: { flex: 1 },
+});
+
+const listWrap: React.CSSProperties = {
+  position: 'relative',
+  width: '100%',
+  height: '100%',
+  display: 'flex',
+  flexDirection: 'column',
+};
+
+const listScroll: React.CSSProperties = {
+  flex: 1,
+  overflowY: 'auto',
+  paddingTop: 4,
+  paddingBottom: 8,
+};
+
+const threadRow: React.CSSProperties = {
+  boxSizing: 'border-box',
+  width: '100%',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  paddingTop: 9,
+  paddingBottom: 9,
+  paddingLeft: 8,
+  paddingRight: 10,
+  borderRadius: 10,
+  background: 'transparent',
+  border: 'none',
+  outline: 'none',
+  cursor: 'pointer',
+  textAlign: 'left',
+  transition: 'background 0.12s ease',
+};
+
+const threadRowText: React.CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
+};
+
+const threadRowTopLine: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'baseline',
+  justifyContent: 'space-between',
+  gap: 8,
+};
+
+function threadName(unread: boolean): React.CSSProperties {
+  return {
+    fontFamily: 'Inter, system-ui, sans-serif',
+    fontSize: 13,
+    fontWeight: unread ? 600 : 500,
+    color: '#ffffff',
+    letterSpacing: -0.1,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    minWidth: 0,
+    flex: 1,
+  };
+}
+
+const threadTime: React.CSSProperties = {
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 11,
+  color: 'rgba(255,255,255,0.40)',
+  flexShrink: 0,
+};
+
+function threadPreview(unread: boolean): React.CSSProperties {
+  return {
+    fontFamily: 'Inter, system-ui, sans-serif',
+    fontSize: 12,
+    color: unread ? 'rgba(255,255,255,0.78)' : 'rgba(255,255,255,0.45)',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  };
+}
+
+const unreadDot: React.CSSProperties = {
+  width: 8,
+  height: 8,
+  borderRadius: 4,
+  background: '#3B82F6',
+  flexShrink: 0,
+  boxShadow: '0 0 8px rgba(59,130,246,0.6)',
+};
+
+const fab: React.CSSProperties = {
+  position: 'absolute',
+  bottom: 8,
+  right: 8,
+  width: 44,
+  height: 44,
+  borderRadius: 22,
+  border: 'none',
+  outline: 'none',
+  cursor: 'pointer',
+  backgroundImage:
+    'linear-gradient(135deg, #EF4444 0%, #DC2626 30%, #7C3AED 50%, #3B82F6 70%, #2563EB 100%)',
+  boxShadow: '0 6px 14px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.25)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  transition: 'transform 0.12s ease',
+};
+
+const detailWrap: React.CSSProperties = {
+  width: '100%',
+  height: '100%',
+  display: 'flex',
+  flexDirection: 'column',
+  minHeight: 0,
+};
+
+const detailHeader: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  paddingTop: 4,
+  paddingBottom: 10,
+  borderBottom: '1px solid rgba(255,255,255,0.06)',
+  flexShrink: 0,
+};
+
+const detailBackBtn: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  outline: 'none',
+  cursor: 'pointer',
+  width: 28,
+  height: 28,
+  borderRadius: 8,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginLeft: -6,
+};
+
+const detailHeaderText: React.CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  display: 'flex',
+  flexDirection: 'column',
+};
+
+const detailHeaderName: React.CSSProperties = {
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 13,
+  fontWeight: 600,
+  color: '#ffffff',
+  letterSpacing: -0.1,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+};
+
+const detailHeaderPhone: React.CSSProperties = {
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 11,
+  color: 'rgba(255,255,255,0.45)',
+};
+
+const detailIconBtn: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  outline: 'none',
+  cursor: 'pointer',
+  width: 28,
+  height: 28,
+  borderRadius: 8,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+};
+
+const bubbleScroll: React.CSSProperties = {
+  flex: 1,
+  overflowY: 'auto',
+  paddingTop: 10,
+  paddingBottom: 10,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+  minHeight: 0,
+};
+
+const dateStamp: React.CSSProperties = {
+  alignSelf: 'center',
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 10,
+  color: 'rgba(255,255,255,0.35)',
+  marginTop: 8,
+  marginBottom: 6,
+  letterSpacing: 0.3,
+};
+
+const bubbleRowThem: React.CSSProperties = {
+  alignSelf: 'flex-start',
+  maxWidth: '82%',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
+};
+
+const bubbleRowYou: React.CSSProperties = {
+  alignSelf: 'flex-end',
+  maxWidth: '82%',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
+  alignItems: 'flex-end',
+};
+
+const bubbleThem: React.CSSProperties = {
+  background: 'rgba(255,255,255,0.06)',
+  border: '1px solid rgba(255,255,255,0.06)',
+  borderRadius: 14,
+  borderBottomLeftRadius: 4,
+  paddingTop: 8,
+  paddingBottom: 8,
+  paddingLeft: 12,
+  paddingRight: 12,
+};
+
+const bubbleYou: React.CSSProperties = {
+  background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
+  borderRadius: 14,
+  borderBottomRightRadius: 4,
+  paddingTop: 8,
+  paddingBottom: 8,
+  paddingLeft: 12,
+  paddingRight: 12,
+  boxShadow: '0 2px 6px rgba(37,99,235,0.35), inset 0 1px 0 rgba(255,255,255,0.18)',
+};
+
+const bubbleText: React.CSSProperties = {
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 13,
+  color: '#ffffff',
+  lineHeight: 1.35 as any,
+};
+
+const readReceipt: React.CSSProperties = {
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 10,
+  color: 'rgba(255,255,255,0.4)',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 4,
+  paddingRight: 4,
+};
+
+const composer: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: 6,
+  background: 'rgba(255,255,255,0.04)',
+  border: '1px solid rgba(255,255,255,0.08)',
+  borderRadius: 22,
+  flexShrink: 0,
+};
+
+const composerIconBtn: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  outline: 'none',
+  cursor: 'pointer',
+  width: 28,
+  height: 28,
+  borderRadius: 14,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+};
+
+const composerInput: React.CSSProperties = {
+  flex: 1,
+  background: 'transparent',
+  border: 'none',
+  outline: 'none',
+  color: '#ffffff',
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 13,
+  paddingLeft: 4,
+  paddingRight: 4,
+  minWidth: 0,
+};
+
+const sendBtn: React.CSSProperties = {
+  width: 32,
+  height: 32,
+  borderRadius: 16,
+  border: 'none',
+  outline: 'none',
+  backgroundImage:
+    'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
+  boxShadow: '0 2px 6px rgba(37,99,235,0.4)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+  transition: 'opacity 0.15s ease',
+};
+
+const newToRow: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  paddingTop: 10,
+  paddingBottom: 10,
+  borderBottom: '1px solid rgba(255,255,255,0.06)',
+};
+
+const newToLabel: React.CSSProperties = {
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 12,
+  color: 'rgba(255,255,255,0.45)',
+};
+
+const newToInput: React.CSSProperties = {
+  flex: 1,
+  background: 'transparent',
+  border: 'none',
+  outline: 'none',
+  color: '#ffffff',
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 13,
+};
+
+const newBody: React.CSSProperties = {
+  flex: 1,
+  minHeight: 0,
+};
