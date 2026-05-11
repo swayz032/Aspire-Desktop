@@ -72,7 +72,7 @@ function MenuMode({ onPick }: { onPick: (s: Section) => void }) {
       {/* Divider */}
       <div style={divider} />
 
-      {/* Floating centered menu of section pills */}
+      {/* Compact centered cloud of section pills */}
       <div style={menuWrap}>
         <div style={menuList}>
           {SECTIONS.map((s) => (
@@ -91,15 +91,14 @@ function MenuMode({ onPick }: { onPick: (s: Section) => void }) {
                 el.style.borderColor = 'rgba(255,255,255,0.08)';
               }}
               onMouseDown={(e) => {
-                (e.currentTarget as HTMLElement).style.transform = 'scale(0.98)';
+                (e.currentTarget as HTMLElement).style.transform = 'scale(0.96)';
               }}
               onMouseUp={(e) => {
                 (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
               }}
             >
-              <Ionicons name={s.icon} size={16} color="rgba(255,255,255,0.85)" />
+              <Ionicons name={s.icon} size={13} color="rgba(255,255,255,0.85)" />
               <span style={menuPillLabel}>{s.label}</span>
-              <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.35)" />
             </button>
           ))}
         </div>
@@ -273,38 +272,38 @@ const menuWrap: React.CSSProperties = {
 };
 
 const menuList: React.CSSProperties = {
-  width: '100%',
   display: 'flex',
-  flexDirection: 'column',
-  gap: 8,
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
+  maxWidth: '100%',
 };
 
 const menuPill: React.CSSProperties = {
   boxSizing: 'border-box',
-  width: '100%',
-  display: 'flex',
+  display: 'inline-flex',
   alignItems: 'center',
-  gap: 12,
-  paddingTop: 11,
-  paddingBottom: 11,
-  paddingLeft: 14,
-  paddingRight: 12,
+  gap: 6,
+  paddingTop: 6,
+  paddingBottom: 6,
+  paddingLeft: 10,
+  paddingRight: 10,
   borderRadius: 999,
   background: 'rgba(255,255,255,0.04)',
   border: '1px solid rgba(255,255,255,0.08)',
   cursor: 'pointer',
   outline: 'none',
   transition: 'background 0.15s ease, border-color 0.15s ease, transform 0.08s ease',
-  textAlign: 'left',
+  whiteSpace: 'nowrap',
 };
 
 const menuPillLabel: React.CSSProperties = {
   fontFamily: 'Inter, system-ui, sans-serif',
-  fontSize: 13,
+  fontSize: 12,
   fontWeight: 500,
   color: '#ffffff',
   letterSpacing: -0.1,
-  flex: 1,
 };
 
 const sectionSlot: React.CSSProperties = {
