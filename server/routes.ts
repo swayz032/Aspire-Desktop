@@ -5382,21 +5382,22 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       skipGreeting: true,
       maxSessionLengthSeconds: 1800,
       voiceDetectionOptions: {
-        // 2026-05-06: lowered from 0.7 → 0.4 after a session transcript
-        // showed Ava cutting in mid-sentence on a long property-address
-        // query. 0.4 = wait until reasonably confident user is done; 0
-        // = wait until fully confident; 1 = jump in early. 0.4 is the
-        // right balance for our ICP (contractors dictating addresses,
-        // names, line items — natural pauses common).
-        endOfSpeechSensitivity: 0.4,
+        // 2026-05-11 (W12.6): lowered to 0.2 because user reports Ava
+        // still cutting them off mid-sentence at 0.4. Scale: 0 = wait
+        // until fully confident user is done; 1 = jump in early. 0.2
+        // is patient — Ava waits for clear silence before speaking,
+        // which is the right default for contractors mid-dictation.
+        // History: 0.7 (original, way too aggressive) → 0.4 (2026-05-06,
+        // still cut some users) → 0.2 (now, conservative patient default).
+        endOfSpeechSensitivity: 0.2,
         silenceBeforeSkipTurnSeconds: 30,
         silenceBeforeSessionEndSeconds: 60,
-        // 2026-05-06: raised from 1.5 → 2.5 for dictation tolerance.
-        // Users speaking long addresses ("1575 paul russell road
-        // apartment 4802 tallahassee florida 32301") have natural
-        // 2-second pauses. 1.5s caused Ava to treat mid-address pauses
-        // as turn-complete and fire invoke_adam with partial data.
-        silenceBeforeAutoEndTurnSeconds: 2.5,
+        // 2026-05-11 (W12.6): raised to 3.0s. Users pausing mid-sentence
+        // (thinking, looking something up, reading a screen) would lose
+        // their turn at 2.5s. 3.0s is enough that natural pauses don't
+        // trigger turn-end. History: 1.5 → 2.5 (2026-05-06 for dictation)
+        // → 3.0 (now for thinking pauses too).
+        silenceBeforeAutoEndTurnSeconds: 3.0,
         speechEnhancementLevel: 0.5,
       },
       voiceGenerationOptions: {

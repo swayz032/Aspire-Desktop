@@ -14,12 +14,22 @@ const config = JSON.parse(await readFile(path.join(ROOT, 'folder-ids.json'), 'ut
 const TOOL_ID = config.knowledgeToolId;
 const FOLDER_IDS = Object.values(config.folders).map(f => f.id);
 
-const NEW_DESCRIPTION = `Search Ava's internal Aspire KB across three domains:
-(1) VOICE RULES — banned phrases, vocabulary, pacing, browse mode, response shapes (FETCH/PROBLEM/BROWSE/CONFIRMATION modes), how to phrase responses, narrating visual results, ending conversations;
-(2) TOOLS AND CARDS — Adam research protocols, property/product/store/hotel/vendor card display rules, strategic advisory frameworks, address completeness, store disambiguation flow, browse mode after show_cards, error path;
-(3) INVOICING AND QUOTES — Quinn 11-step invoicing workflow, customer-check flow, quote variant, customer onboarding mid-workflow, approval queue rules, common mistakes.
+// 2026-05-11 (W12.6): description rewrite to stop brain leaking internal
+// names. Old description contained phrases like "Quinn 11-step invoicing
+// workflow" and "VOICE RULES, TOOLS AND CARDS, INVOICING AND QUOTES" —
+// when the brain composed its pre-tool ack, it parroted those phrases
+// directly to the user ("Let me check the invoicing workflow"). The new
+// description is brain-facing only — describes WHEN to fire without
+// putting internal system names into the brain's vocabulary.
+const NEW_DESCRIPTION = `Look up Ava's operational guidance before answering any "how do I" question or starting any business workflow.
 
-CALL THIS BEFORE answering any 'how do I...' or operational question, before any workflow guidance, before invoking Adam if the user is asking how-to vs asking for research, and before giving advice on Aspire processes.`;
+USE the user's exact request as the query string — for example "send an invoice", "create a quote", "show me hotels", "look up a property". The retrieval handles the rest.
+
+CALL THIS FIRST for any operational, billing, scheduling, document, research, or process question — before answering from training data, before any other tool, before any specialist routing.
+
+CALL ONCE per workflow — after the first retrieval, hold the workflow state in conversation memory and progress through the steps without re-fetching the same content.
+
+When narrating to the user, never mention this tool, the retrieved document, or any internal system name. Speak only in the language of the user's domain.`;
 
 async function api(p, opts = {}) {
   const r = await fetch(`${BASE}${p}`, {
