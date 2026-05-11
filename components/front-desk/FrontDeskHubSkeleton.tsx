@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet, Platform, useWindowDimensions } from
 import { Ionicons } from '@expo/vector-icons';
 import { FrontDeskHeaderStrip } from '@/components/front-desk/FrontDeskHeaderStrip';
 import { DialPadArtwork } from '@/components/front-desk/DialPadArtwork';
+import { InboxRail } from '@/components/front-desk/InboxRail';
 import { fetchFrontDeskConfig } from '@/lib/api/frontDesk';
 
 const CARD_BG = '#1C1C1E';
@@ -253,7 +254,7 @@ export function FrontDeskHubSkeleton() {
           <View style={[styles.card, { flex: 3 }]} />
         </View>
         <View style={twoCol ? styles.railCol : styles.railColStacked}>
-          <View style={[styles.card, { flex: 6 }]} />
+          <InboxRail />
           <DialPadArtwork />
         </View>
       </View>
