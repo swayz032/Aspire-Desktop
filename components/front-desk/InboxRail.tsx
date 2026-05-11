@@ -73,6 +73,9 @@ export function InboxRail() {
         })}
       </div>
 
+      {/* Divider — separates filter pills from the log/feed below */}
+      <div style={divider} />
+
       {/* Empty content slot — rows / SMS workspace land in later passes */}
       <div style={contentSlot} />
     </View>
@@ -195,6 +198,14 @@ const pillBtnActive: React.CSSProperties = {
   borderColor: 'rgba(255,255,255,0.20)',
   fontWeight: 600,
   boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
+};
+
+const divider: React.CSSProperties = {
+  width: '100%',
+  height: 1,
+  flexShrink: 0,
+  background:
+    'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.10) 20%, rgba(255,255,255,0.10) 80%, rgba(255,255,255,0) 100%)',
 };
 
 const contentSlot: React.CSSProperties = {
