@@ -94,6 +94,90 @@ function StageBlob() {
   );
 }
 
+function VoiceTapButton() {
+  if (Platform.OS !== 'web') {
+    return (
+      <View style={voiceBtnStyles.nativeFallback}>
+        <Ionicons name="call" size={24} color="#fff" />
+      </View>
+    );
+  }
+  return (
+    <button
+      type="button"
+      aria-label="Voice tap — start or end session"
+      style={{
+        width: 72,
+        height: 72,
+        borderRadius: 36,
+        border: 'none',
+        outline: 'none',
+        cursor: 'pointer',
+        position: 'relative',
+        padding: 0,
+        // Tri-stop conic-ish via linear-gradient at 135deg — red -> Aspire blue -> violet
+        backgroundImage:
+          'linear-gradient(135deg, #EF4444 0%, #3B82F6 50%, #8B5CF6 100%)',
+        // 3D floating: deep ambient drop, subtle colored glow, inset top highlight + bottom shadow
+        boxShadow: [
+          '0 18px 36px -10px rgba(139,92,246,0.55)',
+          '0 8px 18px -4px rgba(59,130,246,0.45)',
+          '0 2px 4px rgba(0,0,0,0.6)',
+          'inset 0 1px 0 rgba(255,255,255,0.35)',
+          'inset 0 -2px 6px rgba(0,0,0,0.35)',
+        ].join(', '),
+        transition: 'transform 0.15s ease, box-shadow 0.2s ease',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px) scale(1.04)';
+        (e.currentTarget as HTMLElement).style.boxShadow = [
+          '0 24px 44px -10px rgba(139,92,246,0.7)',
+          '0 12px 22px -4px rgba(59,130,246,0.6)',
+          '0 2px 4px rgba(0,0,0,0.6)',
+          'inset 0 1px 0 rgba(255,255,255,0.4)',
+          'inset 0 -2px 6px rgba(0,0,0,0.35)',
+        ].join(', ');
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.transform = 'translateY(0) scale(1)';
+        (e.currentTarget as HTMLElement).style.boxShadow = [
+          '0 18px 36px -10px rgba(139,92,246,0.55)',
+          '0 8px 18px -4px rgba(59,130,246,0.45)',
+          '0 2px 4px rgba(0,0,0,0.6)',
+          'inset 0 1px 0 rgba(255,255,255,0.35)',
+          'inset 0 -2px 6px rgba(0,0,0,0.35)',
+        ].join(', ');
+      }}
+      onMouseDown={(e) => {
+        (e.currentTarget as HTMLElement).style.transform = 'translateY(1px) scale(0.98)';
+      }}
+      onMouseUp={(e) => {
+        (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px) scale(1.04)';
+      }}
+    >
+      {/* glossy top highlight overlay */}
+      <span
+        aria-hidden
+        style={{
+          position: 'absolute',
+          top: 4,
+          left: 8,
+          right: 8,
+          height: 22,
+          borderRadius: 22,
+          background:
+            'linear-gradient(180deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0) 100%)',
+          pointerEvents: 'none',
+        }}
+      />
+      <Ionicons name="call" size={28} color="#ffffff" />
+    </button>
+  );
+}
+
 function StageToggle({
   mode,
   personaName,
@@ -177,6 +261,9 @@ export function FrontDeskHubSkeleton() {
             <View style={styles.stageCenter}>
               {mode === 'voice' ? <StageBlob /> : null}
             </View>
+            <View style={styles.voiceBtnSlot}>
+              <VoiceTapButton />
+            </View>
           </View>
           <View style={[styles.card, { flex: 3 }]} />
         </View>
@@ -228,8 +315,25 @@ const styles = StyleSheet.create({
     right: 16,
     zIndex: 10,
   },
+  voiceBtnSlot: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    zIndex: 11,
+  },
   stageCenter: {
     flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
+
+const voiceBtnStyles = StyleSheet.create({
+  nativeFallback: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#3B82F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
