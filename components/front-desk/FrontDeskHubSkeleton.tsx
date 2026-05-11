@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Platform, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FrontDeskHeaderStrip } from '@/components/front-desk/FrontDeskHeaderStrip';
+import { DialPadArtwork } from '@/components/front-desk/DialPadArtwork';
 import { fetchFrontDeskConfig } from '@/lib/api/frontDesk';
 
 const CARD_BG = '#1C1C1E';
@@ -253,7 +254,7 @@ export function FrontDeskHubSkeleton() {
         </View>
         <View style={twoCol ? styles.railCol : styles.railColStacked}>
           <View style={[styles.card, { flex: 6 }]} />
-          <View style={[styles.card, { flex: 4 }]} />
+          <DialPadArtwork />
         </View>
       </View>
     </View>
