@@ -72,6 +72,11 @@ export function LiveHouseInspectorHero({ coords, address, loading, onReturn }: P
   const viewerRef = useRef<any>(null);
   const tilesetRef = useRef<any>(null);
   const centerCartesianRef = useRef<any>(null);
+  const boundingSphereRef = useRef<any>(null);
+  // Current camera state (for D-pad nav: rotate/tilt/zoom relative to here)
+  const camStateRef = useRef<{ headingDeg: number; tiltDeg: number; rangeMul: number }>({
+    headingDeg: 0, tiltDeg: 35, rangeMul: 2.5,
+  });
 
   const [status, setStatus] = useState<LoadStatus>('idle');
   const [autoOrbit, setAutoOrbit] = useState(false);
@@ -87,58 +92,82 @@ export function LiveHouseInspectorHero({ coords, address, loading, onReturn }: P
     return () => clearTimeout(t);
   }, [status]);
 
-  // ---- Camera preset --------------------------------------------------------
-  const flyToPreset = useCallback((preset: CameraPresetKey) => {
+  // ---- Camera helpers ------------------------------------------------------
+  // Single source of truth — every nav action computes a HeadingPitchRange
+  // and flies to the building's bounding sphere. This keeps the camera
+  // unlocked (lookAt would lock it and break subsequent flyTos), auto-fits
+  // the building regardless of altitude, and keeps presets/D-pad aligned.
+  const flyCamera = useCallback((opts?: { duration?: number }) => {
     const viewer = viewerRef.current;
-    const center = centerCartesianRef.current;
-    if (!viewer || !center) return;
-    setAutoOrbit(false); // any preset click cancels orbit
-
-    // Lazy-grab Cesium namespace from the viewer's own scope to avoid a
-    // second dynamic import.
+    const sphere = boundingSphereRef.current;
     const Cesium = (window as unknown as { Cesium?: any }).Cesium;
-    if (!Cesium) return;
-
-    const p = PRESET_HPR[preset];
-    const heading = Cesium.Math.toRadians(p.heading);
-    const pitch = Cesium.Math.toRadians(-Math.abs(p.tilt - 90)); // 90→0 (horizon), 35→-55 (looking down)
-    const range = p.range;
-
+    if (!viewer || !sphere || !Cesium) return;
+    const s = camStateRef.current;
     try {
-      const headingPitchRange = new Cesium.HeadingPitchRange(heading, pitch, range);
-      // flyTo + lookAt combo: compute destination from HPR around the center.
-      const offset = Cesium.Cartesian3.fromHeadingPitchRange(
-        headingPitchRange.heading,
-        headingPitchRange.pitch,
-        headingPitchRange.range,
-      );
-      const transform = Cesium.Transforms.eastNorthUpToFixedFrame(center);
-      const destination = new Cesium.Cartesian3();
-      Cesium.Matrix4.multiplyByPoint(transform, offset, destination);
-      const carto = Cesium.Cartographic.fromCartesian(destination);
-      viewer.camera.flyTo({
-        destination,
-        orientation: {
-          heading: headingPitchRange.heading,
-          pitch: headingPitchRange.pitch,
-          roll: 0,
-        },
-        duration: FLY_DURATION_S,
-        complete: () => {
-          // Re-anchor the camera to look at the house center after the fly.
-          try {
-            viewer.camera.lookAt(center, headingPitchRange);
-          } catch {
-            /* swallow */
-          }
-        },
+      viewer.camera.flyToBoundingSphere(sphere, {
+        offset: new Cesium.HeadingPitchRange(
+          Cesium.Math.toRadians(s.headingDeg),
+          Cesium.Math.toRadians(-Math.abs(s.tiltDeg - 90)),
+          sphere.radius * s.rangeMul,
+        ),
+        duration: opts?.duration ?? 0.8,
       });
-      // silence unused-binding warning
-      void carto;
-    } catch {
-      /* swallow */
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[LiveHouseInspectorHero] flyCamera failed:', err);
     }
   }, []);
+
+  const flyToPreset = useCallback(
+    (preset: CameraPresetKey) => {
+      setAutoOrbit(false);
+      const p = PRESET_HPR[preset];
+      camStateRef.current = {
+        headingDeg: p.heading,
+        tiltDeg: p.tilt,
+        // PRESET_HPR.range is meters — convert to a multiple of bounding-
+        // sphere radius so the framing is consistent across building sizes.
+        rangeMul: p.range / 12,
+      };
+      flyCamera({ duration: 1.2 });
+    },
+    [flyCamera],
+  );
+
+  const rotateBy = useCallback(
+    (deltaDeg: number) => {
+      setAutoOrbit(false);
+      camStateRef.current.headingDeg = (camStateRef.current.headingDeg + deltaDeg + 360) % 360;
+      flyCamera({ duration: 0.5 });
+    },
+    [flyCamera],
+  );
+
+  const tiltBy = useCallback(
+    (deltaDeg: number) => {
+      setAutoOrbit(false);
+      const next = camStateRef.current.tiltDeg + deltaDeg;
+      camStateRef.current.tiltDeg = Math.max(0, Math.min(89, next));
+      flyCamera({ duration: 0.5 });
+    },
+    [flyCamera],
+  );
+
+  const zoomBy = useCallback(
+    (factor: number) => {
+      setAutoOrbit(false);
+      const next = camStateRef.current.rangeMul * factor;
+      camStateRef.current.rangeMul = Math.max(0.5, Math.min(15, next));
+      flyCamera({ duration: 0.4 });
+    },
+    [flyCamera],
+  );
+
+  const resetView = useCallback(() => {
+    setAutoOrbit(false);
+    camStateRef.current = { headingDeg: 0, tiltDeg: 35, rangeMul: 2.5 };
+    flyCamera({ duration: 1.0 });
+  }, [flyCamera]);
 
   // ---- Auto-orbit -----------------------------------------------------------
   useEffect(() => {
@@ -362,10 +391,12 @@ export function LiveHouseInspectorHero({ coords, address, loading, onReturn }: P
         } catch {
           /* swallow */
         }
-        if (viewer.scene.skyBox) viewer.scene.skyBox.show = false;
-        if (viewer.scene.skyAtmosphere) viewer.scene.skyAtmosphere.show = false;
-        viewer.scene.backgroundColor = Cesium.Color.fromCssColorString('#0F0F12');
-        viewer.scene.globe.show = false; // hide the blue marble entirely
+        // Keep sky + atmosphere + globe visible. Photorealistic 3D Tiles
+        // for residential addresses (e.g. Forest Park GA) have noticeable
+        // mesh holes that the inverse-clip approach laid bare. Keeping
+        // context (street, trees, sky) hides the artifacts and reads as
+        // a proper aerial inspection.
+        viewer.scene.fog.enabled = false;
         viewer.scene.fog.enabled = false;
 
         viewerRef.current = viewer;
@@ -377,10 +408,29 @@ export function LiveHouseInspectorHero({ coords, address, loading, onReturn }: P
           viewer.destroy();
           return;
         }
-        const tileset = await Cesium.Cesium3DTileset.fromUrl(
-          `https://tile.googleapis.com/v1/3dtiles/root.json?key=${apiKey}`,
-          { showCreditsOnScreen: true, maximumScreenSpaceError: 4 },
-        );
+        // Use Google's 2026 next-gen Photorealistic 3D Tiles dataset
+        // (CgIYAQ) per Map Tiles API release notes 2026-05-12 — higher
+        // resolution mesh + refreshed imagery vs the legacy /root path.
+        // Auto-fallback to legacy if next-gen fails for the region.
+        const TILE_URL_NEXT_GEN =
+          `https://tile.googleapis.com/v1/3dtiles/datasets/CgIYAQ/root?key=${apiKey}`;
+        const TILE_URL_LEGACY =
+          `https://tile.googleapis.com/v1/3dtiles/root.json?key=${apiKey}`;
+        let tileset: any;
+        try {
+          tileset = await Cesium.Cesium3DTileset.fromUrl(TILE_URL_NEXT_GEN, {
+            showCreditsOnScreen: true,
+            // Lower = sharper. Default 16. 1 forces highest LOD download.
+            maximumScreenSpaceError: 1,
+          });
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('[LiveHouseInspectorHero] next-gen tiles failed, falling back:', err);
+          tileset = await Cesium.Cesium3DTileset.fromUrl(TILE_URL_LEGACY, {
+            showCreditsOnScreen: true,
+            maximumScreenSpaceError: 1,
+          });
+        }
         if (cancelled) {
           viewer.destroy();
           return;
@@ -388,40 +438,45 @@ export function LiveHouseInspectorHero({ coords, address, loading, onReturn }: P
         viewer.scene.primitives.add(tileset);
         tilesetRef.current = tileset;
 
-        // 5) Inverse clipping polygon → only show the house mesh.
-        try {
-          const positions = footprint.polygon.flatMap(([lng, lat]) => [
-            Cesium.Cartesian3.fromDegrees(lng, lat),
-          ]);
-          const ClippingPolygonCollectionAny = (Cesium as unknown as {
-            ClippingPolygonCollection?: any;
-          }).ClippingPolygonCollection;
-          const ClippingPolygonAny = (Cesium as unknown as { ClippingPolygon?: any })
-            .ClippingPolygon;
-          if (ClippingPolygonCollectionAny && ClippingPolygonAny) {
-            tileset.clippingPolygons = new ClippingPolygonCollectionAny({
-              polygons: [new ClippingPolygonAny({ positions })],
-              inverse: true,
-            });
-          }
-        } catch {
-          /* swallow — older Cesium without ClippingPolygon: still ship */
-        }
+        // 5) Inverse clipping deliberately NOT applied — the photogrammetry
+        //    mesh has holes/broken edges that look terrible when isolated.
+        //    Camera framing on a tight bounding sphere gives the contractor
+        //    an isolated read on the property without exposing artifacts.
 
-        // 6) Position camera on the house center.
-        const center = Cesium.Cartesian3.fromDegrees(
-          footprint.center.lng,
-          footprint.center.lat,
-          footprint.center.altitude ?? 0,
-        );
-        centerCartesianRef.current = center;
+        // 6) Build a BoundingSphere wrapping the house at its actual ECEF
+        //    elevation. Backend's `heightMeters` is the Solar API's
+        //    planeHeightAtCenterMeters — the roof plane elevation above
+        //    the WGS84 ellipsoid (~290m for Forest Park GA). Without
+        //    this third arg the sphere lands at sea level and the camera
+        //    flies through empty ocean below the mesh.
+        const buildingElevation = footprint.heightMeters ?? 0;
+        const groundElevation = Math.max(buildingElevation - 12, 0);
+        const positions = footprint.polygon.flatMap(([lng, lat]) => [
+          Cesium.Cartesian3.fromDegrees(lng, lat, groundElevation),
+          Cesium.Cartesian3.fromDegrees(lng, lat, buildingElevation),
+        ]);
+        const sphere = Cesium.BoundingSphere.fromPoints(positions);
+        // Inflate so roof eaves + landscaping aren't cropped.
+        sphere.radius = Math.max(sphere.radius * 1.5, 15);
+        boundingSphereRef.current = sphere;
+        centerCartesianRef.current = sphere.center.clone();
+
+        // Initial camera frame. flyToBoundingSphere keeps the camera
+        // UNLOCKED — every subsequent flyTo / preset / D-pad button
+        // works. NEVER call viewer.camera.lookAt() — it locks the
+        // transform and breaks all camera animation.
         try {
-          viewer.camera.lookAt(
-            center,
-            new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-55), 30),
-          );
-        } catch {
-          /* swallow */
+          viewer.camera.flyToBoundingSphere(sphere, {
+            offset: new Cesium.HeadingPitchRange(
+              0,
+              Cesium.Math.toRadians(-55),
+              sphere.radius * camStateRef.current.rangeMul,
+            ),
+            duration: 0,
+          });
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('[LiveHouseInspectorHero] initial frame failed:', err);
         }
 
         if (!cancelled) setStatus('ready');
@@ -515,6 +570,10 @@ export function LiveHouseInspectorHero({ coords, address, loading, onReturn }: P
       {showControls && (
         <HouseInspectorControls
           onPreset={flyToPreset}
+          onRotate={rotateBy}
+          onTilt={tiltBy}
+          onZoom={zoomBy}
+          onReset={resetView}
           autoOrbit={autoOrbit}
           onToggleOrbit={() => setAutoOrbit((p) => !p)}
           measureActive={measureActive}
