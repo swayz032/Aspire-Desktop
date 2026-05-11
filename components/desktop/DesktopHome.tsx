@@ -38,7 +38,9 @@ import type { CashPosition } from '@/types';
 
 const INTERACTION_MODES = [
   { id: 'conference', icon: 'people', title: 'Conference Call', subtitle: 'Multi-party business calls', route: '/session/conference-lobby' },
-  { id: 'calls', icon: 'call', title: 'Return Calls', subtitle: 'Creates receipt', route: '/session/calls' },
+  // Renamed from "Return Calls" -> "Front Desk" per spec §2 / §3. New hub route
+  // is /session/front-desk; legacy /session/calls stays alive until Pass 5 redirect.
+  { id: 'front-desk', icon: 'call', title: 'Front Desk', subtitle: 'Calls, voicemail, SMS, callbacks', route: '/session/front-desk' },
   { id: 'messages', icon: 'chatbubble-ellipses', title: 'Text Messages', subtitle: 'SMS conversations', route: '/session/messages' },
 ];
 
