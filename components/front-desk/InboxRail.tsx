@@ -5,11 +5,14 @@ import { Ionicons } from '@expo/vector-icons';
 /**
  * InboxRail — unified Front Desk Inbox card (right rail, top).
  *
- * Pattern: ONE rail card for everything. Header has a section selector
- * trigger; tapping it opens a floating menu CENTERED inside the rail
- * with all inbox sections. Picking one closes the menu and swaps the
- * content area below the header to that section's workspace. Each
- * section will own its own filters/search/setup (skeleton only here).
+ * Two modes inside the same card:
+ *  - MENU (default): floating list of section pills centered in the card.
+ *    Each pill is a section option (All / SMS / Missed / ...). Tap one to
+ *    enter that section. No dropdown, no backdrop — the menu IS the
+ *    default content.
+ *  - SECTION: rail shows the picked section's workspace, with a back
+ *    arrow at top-left to return to MENU. Section-specific filters /
+ *    search / setup live inside their own section (skeleton-only here).
  */
 
 type Section =
@@ -34,17 +37,29 @@ const SECTIONS: { id: Section; label: string; icon: keyof typeof Ionicons.glyphM
 ];
 
 export function InboxRail() {
-  const [section, setSection] = useState<Section>('all');
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [section, setSection] = useState<Section | null>(null);
 
   if (Platform.OS !== 'web') {
     return <View style={styles.card} />;
   }
 
-  const activeMeta = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
-
   return (
     <View style={styles.card}>
+      {section === null ? (
+        <MenuMode onPick={setSection} />
+      ) : (
+        <SectionMode
+          section={section}
+          onBack={() => setSection(null)}
+        />
+      )}
+    </View>
+  );
+}
+
+function MenuMode({ onPick }: { onPick: (s: Section) => void }) {
+  return (
+    <>
       {/* Header */}
       <div style={header}>
         <span style={title}>Front Desk Inbox</span>
@@ -54,102 +69,77 @@ export function InboxRail() {
         </div>
       </div>
 
-      {/* Section selector pill — opens the floating menu */}
-      <button
-        onClick={() => setMenuOpen((v) => !v)}
-        style={{ ...sectionPill, ...(menuOpen ? sectionPillActive : null) }}
-        onMouseEnter={(e) => {
-          if (!menuOpen) {
-            (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.06)';
-          }
-        }}
-        onMouseLeave={(e) => {
-          if (!menuOpen) {
-            (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)';
-          }
-        }}
-      >
-        <Ionicons name={activeMeta.icon} size={14} color="#ffffff" />
-        <span style={sectionPillLabel}>{activeMeta.label}</span>
-        <Ionicons
-          name={menuOpen ? 'chevron-up' : 'chevron-down'}
-          size={14}
-          color="rgba(255,255,255,0.55)"
-        />
-      </button>
+      {/* Divider */}
+      <div style={divider} />
+
+      {/* Floating centered menu of section pills */}
+      <div style={menuWrap}>
+        <div style={menuList}>
+          {SECTIONS.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => onPick(s.id)}
+              style={menuPill}
+              onMouseEnter={(e) => {
+                const el = e.currentTarget as HTMLElement;
+                el.style.background = 'rgba(255,255,255,0.08)';
+                el.style.borderColor = 'rgba(255,255,255,0.14)';
+              }}
+              onMouseLeave={(e) => {
+                const el = e.currentTarget as HTMLElement;
+                el.style.background = 'rgba(255,255,255,0.04)';
+                el.style.borderColor = 'rgba(255,255,255,0.08)';
+              }}
+              onMouseDown={(e) => {
+                (e.currentTarget as HTMLElement).style.transform = 'scale(0.98)';
+              }}
+              onMouseUp={(e) => {
+                (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
+              }}
+            >
+              <Ionicons name={s.icon} size={16} color="rgba(255,255,255,0.85)" />
+              <span style={menuPillLabel}>{s.label}</span>
+              <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.35)" />
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function SectionMode({
+  section,
+  onBack,
+}: {
+  section: Section;
+  onBack: () => void;
+}) {
+  const meta = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
+  return (
+    <>
+      {/* Section header with back arrow */}
+      <div style={header}>
+        <div style={sectionTitleRow}>
+          <button aria-label="Back to inbox menu" onClick={onBack} style={backBtn}>
+            <Ionicons name="chevron-back" size={18} color="rgba(255,255,255,0.85)" />
+          </button>
+          <Ionicons name={meta.icon} size={16} color="rgba(255,255,255,0.85)" />
+          <span style={title}>{meta.label}</span>
+        </div>
+        <div style={iconRow}>
+          <HeaderIcon name="search-outline" label="Search" />
+          <HeaderIcon name="create-outline" label="Compose" />
+        </div>
+      </div>
 
       {/* Divider */}
       <div style={divider} />
 
-      {/* Content area + centered floating menu overlay */}
-      <div style={contentWrap}>
-        <div style={contentSlot} />
-
-        {menuOpen ? (
-          <>
-            <button
-              aria-label="Close menu"
-              onClick={() => setMenuOpen(false)}
-              style={backdrop}
-            />
-            <div style={floatingMenu}>
-              <div style={menuHeader}>
-                <span style={menuTitle}>Inbox sections</span>
-                <button
-                  aria-label="Close"
-                  onClick={() => setMenuOpen(false)}
-                  style={menuCloseBtn}
-                >
-                  <Ionicons name="close" size={16} color="rgba(255,255,255,0.7)" />
-                </button>
-              </div>
-              <div style={menuList}>
-                {SECTIONS.map((s) => {
-                  const isActive = s.id === section;
-                  return (
-                    <button
-                      key={s.id}
-                      onClick={() => {
-                        setSection(s.id);
-                        setMenuOpen(false);
-                      }}
-                      style={{ ...menuItem, ...(isActive ? menuItemActive : null) }}
-                      onMouseEnter={(e) => {
-                        if (!isActive)
-                          (e.currentTarget as HTMLElement).style.background =
-                            'rgba(255,255,255,0.05)';
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isActive)
-                          (e.currentTarget as HTMLElement).style.background = 'transparent';
-                      }}
-                    >
-                      <Ionicons
-                        name={s.icon}
-                        size={16}
-                        color={isActive ? '#3B82F6' : 'rgba(255,255,255,0.55)'}
-                      />
-                      <span
-                        style={{
-                          ...menuItemLabel,
-                          color: isActive ? '#ffffff' : 'rgba(255,255,255,0.85)',
-                          fontWeight: isActive ? 600 : 500,
-                        }}
-                      >
-                        {s.label}
-                      </span>
-                      {isActive ? (
-                        <Ionicons name="checkmark" size={16} color="#3B82F6" />
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </>
-        ) : null}
-      </div>
-    </View>
+      {/* Empty section workspace — each section will own its own filters
+          / search / setup in later passes. */}
+      <div style={sectionSlot} />
+    </>
   );
 }
 
@@ -209,18 +199,30 @@ const header: React.CSSProperties = {
   flexShrink: 0,
 };
 
+const sectionTitleRow: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  minWidth: 0,
+  flex: 1,
+};
+
 const title: React.CSSProperties = {
   fontFamily: 'Inter, system-ui, sans-serif',
   fontSize: 15,
   fontWeight: 600,
   color: '#ffffff',
   letterSpacing: -0.1,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 };
 
 const iconRow: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 2,
+  flexShrink: 0,
 };
 
 const iconBtn: React.CSSProperties = {
@@ -238,35 +240,19 @@ const iconBtn: React.CSSProperties = {
   transition: 'background 0.15s ease, color 0.15s ease',
 };
 
-const sectionPill: React.CSSProperties = {
-  alignSelf: 'flex-start',
+const backBtn: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  outline: 'none',
+  cursor: 'pointer',
+  width: 28,
+  height: 28,
+  borderRadius: 8,
   display: 'flex',
   alignItems: 'center',
-  gap: 8,
-  fontFamily: 'Inter, system-ui, sans-serif',
-  fontSize: 12,
-  fontWeight: 500,
-  color: '#ffffff',
-  background: 'rgba(255,255,255,0.03)',
-  border: '1px solid rgba(255,255,255,0.08)',
-  borderRadius: 999,
-  paddingTop: 6,
-  paddingBottom: 6,
-  paddingLeft: 11,
-  paddingRight: 9,
-  cursor: 'pointer',
-  outline: 'none',
-  transition: 'all 0.15s ease',
+  justifyContent: 'center',
   flexShrink: 0,
-};
-
-const sectionPillActive: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.08)',
-  borderColor: 'rgba(255,255,255,0.15)',
-};
-
-const sectionPillLabel: React.CSSProperties = {
-  letterSpacing: -0.1,
+  marginLeft: -6,
 };
 
 const divider: React.CSSProperties = {
@@ -277,118 +263,51 @@ const divider: React.CSSProperties = {
     'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.10) 20%, rgba(255,255,255,0.10) 80%, rgba(255,255,255,0) 100%)',
 };
 
-const contentWrap: React.CSSProperties = {
-  position: 'relative',
+const menuWrap: React.CSSProperties = {
   flex: 1,
   minHeight: 0,
-};
-
-const contentSlot: React.CSSProperties = {
-  width: '100%',
-  height: '100%',
-};
-
-const backdrop: React.CSSProperties = {
-  position: 'absolute',
-  inset: 0,
-  background: 'rgba(0,0,0,0.55)',
-  backdropFilter: 'blur(4px)',
-  WebkitBackdropFilter: 'blur(4px)',
-  border: 'none',
-  outline: 'none',
-  cursor: 'pointer',
-  padding: 0,
-  zIndex: 10,
-};
-
-const floatingMenu: React.CSSProperties = {
-  position: 'absolute',
-  top: '50%',
-  left: '50%',
-  transform: 'translate(-50%, -50%)',
-  width: 'min(86%, 280px)',
-  maxHeight: '92%',
-  background:
-    'linear-gradient(180deg, #1a1a1d 0%, #131316 100%)',
-  border: '1px solid rgba(255,255,255,0.10)',
-  borderRadius: 14,
-  boxShadow:
-    '0 16px 40px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)',
-  backdropFilter: 'blur(24px)',
-  WebkitBackdropFilter: 'blur(24px)',
-  zIndex: 11,
-  display: 'flex',
-  flexDirection: 'column',
-  overflow: 'hidden',
-};
-
-const menuHeader: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  paddingTop: 10,
-  paddingBottom: 10,
-  paddingLeft: 14,
-  paddingRight: 8,
-  borderBottom: '1px solid rgba(255,255,255,0.06)',
-};
-
-const menuTitle: React.CSSProperties = {
-  fontFamily: 'Inter, system-ui, sans-serif',
-  fontSize: 12,
-  fontWeight: 600,
-  color: 'rgba(255,255,255,0.55)',
-  letterSpacing: 0.4,
-  textTransform: 'uppercase',
-};
-
-const menuCloseBtn: React.CSSProperties = {
-  background: 'transparent',
-  border: 'none',
-  outline: 'none',
-  cursor: 'pointer',
-  width: 26,
-  height: 26,
-  borderRadius: 6,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
+  padding: 8,
 };
 
 const menuList: React.CSSProperties = {
+  width: '100%',
   display: 'flex',
   flexDirection: 'column',
-  gap: 1,
-  padding: 6,
-  overflowY: 'auto',
+  gap: 8,
 };
 
-const menuItem: React.CSSProperties = {
+const menuPill: React.CSSProperties = {
   boxSizing: 'border-box',
   width: '100%',
   display: 'flex',
   alignItems: 'center',
   gap: 12,
-  paddingTop: 9,
-  paddingBottom: 9,
-  paddingLeft: 12,
+  paddingTop: 11,
+  paddingBottom: 11,
+  paddingLeft: 14,
   paddingRight: 12,
-  border: 'none',
-  outline: 'none',
+  borderRadius: 999,
+  background: 'rgba(255,255,255,0.04)',
+  border: '1px solid rgba(255,255,255,0.08)',
   cursor: 'pointer',
-  background: 'transparent',
-  borderRadius: 8,
-  transition: 'background 0.12s ease',
+  outline: 'none',
+  transition: 'background 0.15s ease, border-color 0.15s ease, transform 0.08s ease',
   textAlign: 'left',
 };
 
-const menuItemActive: React.CSSProperties = {
-  background: 'rgba(59,130,246,0.12)',
-};
-
-const menuItemLabel: React.CSSProperties = {
+const menuPillLabel: React.CSSProperties = {
   fontFamily: 'Inter, system-ui, sans-serif',
   fontSize: 13,
-  flex: 1,
+  fontWeight: 500,
+  color: '#ffffff',
   letterSpacing: -0.1,
+  flex: 1,
+};
+
+const sectionSlot: React.CSSProperties = {
+  flex: 1,
+  minHeight: 0,
 };
