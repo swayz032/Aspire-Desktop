@@ -10,12 +10,13 @@ type NavPill = {
   route: Href;
 };
 
+// Mirrors components/desktop/DesktopSidebar.tsx navItems exactly — same labels,
+// same order, same routes. The Front Desk Hub top pill is the Aspire main nav.
 const NAV_PILLS: NavPill[] = [
   { id: 'home', label: 'Home', route: '/(tabs)' },
-  { id: 'bookings', label: 'Bookings', route: '/bookings' },
   { id: 'inbox', label: 'Inbox', route: '/(tabs)/inbox' },
   { id: 'front-desk', label: 'Front Desk', route: '/session/front-desk' },
-  { id: 'receipts', label: 'Receipts', route: '/receipts' },
+  { id: 'office-memory', label: 'Office Memory', route: '/office-memory' },
   { id: 'office-store', label: 'Office Store', route: '/office-store' },
   { id: 'team', label: 'Team Workspace', route: '/team-workspace' },
 ];
