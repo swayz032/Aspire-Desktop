@@ -1,6 +1,5 @@
 import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, Platform, useWindowDimensions } from 'react-native';
-import { resolvePublicAssetUrl } from '@/lib/publicAssetUrl';
 
 const CARD_BG = '#1C1C1E';
 const CARD_BORDER = 'rgba(255,255,255,0.07)';
@@ -26,7 +25,9 @@ function StageBlob() {
     return null;
   }
 
-  const src = resolvePublicAssetUrl('tiffany-sarah-orb.mp4');
+  // Hardcoded absolute path — resolvePublicAssetUrl() joins against document.baseURI
+  // which on /session/front-desk produces /session/tiffany-sarah-orb.mp4 (404).
+  const src = '/tiffany-sarah-orb.mp4';
 
   return (
     <video
