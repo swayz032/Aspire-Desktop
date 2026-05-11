@@ -15,8 +15,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, Animated } from 'react-native';
 import { LiveStreetViewHero } from './LiveStreetViewHero';
-import { LiveAerialHero } from './LiveAerialHero';
-import { LiveEarthHero } from './LiveEarthHero';
+import { LiveHouseInspectorHero } from './LiveHouseInspectorHero';
 import { PhotoGalleryHero } from './PhotoGalleryHero';
 import type { PropertyData } from '@/services/serviceHub/propertyDataApi';
 import type { HeroMode } from '@/hooks/useHeroMode';
@@ -70,8 +69,14 @@ export function HeroSwitcher({ mode, onModeChange, data, loading }: Props) {
         pointerEvents={mode === 'aerial' ? 'auto' : 'none'}
         style={[styles.layer, { opacity: opacities.aerial }]}
       >
-        <LiveAerialHero
+        {/* Aerial 3D mode renders the CesiumJS House Inspector — Google
+            Photorealistic 3D Tiles + INVERSE clipping polygon so only the
+            house mesh is visible on a dark stage. Replaces the old broken
+            Aerial Video API and the Map3DElement Earth view. The bottom
+            card label stays "Aerial 3D" as the user-facing name. */}
+        <LiveHouseInspectorHero
           coords={data?.coords}
+          address={data?.address?.formatted}
           loading={loading}
           onReturn={() => onModeChange('streetview')}
         />
@@ -81,8 +86,9 @@ export function HeroSwitcher({ mode, onModeChange, data, loading }: Props) {
         pointerEvents={mode === 'earth' ? 'auto' : 'none'}
         style={[styles.layer, { opacity: opacities.earth }]}
       >
-        <LiveEarthHero
+        <LiveHouseInspectorHero
           coords={data?.coords}
+          address={data?.address?.formatted}
           loading={loading}
           onReturn={() => onModeChange('streetview')}
         />

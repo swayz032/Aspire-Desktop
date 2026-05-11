@@ -76,6 +76,7 @@
     "@zoom/videosdk": "^2.3.15",
     "@zoom/videosdk-ui-toolkit": "2.3.15-1",
     "ai": "^6.0.105",
+    "cesium": "^1.141.0",
     "cockatiel": "^3.2.1",
     "compression": "^1.8.1",
     "cors": "^2.8.6",
