@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, Platform, useWindowDimensions } from 'react-native';
+import { FrontDeskHeaderStrip } from '@/components/front-desk/FrontDeskHeaderStrip';
 
 const CARD_BG = '#1C1C1E';
 const CARD_BORDER = 'rgba(255,255,255,0.07)';
@@ -107,7 +108,9 @@ export function FrontDeskHubSkeleton() {
   const twoCol = width >= BREAKPOINT_TWO_COL;
 
   return (
-    <View style={[styles.root, twoCol ? styles.rootRow : styles.rootStack]}>
+    <View style={styles.outer}>
+      <FrontDeskHeaderStrip />
+      <View style={[styles.root, twoCol ? styles.rootRow : styles.rootStack]}>
       <View style={styles.mainCol}>
         <View style={[styles.card, styles.stageCard, { flex: 7 }]}>
           <View style={styles.stageCenter}>
@@ -120,19 +123,27 @@ export function FrontDeskHubSkeleton() {
         <View style={[styles.card, { flex: 6 }]} />
         <View style={[styles.card, { flex: 4 }]} />
       </View>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
+  outer: {
     flex: 1,
-    gap: 16,
-    padding: 16,
-    minHeight: 0,
     width: '100%',
     maxWidth: 1440,
     alignSelf: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 16,
+    minHeight: 0,
+  },
+  root: {
+    flex: 1,
+    gap: 16,
+    paddingTop: 12,
+    minHeight: 0,
   },
   rootRow: { flexDirection: 'row' },
   rootStack: { flexDirection: 'column' },
