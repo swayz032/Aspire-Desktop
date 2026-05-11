@@ -1,74 +1,118 @@
 /**
- * cesiumLoader — lazy-loads CesiumJS on the web only.
+ * cesiumLoader — loads CesiumJS via the official UMD CDN build on web.
  *
- * Cesium ships ~3MB gzipped ESM. We dynamic-import it so it never lands in the
- * main Metro bundle; the House Inspector hero is the only consumer today.
+ * Why CDN and not `import('cesium')` from node_modules:
+ *   Cesium's ESM build uses `import.meta.url` to resolve worker/asset URLs
+ *   at runtime. Metro/Hermes can't parse `import.meta` (it's module-only
+ *   syntax, Hermes targets non-module environments) so dynamic-importing
+ *   Cesium blows up at parse time with:
+ *     SyntaxError: Cannot use 'import.meta' outside a module
  *
- * We do NOT use Cesium Ion (paid imagery + terrain). Photorealistic 3D Tiles
- * come straight from Google's free public endpoint:
- *   https://tile.googleapis.com/v1/3dtiles/root.json?key=...
- * so we set `Ion.defaultAccessToken = ''` to suppress the default warning and
- * stop any accidental Ion network calls.
+ *   The UMD build (`Build/Cesium/Cesium.js`) doesn't use import.meta —
+ *   it's a single IIFE bundle that exposes everything on `window.Cesium`.
+ *   We pin the version to match what's in package.json so dev/prod stay
+ *   in lockstep.
  *
- * `CESIUM_BASE_URL` must be set BEFORE Cesium is imported so its workers,
- * shaders, and asset URLs resolve. We point it at the public CDN that mirrors
- * the same version as our installed package — this avoids Metro/webpack
- * gymnastics around copying Cesium's `Build/Cesium/` static assets.
+ * No Cesium Ion. We render only Google Photorealistic 3D Tiles, which is
+ * a free Map Tiles API endpoint that doesn't require Ion tokens.
  *
- * Aspire Law #7 (Tools are Hands): pure infrastructure helper, no decisions.
+ * Aspire Law #7 (Tools are Hands): pure infrastructure helper.
  */
 
 import { Platform } from 'react-native';
 
-// Match the version installed in package.json. If you bump the cesium dep,
-// bump this constant too — keeps the worker/shader assets in lockstep with
-// the JS bundle we import.
 const CESIUM_VERSION = '1.141';
 const CESIUM_BASE_URL = `https://cdn.jsdelivr.net/npm/cesium@${CESIUM_VERSION}/Build/Cesium/`;
+const CESIUM_SCRIPT_URL = `${CESIUM_BASE_URL}Cesium.js`;
+const CESIUM_CSS_URL = `${CESIUM_BASE_URL}Widgets/widgets.css`;
 
-// Single-flight: we only want one dynamic import in flight no matter how many
-// hero mounts happen during a session.
-let cesiumPromise: Promise<typeof import('cesium')> | null = null;
+// Single-flight cache.
+let cesiumPromise: Promise<typeof globalThis & { Cesium: any }> | null = null;
 
-export async function loadCesium(): Promise<typeof import('cesium')> {
+declare global {
+  interface Window {
+    Cesium?: any;
+    CESIUM_BASE_URL?: string;
+  }
+}
+
+/** Inject a <link rel="stylesheet"> once. */
+function injectStylesheet(href: string, id: string): void {
+  if (document.getElementById(id)) return;
+  const link = document.createElement('link');
+  link.id = id;
+  link.rel = 'stylesheet';
+  link.href = href;
+  document.head.appendChild(link);
+}
+
+/** Inject a <script> once and resolve when it loads. */
+function injectScript(src: string, id: string): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const existing = document.getElementById(id) as HTMLScriptElement | null;
+    if (existing) {
+      // Already loaded or in flight — wait for load event if not done.
+      if ((existing as any).readyState === 'complete' || window.Cesium) {
+        resolve();
+        return;
+      }
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener(
+        'error',
+        () => reject(new Error(`Cesium script failed to load: ${src}`)),
+        { once: true },
+      );
+      return;
+    }
+    const script = document.createElement('script');
+    script.id = id;
+    script.src = src;
+    script.async = true;
+    script.crossOrigin = 'anonymous';
+    script.addEventListener('load', () => resolve(), { once: true });
+    script.addEventListener(
+      'error',
+      () => reject(new Error(`Cesium script failed to load: ${src}`)),
+      { once: true },
+    );
+    document.head.appendChild(script);
+  });
+}
+
+export async function loadCesium(): Promise<any> {
   if (Platform.OS !== 'web') {
     throw new Error('Cesium is web-only');
   }
-  if (cesiumPromise) return cesiumPromise;
+  if (typeof window === 'undefined') {
+    throw new Error('Cesium requires a window context');
+  }
+  if (window.Cesium) {
+    return window.Cesium;
+  }
+  if (cesiumPromise) {
+    await cesiumPromise;
+    return window.Cesium;
+  }
 
-  cesiumPromise = (async () => {
-    if (typeof window !== 'undefined') {
-      // Cesium reads window.CESIUM_BASE_URL synchronously when it boots its
-      // workers. Set it once, before any import side-effect runs.
-      (window as unknown as { CESIUM_BASE_URL?: string }).CESIUM_BASE_URL =
-        CESIUM_BASE_URL;
+  // CESIUM_BASE_URL must be set BEFORE the UMD script runs so workers,
+  // shaders, and asset URLs resolve correctly.
+  window.CESIUM_BASE_URL = CESIUM_BASE_URL;
+
+  injectStylesheet(CESIUM_CSS_URL, 'cesium-widgets-css');
+
+  cesiumPromise = injectScript(CESIUM_SCRIPT_URL, 'cesium-umd-bundle').then(() => {
+    if (!window.Cesium) {
+      throw new Error('Cesium UMD bundle loaded but window.Cesium is missing');
     }
-
-    // Dynamic import keeps Cesium out of the initial bundle.
-    const Cesium = await import('cesium');
-
-    // Suppress Ion default-token warning. We never call Ion endpoints — Google
-    // 3D Tiles is the only data source for the House Inspector.
+    // Suppress Ion default-token warning — we never call Ion endpoints.
     try {
-      (Cesium as unknown as { Ion: { defaultAccessToken: string } }).Ion.defaultAccessToken = '';
+      window.Cesium.Ion.defaultAccessToken = '';
     } catch {
-      /* swallow — older builds may freeze the Ion namespace */
+      /* older builds may freeze the Ion namespace */
     }
+    return window as any;
+  });
 
-    // Ensure stylesheet is present (for the credits container Google requires).
-    if (typeof document !== 'undefined') {
-      const STYLE_ID = 'cesium-widgets-css';
-      if (!document.getElementById(STYLE_ID)) {
-        const link = document.createElement('link');
-        link.id = STYLE_ID;
-        link.rel = 'stylesheet';
-        link.href = `${CESIUM_BASE_URL}Widgets/widgets.css`;
-        document.head.appendChild(link);
-      }
-    }
-
-    return Cesium;
-  })();
-
-  return cesiumPromise;
+  await cesiumPromise;
+  return window.Cesium;
 }
