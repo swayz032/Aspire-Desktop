@@ -41,6 +41,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { useTenant } from '@/providers/TenantProvider';
+import { useIsFinePointer } from '@/lib/useDesktop';
 import {
   fetchFrontDeskConfig,
   fetchReceptionistPersonas,
@@ -91,14 +92,20 @@ export function FrontDeskHub() {
   const { tenant } = useTenant();
   const { width } = useWindowDimensions();
   const showRightColumn = width >= RIGHT_COLUMN_BREAKPOINT;
+  const isFine = useIsFinePointer();
 
-  const [personaSlug, setPersonaSlug] = useState<ReceptionistPersonaSlug>('sarah');
+  // Initial slug is null so we render a neutral loading skeleton instead of
+  // flashing a hardcoded "Sarah" label for Tiffany-configured tenants.
+  // The slug only resolves AFTER `fetchFrontDeskConfig` returns.
+  const [personaSlug, setPersonaSlug] = useState<ReceptionistPersonaSlug | null>(null);
   const [personaRegistry, setPersonaRegistry] = useState<ReceptionistPersonaWire[]>([]);
   const [activeFilter, setActiveFilter] = useState<InboxFilter>('all');
   const [activeTab, setActiveTab] = useState<WorkstripTab>('today');
 
   // Persona hydration — single source of truth for "Sarah" vs "Tiffany"
-  // labels across the entire hub. ZERO hardcoding downstream.
+  // labels across the entire hub. ZERO hardcoding downstream — if both the
+  // config AND the registry default fail, we render the generic
+  // "Receptionist" label (see `personaName` below) rather than guessing.
   useEffect(() => {
     let cancelled = false;
     const officeId = tenant?.officeId;
@@ -112,13 +119,22 @@ export function FrontDeskHub() {
         ]);
         if (cancelled) return;
         const cfg = cfgRes.config as { receptionist_persona?: ReceptionistPersonaSlug | null };
-        const slug =
-          cfg?.receptionist_persona ?? personasRes.default_persona ?? 'sarah';
+        // Prefer tenant config → registry default. Never hardcode 'sarah'.
+        const slug = cfg?.receptionist_persona ?? personasRes.default_persona ?? null;
         setPersonaSlug(slug);
         setPersonaRegistry(personasRes.personas ?? []);
       } catch {
-        // Hydration failed — keep default slug so the UI never blanks.
-        // The setup page is the source of truth for fixing config errors.
+        // Hydration failed — try the registry's default_persona alone.
+        // If that also fails, slug stays null and we render the generic
+        // "Receptionist" label rather than guessing a name.
+        try {
+          const personasRes = await fetchReceptionistPersonas({ authenticatedFetch });
+          if (cancelled) return;
+          setPersonaSlug(personasRes.default_persona ?? null);
+          setPersonaRegistry(personasRes.personas ?? []);
+        } catch {
+          // Leave slug null — the UI renders the generic "Receptionist" label.
+        }
       }
     })();
 
@@ -128,12 +144,19 @@ export function FrontDeskHub() {
   }, [authenticatedFetch, tenant?.officeId]);
 
   const personaName = useMemo(() => {
+    if (!personaSlug) {
+      // Generic label until hydration resolves OR after total config failure.
+      // Header + stage render a neutral skeleton when slug is null (see below).
+      return 'Receptionist';
+    }
     const match = personaRegistry.find((p) => p.slug === personaSlug);
     if (match?.display_name) return match.display_name;
     // Title-case fallback so a fresh tenant without registry still sees
     // "Sarah" or "Tiffany" instead of the raw slug.
     return personaSlug.charAt(0).toUpperCase() + personaSlug.slice(1);
   }, [personaRegistry, personaSlug]);
+
+  const personaResolved = personaSlug !== null;
 
   const inboxRail = (
     <View style={styles.railCard} accessibilityLabel="Front Desk Inbox">
@@ -144,7 +167,7 @@ export function FrontDeskHub() {
           accessibilityLabel="Search inbox"
           style={({ hovered, pressed }: any) => [
             styles.railIconBtn,
-            hovered && styles.railIconBtnHover,
+            isFine && hovered && styles.railIconBtnHover,
             pressed && { opacity: 0.85 },
           ]}
         >
@@ -165,7 +188,7 @@ export function FrontDeskHub() {
               style={({ hovered, pressed }: any) => [
                 styles.filterPill,
                 active && styles.filterPillActive,
-                hovered && !active && styles.filterPillHover,
+                isFine && hovered && !active && styles.filterPillHover,
                 pressed && { opacity: 0.85 },
               ]}
             >
@@ -202,7 +225,7 @@ export function FrontDeskHub() {
               style={({ hovered, pressed }: any) => [
                 styles.tabBtn,
                 active && styles.tabBtnActive,
-                hovered && !active && styles.tabBtnHover,
+                isFine && hovered && !active && styles.tabBtnHover,
                 pressed && { opacity: 0.85 },
               ]}
             >
@@ -234,7 +257,7 @@ export function FrontDeskHub() {
             paddingBottom: 24,
           }}
         >
-          <FrontDeskHeader personaName={personaName} />
+          <FrontDeskHeader personaName={personaName} personaResolved={personaResolved} />
 
           <div
             style={{
@@ -254,7 +277,7 @@ export function FrontDeskHub() {
                 gap: 16,
               }}
             >
-              <ReceptionistStage personaName={personaName} />
+              <ReceptionistStage personaName={personaName} personaResolved={personaResolved} />
               {workstrip}
             </div>
 
@@ -276,8 +299,8 @@ export function FrontDeskHub() {
       ) : (
         // Native fallback — single column stack
         <View style={{ gap: 16, paddingBottom: 24 }}>
-          <FrontDeskHeader personaName={personaName} />
-          <ReceptionistStage personaName={personaName} />
+          <FrontDeskHeader personaName={personaName} personaResolved={personaResolved} />
+          <ReceptionistStage personaName={personaName} personaResolved={personaResolved} />
           {inboxRail}
           <DialPadCard />
           {workstrip}

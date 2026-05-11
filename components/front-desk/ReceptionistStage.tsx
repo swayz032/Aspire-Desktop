@@ -20,19 +20,32 @@ import React, { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
+import { useIsFinePointer } from '@/lib/useDesktop';
 import { TiffanySarahOrbVideo } from './TiffanySarahOrbVideo';
 
 type StageMode = 'voice' | 'video';
 
 interface ReceptionistStageProps {
   personaName: string;
+  /**
+   * True when the persona slug has been resolved from the API. When false,
+   * the persona pill renders a neutral shimmer instead of a name, and the
+   * Voice/Video tab labels render the generic "Voice" / "Video" rather than
+   * "Voice with Sarah" — prevents a Sarah-label flash for Tiffany-configured
+   * tenants on first paint.
+   */
+  personaResolved?: boolean;
 }
 
-export function ReceptionistStage({ personaName }: ReceptionistStageProps) {
+export function ReceptionistStage({ personaName, personaResolved = true }: ReceptionistStageProps) {
   const [mode, setMode] = useState<StageMode>('voice');
   const [micOn, setMicOn] = useState(true);
   const [videoOn, setVideoOn] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const isFine = useIsFinePointer();
+
+  const voiceLabel = personaResolved ? `Voice with ${personaName}` : 'Voice';
+  const videoLabel = personaResolved ? `Video with ${personaName}` : 'Video';
 
   return (
     <View style={styles.card}>
@@ -40,20 +53,26 @@ export function ReceptionistStage({ personaName }: ReceptionistStageProps) {
         <View style={styles.headerLeft}>
           <View style={styles.liveDot} />
           <Text style={styles.headerTitle}>Receptionist</Text>
-          <Text style={styles.headerPersona}>· {personaName}</Text>
+          {personaResolved ? (
+            <Text style={styles.headerPersona}>· {personaName}</Text>
+          ) : (
+            <View style={styles.personaPillSkeleton} accessibilityLabel="Loading persona" />
+          )}
         </View>
         <View style={styles.tabs}>
           <TabButton
-            label={`Voice with ${personaName}`}
+            label={voiceLabel}
             icon="mic-outline"
             active={mode === 'voice'}
             onPress={() => setMode('voice')}
+            isFine={isFine}
           />
           <TabButton
-            label={`Video with ${personaName}`}
+            label={videoLabel}
             icon="videocam-outline"
             active={mode === 'video'}
             onPress={() => setMode('video')}
+            isFine={isFine}
           />
         </View>
       </View>
@@ -63,14 +82,16 @@ export function ReceptionistStage({ personaName }: ReceptionistStageProps) {
           <View style={styles.voiceSurface}>
             <View style={styles.orbWrap}>
               <TiffanySarahOrbVideo state="idle" size={260} personaName={personaName} />
-              <Text style={styles.idleHint}>Tap mic to talk with {personaName}</Text>
+              <Text style={styles.idleHint}>
+                {personaResolved ? `Tap mic to talk with ${personaName}` : 'Tap mic to talk'}
+              </Text>
             </View>
           </View>
         ) : (
           <View style={styles.videoPlaceholder}>
             <View style={styles.videoPlaceholderInner}>
               <Ionicons name="videocam-outline" size={32} color="rgba(255,255,255,0.4)" />
-              <Text style={styles.videoPlaceholderTitle}>Video with {personaName}</Text>
+              <Text style={styles.videoPlaceholderTitle}>{videoLabel}</Text>
               <Text style={styles.videoPlaceholderHint}>Coming in Pass 4 — Anam wiring</Text>
             </View>
           </View>
@@ -83,16 +104,18 @@ export function ReceptionistStage({ personaName }: ReceptionistStageProps) {
           active={micOn}
           onPress={() => setMicOn((v) => !v)}
           accessibilityLabel={micOn ? 'Mute microphone' : 'Unmute microphone'}
+          isFine={isFine}
         />
         <ControlBtn
           icon={videoOn ? 'videocam' : 'videocam-off'}
           active={videoOn}
           onPress={() => setVideoOn((v) => !v)}
           accessibilityLabel={videoOn ? 'Turn off camera' : 'Turn on camera'}
+          isFine={isFine}
         />
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`End call with ${personaName}`}
+          accessibilityLabel={personaResolved ? `End call with ${personaName}` : 'End call'}
           onPress={() => {
             setMicOn(false);
             setVideoOn(false);
@@ -106,6 +129,7 @@ export function ReceptionistStage({ personaName }: ReceptionistStageProps) {
           active={false}
           onPress={() => setExpanded((v) => !v)}
           accessibilityLabel={expanded ? 'Collapse stage' : 'Expand stage'}
+          isFine={isFine}
         />
       </View>
     </View>
@@ -117,11 +141,13 @@ function TabButton({
   icon,
   active,
   onPress,
+  isFine,
 }: {
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
   active: boolean;
   onPress: () => void;
+  isFine: boolean;
 }) {
   return (
     <Pressable
@@ -131,7 +157,7 @@ function TabButton({
       style={({ hovered }: any) => [
         styles.tabBtn,
         active && styles.tabBtnActive,
-        hovered && !active && styles.tabBtnHover,
+        isFine && hovered && !active && styles.tabBtnHover,
       ]}
     >
       <Ionicons name={icon} size={14} color={active ? Colors.accent.cyan : Colors.text.tertiary} />
@@ -145,11 +171,13 @@ function ControlBtn({
   active,
   onPress,
   accessibilityLabel,
+  isFine,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   active: boolean;
   onPress: () => void;
   accessibilityLabel: string;
+  isFine: boolean;
 }) {
   return (
     <Pressable
@@ -159,7 +187,7 @@ function ControlBtn({
       style={({ pressed, hovered }: any) => [
         styles.circleBtn,
         active && styles.circleBtnActive,
-        hovered && styles.circleBtnHover,
+        isFine && hovered && styles.circleBtnHover,
         pressed && { opacity: 0.85 },
       ]}
     >
@@ -211,6 +239,13 @@ const styles = StyleSheet.create({
     color: Colors.text.tertiary,
     fontSize: 13,
     fontWeight: '500',
+  },
+  personaPillSkeleton: {
+    height: 12,
+    width: 64,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    marginLeft: 4,
   },
   tabs: {
     flexDirection: 'row',
@@ -301,9 +336,11 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(255,255,255,0.05)',
   },
   circleBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    // 48px floor — covers Apple HIG (44pt), Material 3 (48dp), WCAG 2.2 SC 2.5.8.
+    // See `MIN_TOUCH_TARGET` in `lib/useDesktop.ts`.
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: '#2C2C2E',
     alignItems: 'center',
     justifyContent: 'center',

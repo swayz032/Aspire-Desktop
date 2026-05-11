@@ -13,33 +13,52 @@ import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
+import { useIsFinePointer } from '@/lib/useDesktop';
 
 interface FrontDeskHeaderProps {
   /** Resolved persona display name, e.g. "Sarah" or "Tiffany". */
   personaName: string;
+  /**
+   * True when the persona slug has been resolved from the API. When false,
+   * the subtitle renders a neutral shimmer skeleton instead of the
+   * persona-specific copy — prevents a "Sarah is handling..." flash for
+   * Tiffany-configured tenants on first paint.
+   */
+  personaResolved?: boolean;
 }
 
-export function FrontDeskHeader({ personaName }: FrontDeskHeaderProps) {
+export function FrontDeskHeader({ personaName, personaResolved = true }: FrontDeskHeaderProps) {
   const router = useRouter();
+  const isFine = useIsFinePointer();
 
   return (
     <View style={styles.container}>
       <View style={styles.titleBlock}>
         <Text style={styles.title}>Front Desk</Text>
-        <Text style={styles.subtitle}>
-          {personaName} is handling calls, voice messages, texts, and callback notes.
-        </Text>
+        {personaResolved ? (
+          <Text style={styles.subtitle}>
+            {personaName} is handling calls, voice messages, texts, and callback notes.
+          </Text>
+        ) : (
+          <View
+            style={styles.subtitleSkeleton}
+            accessibilityLabel="Loading receptionist"
+          />
+        )}
       </View>
 
       <View style={styles.actions}>
         <Pressable
+          // Verified: `app/(tabs)/index.tsx` exists and renders `DesktopHome`
+          // (see project structure as of 2026-05-11). `/(tabs)` is the canonical
+          // app home route for the desktop shell.
           onPress={() => router.push('/(tabs)' as never)}
           accessibilityRole="button"
           accessibilityLabel="Back to Aspire"
           style={({ hovered, pressed }: any) => [
             styles.btn,
             styles.btnSecondary,
-            hovered && styles.btnSecondaryHover,
+            isFine && hovered && styles.btnSecondaryHover,
             pressed && styles.btnPressed,
           ]}
         >
@@ -54,7 +73,7 @@ export function FrontDeskHeader({ personaName }: FrontDeskHeaderProps) {
           style={({ hovered, pressed }: any) => [
             styles.btn,
             styles.btnPrimary,
-            hovered && styles.btnPrimaryHover,
+            isFine && hovered && styles.btnPrimaryHover,
             pressed && styles.btnPressed,
           ]}
         >
@@ -90,6 +109,14 @@ const styles = StyleSheet.create({
     color: Colors.text.tertiary,
     fontSize: 13,
     lineHeight: 18,
+  },
+  subtitleSkeleton: {
+    height: 13,
+    width: 280,
+    maxWidth: '90%',
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    marginTop: 4,
   },
   actions: {
     flexDirection: 'row',

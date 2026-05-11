@@ -308,3 +308,26 @@ export function useIsTabletVisible(): boolean {
   const { isTabletAny } = useTabletLayout();
   return visible && isTabletAny;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fine-pointer detection — gate hover styles to mouse/trackpad devices.
+// On iPad, RN-Web `Pressable` fires `hovered=true` on touch + long-press,
+// which makes hover styles flash unintentionally. Gate every hovered style
+// behind `useIsFinePointer() && hovered` to limit hover affordances to
+// devices with `(hover: hover) and (pointer: fine)`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function useIsFinePointer(): boolean {
+  const [isFine, setIsFine] = useState(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return true;
+    return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  });
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(hover: hover) and (pointer: fine)');
+    const update = () => setIsFine(mq.matches);
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+  return isFine;
+}

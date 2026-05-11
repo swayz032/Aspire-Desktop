@@ -8,6 +8,11 @@
  *   - formatE164Display (calls.tsx:251)
  *   - formatPhoneNumber (calls.tsx:262)
  *
+ * Token minting is NOT done here — `/call-room` mints the voice token
+ * server-side after navigation (see calls.tsx:655-660). The previous
+ * JSDoc claim that `fetchVoiceToken` was imported here was incorrect and
+ * was removed in the Pass 1 critic sub-pass.
+ *
  * Pass 1 of `feat/front-desk-hub` (2026-05-11) added `export` keywords to
  * those symbols in calls.tsx so this card imports them — single source of
  * truth, zero copy. The legacy `/session/calls` route still owns + uses them.
@@ -27,6 +32,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
 import { useTenant } from '@/providers/TenantProvider';
+import { useIsFinePointer } from '@/lib/useDesktop';
 import {
   DIAL_PAD,
   playDTMFTone,
@@ -40,6 +46,7 @@ type UtilityMode = 'keypad' | 'recent' | 'contacts';
 export function DialPadCard() {
   const router = useRouter();
   const { tenant } = useTenant();
+  const isFine = useIsFinePointer();
 
   const [phoneNumber, setPhoneNumber] = useState('');
   const [callError, setCallError] = useState<string | null>(null);
@@ -110,18 +117,21 @@ export function DialPadCard() {
             active={utilityMode === 'recent'}
             onPress={() => setUtilityMode((m) => (m === 'recent' ? 'keypad' : 'recent'))}
             accessibilityLabel="Recent calls"
+            isFine={isFine}
           />
           <UtilityBtn
             icon="people-outline"
             active={utilityMode === 'contacts'}
             onPress={() => setUtilityMode((m) => (m === 'contacts' ? 'keypad' : 'contacts'))}
             accessibilityLabel="Contacts"
+            isFine={isFine}
           />
           <UtilityBtn
             icon="keypad-outline"
             active={utilityMode === 'keypad'}
             onPress={() => setUtilityMode('keypad')}
             accessibilityLabel="Keypad"
+            isFine={isFine}
           />
         </View>
       </View>
@@ -146,7 +156,7 @@ export function DialPadCard() {
           disabled={phoneNumber.length === 0}
           style={({ hovered, pressed }: any) => [
             styles.backspaceBtn,
-            hovered && styles.backspaceBtnHover,
+            isFine && hovered && styles.backspaceBtnHover,
             pressed && { opacity: 0.85 },
             phoneNumber.length === 0 && styles.backspaceBtnDisabled,
           ]}
@@ -165,7 +175,7 @@ export function DialPadCard() {
               accessibilityLabel={`Dial ${key.digit}`}
               style={({ hovered, pressed }: any) => [
                 styles.digit,
-                hovered && styles.digitHover,
+                isFine && hovered && styles.digitHover,
                 pressed && styles.digitPressed,
               ]}
             >
@@ -201,7 +211,7 @@ export function DialPadCard() {
         style={({ hovered, pressed }: any) => [
           styles.callBtn,
           !isValidNumber && styles.callBtnDisabled,
-          isValidNumber && hovered && styles.callBtnHover,
+          isValidNumber && isFine && hovered && styles.callBtnHover,
           isValidNumber && pressed && { opacity: 0.9 },
         ]}
       >
@@ -217,11 +227,13 @@ function UtilityBtn({
   active,
   onPress,
   accessibilityLabel,
+  isFine,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   active: boolean;
   onPress: () => void;
   accessibilityLabel: string;
+  isFine: boolean;
 }) {
   return (
     <Pressable
@@ -231,7 +243,7 @@ function UtilityBtn({
       style={({ hovered, pressed }: any) => [
         styles.utilityBtn,
         active && styles.utilityBtnActive,
-        hovered && !active && styles.utilityBtnHover,
+        isFine && hovered && !active && styles.utilityBtnHover,
         pressed && { opacity: 0.85 },
       ]}
     >

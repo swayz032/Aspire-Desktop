@@ -4,8 +4,10 @@
  * Mirrors `components/AvaOrbVideo.tsx` pattern exactly:
  *   - State-driven playback rate (idle / listening / processing / responding)
  *   - Plays a public-asset MP4 with className `aspire-live-video` so the
- *     global CSS injector in `lib/liveVideoCss.ts` hides the UA play
- *     button + overlay.
+ *     canonical global CSS injector in `lib/liveVideoCss.ts` (covers 12
+ *     WebKit+Mozilla pseudo-elements) hides the UA play button + overlay.
+ *     Component-local CSS injection was removed in the Pass 1 critic
+ *     sub-pass — single source of truth lives in liveVideoCss.ts.
  *   - Transparent video over a solid `#000` parent (matches "Voice with
  *     Ava" treatment).
  *
@@ -19,6 +21,7 @@ import { View, StyleSheet, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { resolvePublicAssetUrl } from '@/lib/publicAssetUrl';
+import { ensureLiveVideoCssInstalled } from '@/lib/liveVideoCss';
 
 export type ReceptionistOrbState = 'idle' | 'listening' | 'processing' | 'responding';
 
@@ -40,27 +43,6 @@ const stateConfig: Record<ReceptionistOrbState, { playbackRate: number; pulseSca
   responding: { playbackRate: 1.2, pulseScale: 1.03 },
 };
 
-let cssInjected = false;
-function injectVideoCss() {
-  if (cssInjected || Platform.OS !== 'web') return;
-  cssInjected = true;
-  const style = document.createElement('style');
-  style.textContent = `
-    video.tiffany-sarah-orb-video::-webkit-media-controls,
-    video.tiffany-sarah-orb-video::-webkit-media-controls-enclosure,
-    video.tiffany-sarah-orb-video::-webkit-media-controls-panel,
-    video.tiffany-sarah-orb-video::-webkit-media-controls-start-playback-button,
-    video.tiffany-sarah-orb-video::-webkit-media-controls-overlay-play-button {
-      display: none !important;
-      -webkit-appearance: none !important;
-      opacity: 0 !important;
-      pointer-events: none !important;
-    }
-    video.tiffany-sarah-orb-video::-moz-media-controls { display: none !important; }
-  `;
-  document.head.appendChild(style);
-}
-
 function TiffanySarahOrbVideoInner({ state = 'idle', size = 320, personaName: _personaName }: TiffanySarahOrbVideoProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const config = stateConfig[state];
@@ -68,7 +50,9 @@ function TiffanySarahOrbVideoInner({ state = 'idle', size = 320, personaName: _p
 
   useEffect(() => {
     if (Platform.OS === 'web') {
-      injectVideoCss();
+      // Use the canonical global injector (covers 12 pseudo-elements across
+      // WebKit + Mozilla). Replaces the previous local 5-pseudo block.
+      ensureLiveVideoCssInstalled();
       const vid = videoRef.current;
       if (vid) {
         vid.muted = true;
@@ -102,7 +86,7 @@ function TiffanySarahOrbVideoInner({ state = 'idle', size = 320, personaName: _p
       <View style={[styles.videoContainer, { width: size, height: size, borderRadius: size / 2 }]}>
         <video
           ref={videoRef}
-          className="tiffany-sarah-orb-video aspire-live-video"
+          className="aspire-live-video"
           src={orbSrc}
           autoPlay
           loop
