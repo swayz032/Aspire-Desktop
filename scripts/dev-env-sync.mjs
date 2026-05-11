@@ -28,7 +28,8 @@ const KEYS = [
   'SUPABASE_ANON_KEY',             // server alias
   'SUPABASE_SERVICE_ROLE_KEY',     // server admin auth
   'DATABASE_URL',                  // postgres pool
-  'GOOGLE_MAPS_API_KEY',           // places autocomplete + aerial view
+  'GOOGLE_MAPS_API_KEY',           // places autocomplete + aerial view (server)
+  'EXPO_PUBLIC_GOOGLE_MAPS_BROWSER_KEY', // street view + map3d + earth view (browser)
 ];
 
 function check(cmd) {
