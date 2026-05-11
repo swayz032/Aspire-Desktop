@@ -1,6 +1,8 @@
-import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, Platform, useWindowDimensions } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, Pressable, StyleSheet, Platform, useWindowDimensions } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { FrontDeskHeaderStrip } from '@/components/front-desk/FrontDeskHeaderStrip';
+import { fetchFrontDeskConfig } from '@/lib/api/frontDesk';
 
 const CARD_BG = '#1C1C1E';
 const CARD_BORDER = 'rgba(255,255,255,0.07)';
@@ -8,6 +10,14 @@ const CARD_RADIUS = 14;
 const STAGE_BG = '#000000';
 
 const BREAKPOINT_TWO_COL = 1100;
+
+type StageMode = 'voice' | 'video';
+type Persona = 'sarah' | 'tiffany';
+
+const PERSONA_DISPLAY: Record<Persona, string> = {
+  sarah: 'Sarah',
+  tiffany: 'Tiffany',
+};
 
 function StageBlob() {
   const ref = useRef<HTMLVideoElement>(null);
@@ -17,21 +27,15 @@ function StageBlob() {
     const v = ref.current;
     if (!v) return;
     v.muted = true;
-    // IMPORTANT: native `loop` attribute is intentionally OFF. Chromium pauses
-    // for ~50ms each loop iteration which the founder sees as a "tiny skip".
-    // We drive the loop manually below — seek back to 0 a fraction of a second
-    // BEFORE the natural end, so playback never reaches the discontinuity.
     v.loop = false;
     v.playsInline = true;
     try { v.playbackRate = 0.85; } catch {}
     v.play().catch(() => {});
 
-    const SEEK_LEAD = 0.08; // 80ms before end — well outside any decoder latency
+    const SEEK_LEAD = 0.08;
     const onTimeUpdate = () => {
       if (!v.duration || !Number.isFinite(v.duration)) return;
       if (v.currentTime >= v.duration - SEEK_LEAD) {
-        // Use fastSeek when available — non-blocking, avoids the I-frame stall
-        // that currentTime= triggers on some encoders.
         try {
           if (typeof (v as any).fastSeek === 'function') {
             (v as any).fastSeek(0);
@@ -41,8 +45,6 @@ function StageBlob() {
         } catch {}
       }
     };
-    // requestVideoFrameCallback fires per-frame; timeupdate fires every ~250ms
-    // which is too coarse for an 80ms lead. Prefer rvfc when available.
     let rvfcId: number | null = null;
     const useRvfc = typeof (v as any).requestVideoFrameCallback === 'function';
     const rvfcLoop = () => {
@@ -54,7 +56,6 @@ function StageBlob() {
     } else {
       v.addEventListener('timeupdate', onTimeUpdate);
     }
-
     return () => {
       if (useRvfc && rvfcId !== null && typeof (v as any).cancelVideoFrameCallback === 'function') {
         (v as any).cancelVideoFrameCallback(rvfcId);
@@ -63,14 +64,8 @@ function StageBlob() {
     };
   }, []);
 
-  if (Platform.OS !== 'web') {
-    return null;
-  }
+  if (Platform.OS !== 'web') return null;
 
-  // Seamless palindrome (forward+reverse concat via ffmpeg) — eliminates the
-  // visible loop seam. 1080p / 282KB / 5.84s (was 4K / 5.3MB / 2.93s).
-  // Hardcoded absolute path — resolvePublicAssetUrl() joins against
-  // document.baseURI which on /session/front-desk produced /session/...mp4 (404).
   const src = '/tiffany-sarah-orb-loop.mp4';
 
   return (
@@ -91,10 +86,6 @@ function StageBlob() {
         objectFit: 'contain',
         pointerEvents: 'none',
         background: 'transparent',
-        // GPU-accelerated compositing — fixes the stutter/lag the founder
-        // saw at 5.3MB MP4 size. translateZ(0) promotes the video into its
-        // own compositing layer so the GPU decodes + paints without the
-        // CPU-fallback path that React Native Web's parent View triggers.
         transform: 'translateZ(0)',
         willChange: 'transform',
         backfaceVisibility: 'hidden',
@@ -103,26 +94,96 @@ function StageBlob() {
   );
 }
 
+function StageToggle({
+  mode,
+  personaName,
+  onChange,
+}: {
+  mode: StageMode;
+  personaName: string;
+  onChange: (m: StageMode) => void;
+}) {
+  return (
+    <View style={toggleStyles.tabs}>
+      <ToggleBtn
+        label={`Voice with ${personaName}`}
+        icon="mic"
+        active={mode === 'voice'}
+        onPress={() => onChange('voice')}
+      />
+      <ToggleBtn
+        label={`Video with ${personaName}`}
+        icon="videocam"
+        active={mode === 'video'}
+        onPress={() => onChange('video')}
+      />
+    </View>
+  );
+}
+
+function ToggleBtn({
+  label,
+  icon,
+  active,
+  onPress,
+}: {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[toggleStyles.btn, active && toggleStyles.btnActive]}
+    >
+      <Ionicons name={icon} size={14} color={active ? '#ffffff' : 'rgba(255,255,255,0.55)'} />
+      <Text style={[toggleStyles.text, active && toggleStyles.textActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 export function FrontDeskHubSkeleton() {
   const { width } = useWindowDimensions();
   const twoCol = width >= BREAKPOINT_TWO_COL;
+  const [mode, setMode] = useState<StageMode>('voice');
+  const [persona, setPersona] = useState<Persona>('sarah');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetchFrontDeskConfig();
+        const slug = (res?.config as any)?.receptionist_persona;
+        if (!cancelled && (slug === 'sarah' || slug === 'tiffany')) {
+          setPersona(slug);
+        }
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const personaName = PERSONA_DISPLAY[persona];
 
   return (
     <View style={styles.outer}>
       <FrontDeskHeaderStrip />
       <View style={[styles.root, twoCol ? styles.rootRow : styles.rootStack]}>
-      <View style={styles.mainCol}>
-        <View style={[styles.card, styles.stageCard, { flex: 7 }]}>
-          <View style={styles.stageCenter}>
-            <StageBlob />
+        <View style={styles.mainCol}>
+          <View style={[styles.card, styles.stageCard, { flex: 7 }]}>
+            <View style={styles.toggleSlot}>
+              <StageToggle mode={mode} personaName={personaName} onChange={setMode} />
+            </View>
+            <View style={styles.stageCenter}>
+              {mode === 'voice' ? <StageBlob /> : null}
+            </View>
           </View>
+          <View style={[styles.card, { flex: 3 }]} />
         </View>
-        <View style={[styles.card, { flex: 3 }]} />
-      </View>
-      <View style={twoCol ? styles.railCol : styles.railColStacked}>
-        <View style={[styles.card, { flex: 6 }]} />
-        <View style={[styles.card, { flex: 4 }]} />
-      </View>
+        <View style={twoCol ? styles.railCol : styles.railColStacked}>
+          <View style={[styles.card, { flex: 6 }]} />
+          <View style={[styles.card, { flex: 4 }]} />
+        </View>
       </View>
     </View>
   );
@@ -159,10 +220,51 @@ const styles = StyleSheet.create({
   stageCard: {
     backgroundColor: STAGE_BG,
     overflow: 'hidden',
+    position: 'relative',
+  },
+  toggleSlot: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    zIndex: 10,
   },
   stageCenter: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+});
+
+const toggleStyles = StyleSheet.create({
+  tabs: {
+    flexDirection: 'row',
+    gap: 4,
+    backgroundColor: 'rgba(20,20,22,0.85)',
+    borderRadius: 10,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    ...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } as any) : null),
+  },
+  btn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', transition: 'all 0.15s ease' } as any) : null),
+  },
+  btnActive: {
+    backgroundColor: '#242426',
+  },
+  text: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.55)',
+    fontWeight: '600',
+    letterSpacing: -0.1,
+  },
+  textActive: {
+    color: '#ffffff',
   },
 });
