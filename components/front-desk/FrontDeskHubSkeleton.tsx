@@ -117,14 +117,15 @@ function VoiceTapButton() {
         padding: 0,
         // Tri-stop conic-ish via linear-gradient at 135deg — red -> Aspire blue -> violet
         backgroundImage:
-          'linear-gradient(135deg, #EF4444 0%, #3B82F6 50%, #8B5CF6 100%)',
-        // 3D floating: deep ambient drop, subtle colored glow, inset top highlight + bottom shadow
+          // Heavy red on top-left, heavy Aspire blue on bottom-right,
+          // violet only as a thin transition smudge at the midpoint.
+          'linear-gradient(135deg, #EF4444 0%, #DC2626 30%, #7C3AED 50%, #3B82F6 70%, #2563EB 100%)',
+        // Neutral depth shadow only — no colored glow / light bleed.
         boxShadow: [
-          '0 18px 36px -10px rgba(139,92,246,0.55)',
-          '0 8px 18px -4px rgba(59,130,246,0.45)',
-          '0 2px 4px rgba(0,0,0,0.6)',
-          'inset 0 1px 0 rgba(255,255,255,0.35)',
-          'inset 0 -2px 6px rgba(0,0,0,0.35)',
+          '0 10px 22px rgba(0,0,0,0.55)',
+          '0 3px 6px rgba(0,0,0,0.45)',
+          'inset 0 1px 0 rgba(255,255,255,0.25)',
+          'inset 0 -2px 6px rgba(0,0,0,0.30)',
         ].join(', '),
         transition: 'transform 0.15s ease, box-shadow 0.2s ease',
         display: 'flex',
@@ -134,21 +135,19 @@ function VoiceTapButton() {
       onMouseEnter={(e) => {
         (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px) scale(1.04)';
         (e.currentTarget as HTMLElement).style.boxShadow = [
-          '0 24px 44px -10px rgba(139,92,246,0.7)',
-          '0 12px 22px -4px rgba(59,130,246,0.6)',
-          '0 2px 4px rgba(0,0,0,0.6)',
-          'inset 0 1px 0 rgba(255,255,255,0.4)',
-          'inset 0 -2px 6px rgba(0,0,0,0.35)',
+          '0 14px 28px rgba(0,0,0,0.65)',
+          '0 4px 8px rgba(0,0,0,0.5)',
+          'inset 0 1px 0 rgba(255,255,255,0.30)',
+          'inset 0 -2px 6px rgba(0,0,0,0.30)',
         ].join(', ');
       }}
       onMouseLeave={(e) => {
         (e.currentTarget as HTMLElement).style.transform = 'translateY(0) scale(1)';
         (e.currentTarget as HTMLElement).style.boxShadow = [
-          '0 18px 36px -10px rgba(139,92,246,0.55)',
-          '0 8px 18px -4px rgba(59,130,246,0.45)',
-          '0 2px 4px rgba(0,0,0,0.6)',
-          'inset 0 1px 0 rgba(255,255,255,0.35)',
-          'inset 0 -2px 6px rgba(0,0,0,0.35)',
+          '0 10px 22px rgba(0,0,0,0.55)',
+          '0 3px 6px rgba(0,0,0,0.45)',
+          'inset 0 1px 0 rgba(255,255,255,0.25)',
+          'inset 0 -2px 6px rgba(0,0,0,0.30)',
         ].join(', ');
       }}
       onMouseDown={(e) => {
