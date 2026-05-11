@@ -16,12 +16,50 @@ function StageBlob() {
     const v = ref.current;
     if (!v) return;
     v.muted = true;
-    v.loop = true;
+    // IMPORTANT: native `loop` attribute is intentionally OFF. Chromium pauses
+    // for ~50ms each loop iteration which the founder sees as a "tiny skip".
+    // We drive the loop manually below — seek back to 0 a fraction of a second
+    // BEFORE the natural end, so playback never reaches the discontinuity.
+    v.loop = false;
     v.playsInline = true;
-    // Slightly slower than 1.0 reads as graceful idle motion (matches the
-    // AvaOrbVideo idle profile) without making the blob feel sluggish.
     try { v.playbackRate = 0.85; } catch {}
     v.play().catch(() => {});
+
+    const SEEK_LEAD = 0.08; // 80ms before end — well outside any decoder latency
+    const onTimeUpdate = () => {
+      if (!v.duration || !Number.isFinite(v.duration)) return;
+      if (v.currentTime >= v.duration - SEEK_LEAD) {
+        // Use fastSeek when available — non-blocking, avoids the I-frame stall
+        // that currentTime= triggers on some encoders.
+        try {
+          if (typeof (v as any).fastSeek === 'function') {
+            (v as any).fastSeek(0);
+          } else {
+            v.currentTime = 0;
+          }
+        } catch {}
+      }
+    };
+    // requestVideoFrameCallback fires per-frame; timeupdate fires every ~250ms
+    // which is too coarse for an 80ms lead. Prefer rvfc when available.
+    let rvfcId: number | null = null;
+    const useRvfc = typeof (v as any).requestVideoFrameCallback === 'function';
+    const rvfcLoop = () => {
+      onTimeUpdate();
+      rvfcId = (v as any).requestVideoFrameCallback(rvfcLoop);
+    };
+    if (useRvfc) {
+      rvfcId = (v as any).requestVideoFrameCallback(rvfcLoop);
+    } else {
+      v.addEventListener('timeupdate', onTimeUpdate);
+    }
+
+    return () => {
+      if (useRvfc && rvfcId !== null && typeof (v as any).cancelVideoFrameCallback === 'function') {
+        (v as any).cancelVideoFrameCallback(rvfcId);
+      }
+      v.removeEventListener('timeupdate', onTimeUpdate);
+    };
   }, []);
 
   if (Platform.OS !== 'web') {
@@ -39,7 +77,6 @@ function StageBlob() {
       ref={ref}
       src={src}
       autoPlay
-      loop
       muted
       playsInline
       preload="auto"
