@@ -1,18 +1,17 @@
 /**
- * HouseInspectorControls — explicit, large nav controls designed for
- * non-technical users who shouldn't have to know mouse-drag conventions
- * for 3D navigation.
+ * HouseInspectorControls — single right-side cluster for non-technical users.
  *
- * Two clusters, both visible at once:
+ * Bottom-RIGHT only:
+ *   ▲ tilt up
+ *   ◄ ⌂ ►   rotate-left / reset / rotate-right
+ *   ▼ tilt down
+ *   [+] [−] zoom in/out
+ *   [Auto-Orbit] [Measure]
  *
- *   Bottom-LEFT:  ANGLE PRESETS  [Front] [Right] [Back] [Left] [Top]
- *   Bottom-RIGHT: D-PAD NAV      ▲ tilt up
- *                              ◄ ⌂ ►   rotate-left / reset / rotate-right
- *                                ▼ tilt down
- *                              [+] [−] zoom in/out
- *                              [Auto-Orbit] [Measure]
- *
- * Every camera move has a button — drag/scroll still work but never required.
+ * The legacy bottom-LEFT "VIEW FROM" angle-preset cluster was removed —
+ * one menu only, fewer choices, less cognitive load. Presets are still
+ * exposed via the `onPreset` prop so the parent can drive the initial
+ * camera angle programmatically.
  *
  * Aspire Law #7 (Tools are Hands): pure render. Parent owns all state.
  */
@@ -62,23 +61,13 @@ export function HouseInspectorControls({
   measureActive,
   onToggleMeasure,
 }: Props) {
+  // onPreset is intentionally unused in the UI now (left cluster removed) —
+  // kept in the API surface so parents can still trigger preset cameras
+  // programmatically (e.g., to set the initial view on mount).
+  void onPreset;
   return (
     <>
-      {/* ─── Bottom-left: angle preset cluster ─── */}
-      <View style={styles.presetCluster} pointerEvents="box-none">
-        <View style={styles.card}>
-          <Text style={styles.clusterLabel}>VIEW FROM</Text>
-          <View style={styles.presetRow}>
-            <NavButton label="Front" icon="home-outline" onPress={() => onPreset('front')} />
-            <NavButton label="Right" icon="arrow-forward-outline" onPress={() => onPreset('right')} />
-            <NavButton label="Back" icon="arrow-back-outline" onPress={() => onPreset('back')} />
-            <NavButton label="Left" icon="arrow-back-outline" onPress={() => onPreset('left')} flipIcon />
-            <NavButton label="Top" icon="layers-outline" onPress={() => onPreset('top')} />
-          </View>
-        </View>
-      </View>
-
-      {/* ─── Bottom-right: D-pad + zoom + actions ─── */}
+      {/* ─── Bottom-right: D-pad + zoom + actions (only cluster) ─── */}
       <View style={styles.dpadCluster} pointerEvents="box-none">
         <View style={styles.card}>
           <Text style={styles.clusterLabel}>MOVE CAMERA</Text>
@@ -200,7 +189,6 @@ const CARD_BG: ViewStyle = {
 };
 
 const styles = StyleSheet.create({
-  presetCluster: { position: 'absolute', left: 14, bottom: 14 },
   dpadCluster: { position: 'absolute', right: 14, bottom: 14 },
   card: { ...CARD_BG },
   clusterLabel: {
@@ -211,7 +199,6 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     textAlign: 'center',
   },
-  presetRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   // ─── D-pad ───
   dpadGrid: { alignItems: 'center' },
   dpadRow: {
