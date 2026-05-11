@@ -5400,9 +5400,15 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
         speechEnhancementLevel: 0.5,
       },
       voiceGenerationOptions: {
-        speed: 1.05,
-        stability: 0.5,
-        similarityBoost: 0.75,
+        // 2026-05-11 (W12.5): calmer voice profile. User reported high-pitch
+        // perky tone — the underlying voice is "Hope - Bubbly, Gossipy and
+        // Girly" which leans expressive. Higher stability dampens the
+        // expression swings (less pitch variance, more even delivery).
+        // Speed back to neutral 1.0 — 1.05 was slightly rushed and
+        // amplified the perky feel on greetings.
+        speed: 1.0,
+        stability: 0.75,
+        similarityBoost: 0.8,
       },
     };
     // Validate the SOURCE template (before {{salutation}} {{last_name}}
