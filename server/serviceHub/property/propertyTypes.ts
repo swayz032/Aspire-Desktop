@@ -77,6 +77,27 @@ export type AerialVideoData = {
   fetched_at: string;
 };
 
+/**
+ * Cached building footprint data stored in property_snapshots.building_footprint_data.
+ *
+ * Computed from Google Solar API `buildingInsights:findClosest`:
+ *   - polygon: convex hull of all roof-segment bounding-box corners
+ *              [lng, lat] pairs, CCW winding, closed (last pair === first pair)
+ *   - center:  Solar API root center, or bounding-box midpoint as fallback
+ *   - heightMeters: median of roofSegmentStats[].planeHeightAtCenterMeters
+ *   - boundingBox: root bounding box from Solar API, for camera framing
+ *
+ * 90-day TTL enforced at query time in buildingFootprintRoute.ts.
+ */
+export type BuildingFootprintData = {
+  center:      { lat: number; lng: number; altitude: number };
+  /** [lng, lat] pairs — CCW winding, closed (last pair === first pair). */
+  polygon:     Array<[number, number]>;
+  heightMeters: number;
+  boundingBox: { sw: { lat: number; lng: number }; ne: { lat: number; lng: number } };
+  fetched_at:  string;
+};
+
 /** PropertyData = the aggregated, fully-shaped payload returned from
  *  POST /api/service-hub/property-data. */
 export type PropertyData = {
