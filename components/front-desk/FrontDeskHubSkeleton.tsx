@@ -1,6 +1,6 @@
-import React from 'react';
-import { View, StyleSheet, useWindowDimensions } from 'react-native';
-import { TiffanySarahOrbVideo } from '@/components/front-desk/TiffanySarahOrbVideo';
+import React, { useEffect, useRef } from 'react';
+import { View, StyleSheet, Platform, useWindowDimensions } from 'react-native';
+import { resolvePublicAssetUrl } from '@/lib/publicAssetUrl';
 
 const CARD_BG = '#1C1C1E';
 const CARD_BORDER = 'rgba(255,255,255,0.07)';
@@ -8,6 +8,49 @@ const CARD_RADIUS = 14;
 const STAGE_BG = '#000000';
 
 const BREAKPOINT_TWO_COL = 1100;
+
+function StageBlob() {
+  const ref = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const v = ref.current;
+    if (!v) return;
+    v.muted = true;
+    v.loop = true;
+    v.playsInline = true;
+    v.play().catch(() => {});
+  }, []);
+
+  if (Platform.OS !== 'web') {
+    return null;
+  }
+
+  const src = resolvePublicAssetUrl('tiffany-sarah-orb.mp4');
+
+  return (
+    <video
+      ref={ref}
+      src={src}
+      autoPlay
+      loop
+      muted
+      playsInline
+      preload="auto"
+      controls={false}
+      disablePictureInPicture
+      disableRemotePlayback
+      style={{
+        width: 'min(60%, 520px)',
+        height: 'auto',
+        maxHeight: '85%',
+        objectFit: 'contain',
+        pointerEvents: 'none',
+        background: 'transparent',
+      }}
+    />
+  );
+}
 
 export function FrontDeskHubSkeleton() {
   const { width } = useWindowDimensions();
@@ -18,7 +61,7 @@ export function FrontDeskHubSkeleton() {
       <View style={styles.mainCol}>
         <View style={[styles.card, styles.stageCard, { flex: 7 }]}>
           <View style={styles.stageCenter}>
-            <TiffanySarahOrbVideo state="idle" size={360} />
+            <StageBlob />
           </View>
         </View>
         <View style={[styles.card, { flex: 3 }]} />
@@ -41,29 +84,11 @@ const styles = StyleSheet.create({
     maxWidth: 1440,
     alignSelf: 'center',
   },
-  rootRow: {
-    flexDirection: 'row',
-  },
-  rootStack: {
-    flexDirection: 'column',
-  },
-  mainCol: {
-    flex: 1,
-    gap: 16,
-    minWidth: 0,
-    minHeight: 0,
-  },
-  railCol: {
-    width: 380,
-    gap: 16,
-    minHeight: 0,
-  },
-  railColStacked: {
-    width: '100%',
-    gap: 16,
-    minHeight: 0,
-    flex: 1,
-  },
+  rootRow: { flexDirection: 'row' },
+  rootStack: { flexDirection: 'column' },
+  mainCol: { flex: 1, gap: 16, minWidth: 0, minHeight: 0 },
+  railCol: { width: 380, gap: 16, minHeight: 0 },
+  railColStacked: { width: '100%', gap: 16, minHeight: 0, flex: 1 },
   card: {
     backgroundColor: CARD_BG,
     borderWidth: 1,
