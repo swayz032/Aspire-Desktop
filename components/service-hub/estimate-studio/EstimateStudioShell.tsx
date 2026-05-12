@@ -126,28 +126,27 @@ const styles = StyleSheet.create({
     // lets the glow read as pure warmth, not glare.
     backgroundColor: 'transparent',
     borderRadius: 14,
-    borderWidth: 1,
-    // Visible amber rim — defines the canvas edge without being a hard line.
-    borderColor: 'rgba(251,191,36,0.18)',
+    // No border. A border line + a box-shadow bloom render as TWO visible
+    // rings (the hard amber outline + the soft amber halo) — that's the
+    // 'second shadow' the user was seeing. Removing the border lets the
+    // glow emanate cleanly from the canvas corners with no hard edge.
+    borderWidth: 0,
     overflow: 'hidden',
     // Web-only: cap the canvas at the viewport so the rail can scroll
-    // internally rather than stretching the whole page. Ambient glow is
-    // PURE amber — single spread+blur halo, no black drop shadow, no
-    // inset hairline. The earlier multi-layer stack was rendering a
-    // ghost gray ring next to the yellow on some GPUs; collapsing to
-    // one boxShadow with explicit spread keeps the color clean.
+    // internally rather than stretching the whole page. Pure ambient
+    // amber halo — wide blur, no spread, no second layer.
     ...(Platform.OS === 'web'
       ? (({
           height: 'calc(100vh - 90px)',
           maxHeight: 'calc(100vh - 90px)',
-          boxShadow: '0 0 64px 6px rgba(251,191,36,0.22)',
+          boxShadow: '0 0 110px rgba(251,191,36,0.20)',
         } as unknown) as ViewStyle)
       : {
           // Native fallback — single amber halo.
           shadowColor: '#fbbf24',
           shadowOffset: { width: 0, height: 0 },
           shadowOpacity: 0.22,
-          shadowRadius: 40,
+          shadowRadius: 48,
           elevation: 12,
         }),
   },
