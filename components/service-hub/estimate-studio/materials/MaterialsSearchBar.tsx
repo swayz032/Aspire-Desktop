@@ -25,6 +25,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { ClosestStore } from '@/hooks/useMaterialsSearch';
+import {
+  useMaterialsSearchContextOptional,
+  type MaterialsMode,
+} from './MaterialsSearchContext';
 
 // React Native Web extends PressableStateCallbackType with `hovered`.
 type WebPressableState = PressableStateCallbackType & { hovered?: boolean };
@@ -53,6 +57,157 @@ interface WebTextStyle {
 }
 const WEB_TRANSITION: WebViewStyle =
   Platform.OS === 'web' ? { transition: 'all 200ms ease' } : {};
+
+/**
+ * InlineModeToggle — Tool ↔ Supplier 2-segment pill rendered INSIDE the
+ * search bar at the LEFT END, before the search icon. Sized to match
+ * the search bar's vertical rhythm (height fits the bar — no overhang).
+ *
+ * Pulls mode from MaterialsSearchContext via the null-tolerant reader so
+ * MaterialsSearchBar stays renderable in any tree (a defensive choice,
+ * even though in practice the bar only renders inside the provider).
+ */
+const MODE_SEGMENTS: { value: MaterialsMode; label: string; testID: string }[] = [
+  { value: 'tool', label: 'Tool', testID: 'materials-mode-toggle-tool' },
+  { value: 'supplier', label: 'Supplier', testID: 'materials-mode-toggle-supplier' },
+];
+
+function InlineModeToggle() {
+  const ctx = useMaterialsSearchContextOptional();
+  if (!ctx) return null;
+  const { mode, setMode } = ctx;
+
+  if (Platform.OS === 'web') {
+    return (
+      <div
+        role="radiogroup"
+        aria-label="Materials search mode"
+        data-testid="materials-mode-toggle"
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          background: 'rgba(0,0,0,0.32)',
+          borderRadius: 7,
+          padding: 2,
+          border: '1px solid rgba(255,255,255,0.08)',
+          gap: 1,
+          flexShrink: 0,
+        }}
+      >
+        {MODE_SEGMENTS.map((seg) => {
+          const active = mode === seg.value;
+          return (
+            <button
+              key={seg.value}
+              role="radio"
+              aria-checked={active}
+              data-testid={seg.testID}
+              onClick={() => setMode(seg.value)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '4px 10px',
+                borderRadius: 5,
+                border: 'none',
+                outline: 'none',
+                cursor: 'pointer',
+                fontSize: 11,
+                fontWeight: active ? 600 : 500,
+                color: active ? '#0A0A0F' : 'rgba(255,255,255,0.55)',
+                background: active
+                  ? 'linear-gradient(135deg, #ffffff 0%, #e8e8e8 100%)'
+                  : 'transparent',
+                transition: 'all 180ms ease',
+                whiteSpace: 'nowrap',
+                letterSpacing: '-0.05px',
+                boxShadow: active ? '0 1px 2px rgba(0,0,0,0.25)' : 'none',
+                minHeight: 22,
+                lineHeight: 1,
+              }}
+              onMouseEnter={(e) => {
+                if (!active) {
+                  (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.88)';
+                  (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!active) {
+                  (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.55)';
+                  (e.currentTarget as HTMLElement).style.background = 'transparent';
+                }
+              }}
+            >
+              {seg.label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <View style={inlineToggleStyles.nativeWrap}>
+      {MODE_SEGMENTS.map((seg) => {
+        const active = mode === seg.value;
+        return (
+          <Pressable
+            key={seg.value}
+            onPress={() => setMode(seg.value)}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={`${seg.label} mode`}
+            style={[
+              inlineToggleStyles.nativeSeg,
+              active && inlineToggleStyles.nativeSegActive,
+            ]}
+          >
+            <Text
+              style={[
+                inlineToggleStyles.nativeSegText,
+                active && inlineToggleStyles.nativeSegTextActive,
+              ]}
+            >
+              {seg.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+const inlineToggleStyles = StyleSheet.create({
+  nativeWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.32)',
+    borderRadius: 7,
+    padding: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    gap: 1,
+  },
+  nativeSeg: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 5,
+    minHeight: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  nativeSegActive: {
+    backgroundColor: '#ffffff',
+  },
+  nativeSegText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.55)',
+  },
+  nativeSegTextActive: {
+    color: '#0A0A0F',
+    fontWeight: '600',
+  },
+});
 
 export function MaterialsSearchBar({
   value,
@@ -122,6 +277,7 @@ export function MaterialsSearchBar({
         ]}
         testID="materials-search-bar"
       >
+        <InlineModeToggle />
         <Ionicons name="search" size={16} color="rgba(255,255,255,0.55)" />
         <TextInput
           value={value}

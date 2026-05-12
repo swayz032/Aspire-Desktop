@@ -15,42 +15,32 @@
  *   - To set/change the project address, the user goes back to Visuals.
  */
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, useWindowDimensions, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { MaterialsSearchBar } from './MaterialsSearchBar';
-import { MaterialsModeToggle } from './MaterialsModeToggle';
 import { useMaterialsSearchContext } from './MaterialsSearchContext';
 
 const TOOL_PLACEHOLDER = 'Search materials — paint, drywall, romex, shingles…';
 const SUPPLIER_PLACEHOLDER = 'Search suppliers — precast, concrete by yard, lumber wholesale…';
 
-const TABLET_BREAKPOINT = 1100;
-
 export function MaterialsSlotBar() {
   const { search, mode, autoFlipKeyword, clearAutoFlip } = useMaterialsSearchContext();
-  const { width } = useWindowDimensions();
-  const stackVertical = width < TABLET_BREAKPOINT;
 
   const placeholder = mode === 'supplier' ? SUPPLIER_PLACEHOLDER : TOOL_PLACEHOLDER;
 
   return (
     <View style={styles.wrap} testID="materials-slot-bar">
-      <View style={[styles.row, stackVertical && styles.rowStacked]}>
-        <View style={stackVertical ? styles.toggleRowStacked : styles.toggleRow}>
-          <MaterialsModeToggle />
-        </View>
-        <View style={styles.searchRow}>
-          <MaterialsSearchBar
-            value={search.query}
-            onChange={search.setQuery}
-            onSubmit={search.submitSearch}
-            onClear={search.clearSearch}
-            closestStore={null}
-            isLoading={search.isLoading}
-            placeholder={placeholder}
-          />
-        </View>
-      </View>
+      {/* Mode toggle (Tool / Supplier) now lives INSIDE the search bar at
+          the left end — see InlineModeToggle in MaterialsSearchBar.tsx. */}
+      <MaterialsSearchBar
+        value={search.query}
+        onChange={search.setQuery}
+        onSubmit={search.submitSearch}
+        onClear={search.clearSearch}
+        closestStore={null}
+        isLoading={search.isLoading}
+        placeholder={placeholder}
+      />
 
       {autoFlipKeyword && (
         <Pressable
@@ -83,28 +73,6 @@ export function MaterialsSlotBar() {
 const styles = StyleSheet.create({
   wrap: {
     gap: 8,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-  },
-  rowStacked: {
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    gap: 8,
-  },
-  toggleRow: {
-    flexShrink: 0,
-    paddingTop: 1,
-  },
-  toggleRowStacked: {
-    flexShrink: 0,
-    alignItems: 'flex-start',
-  },
-  searchRow: {
-    flex: 1,
-    minWidth: 0,
   },
   autoFlipChip: {
     alignSelf: 'flex-start',
