@@ -126,28 +126,31 @@ const styles = StyleSheet.create({
     // lets the glow read as pure warmth, not glare.
     backgroundColor: 'transparent',
     borderRadius: 14,
-    // No border. A border line + a box-shadow bloom render as TWO visible
-    // rings (the hard amber outline + the soft amber halo) — that's the
-    // 'second shadow' the user was seeing. Removing the border lets the
-    // glow emanate cleanly from the canvas corners with no hard edge.
     borderWidth: 0,
     overflow: 'hidden',
     // Web-only: cap the canvas at the viewport so the rail can scroll
-    // internally rather than stretching the whole page. Pure ambient
-    // amber halo — wide blur, no spread, no second layer.
+    // internally rather than stretching the whole page. The amber glow
+    // is tight to the edge — small blur, small spread — so it reads as
+    // an LED outline hugging the perimeter, NOT a flood that lifts the
+    // page background. Goal: light at the edge, dark everywhere else.
     ...(Platform.OS === 'web'
       ? (({
           height: 'calc(100vh - 90px)',
           maxHeight: 'calc(100vh - 90px)',
-          boxShadow: '0 0 110px rgba(251,191,36,0.20)',
+          boxShadow: [
+            // Hairline amber rim (no blur) — defines the edge clean.
+            '0 0 0 1px rgba(251,191,36,0.22)',
+            // Tight bloom — falls off within ~14px of the edge.
+            '0 0 14px 1px rgba(251,191,36,0.32)',
+          ].join(', '),
         } as unknown) as ViewStyle)
       : {
-          // Native fallback — single amber halo.
+          // Native fallback — tight amber halo.
           shadowColor: '#fbbf24',
           shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: 0.22,
-          shadowRadius: 48,
-          elevation: 12,
+          shadowOpacity: 0.32,
+          shadowRadius: 10,
+          elevation: 8,
         }),
   },
   outerCanvasTablet: {
