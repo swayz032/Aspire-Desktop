@@ -311,12 +311,16 @@ export function LiveStreetViewHero({ coords, loading, onAerialPress, onEarthPres
 
 const styles = StyleSheet.create({
   shell: {
+    // flex:1 + remove aspectRatio so the panorama fills the heroSlot's
+    // full available space. Bigger container = Google serves higher-
+    // resolution tiles = crisp 4K Street View instead of the soft 12/5
+    // letterboxed view. Pure black bg for immersive feel.
+    flex: 1,
     width: '100%',
-    aspectRatio: 12 / 5,
     minHeight: 360,
     borderRadius: 12,
     overflow: 'hidden',
-    backgroundColor: '#0F0F12',
+    backgroundColor: '#000000',
     position: 'relative',
   },
   fallbackShell: {
