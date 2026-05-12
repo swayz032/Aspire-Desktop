@@ -1,0 +1,120 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`AllWorkspace snapshot renders mixed activity feed 1`] = `
+<View
+  style={
+    {
+      "flex": 1,
+    }
+  }
+/>
+`;
+
+exports[`CallbackQueueWorkspace snapshot renders bucketed callbacks 1`] = `
+<View
+  style={
+    {
+      "flex": 1,
+    }
+  }
+/>
+`;
+
+exports[`ContactsWorkspace snapshot renders contact rows 1`] = `
+<View
+  style={
+    {
+      "flex": 1,
+    }
+  }
+/>
+`;
+
+exports[`EventDetailModal snapshot renders EventDetailModal with a missed-call fixture 1`] = `null`;
+
+exports[`IncomingWorkspace snapshot renders inbound call list 1`] = `
+<View
+  style={
+    {
+      "flex": 1,
+    }
+  }
+/>
+`;
+
+exports[`MissedWorkspace snapshot renders missed call rows 1`] = `
+<View
+  style={
+    {
+      "flex": 1,
+    }
+  }
+/>
+`;
+
+exports[`OutgoingWorkspace snapshot renders outbound call list 1`] = `
+<View
+  style={
+    {
+      "flex": 1,
+    }
+  }
+/>
+`;
+
+exports[`SmsWorkspace snapshot renders SMS thread list with MOCK_THREADS 1`] = `
+<View
+  style={
+    {
+      "flex": 1,
+    }
+  }
+/>
+`;
+
+exports[`TodayFeed snapshot renders 8 mock feed items 1`] = `
+<View
+  style={
+    {
+      "flex": 1,
+    }
+  }
+/>
+`;
+
+exports[`Unknown caller variant renders MissedWorkspace tree even when unknown fixtures are present (snapshot lock) 1`] = `
+<View
+  style={
+    {
+      "flex": 1,
+    }
+  }
+/>
+`;
+
+exports[`Unknown caller variant renders UnknownAvatar when caller kind is unknown 1`] = `
+<View
+  style={
+    [
+      {
+        "backgroundColor": "#1f1f22",
+        "borderRadius": 999,
+      },
+      {
+        "height": 36,
+        "width": 36,
+      },
+    ]
+  }
+/>
+`;
+
+exports[`VoicemailWorkspace snapshot renders voicemail rows 1`] = `
+<View
+  style={
+    {
+      "flex": 1,
+    }
+  }
+/>
+`;
