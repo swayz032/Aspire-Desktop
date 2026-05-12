@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { playDTMFTone, resumeAudioContextFromGesture } from '@/app/session/calls';
 
 /**
  * DialPadArtwork — black glassy keypad card.
@@ -42,8 +43,18 @@ function formatPhone(raw: string): string {
 export function DialPadArtwork() {
   const [typed, setTyped] = useState('');
   const display = useMemo(() => formatPhone(typed), [typed]);
+  const audioPrimed = useRef(false);
 
-  const append = (ch: string) => setTyped((prev) => (prev + ch).slice(0, 18));
+  const append = (ch: string) => {
+    setTyped((prev) => (prev + ch).slice(0, 18));
+    // Browsers gate AudioContext.start() behind a user gesture; prime once on
+    // the first keypress, then play the DTMF dual-tone for this digit.
+    if (!audioPrimed.current) {
+      audioPrimed.current = true;
+      void resumeAudioContextFromGesture();
+    }
+    playDTMFTone(ch);
+  };
   const backspace = () => setTyped((prev) => prev.slice(0, -1));
 
   if (Platform.OS !== 'web') {
