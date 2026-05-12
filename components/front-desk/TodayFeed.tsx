@@ -164,6 +164,10 @@ export function TodayFeed() {
         {MOCK_TODAY.map((item) => (
           <FeedTile key={item.id} item={item} />
         ))}
+        {/* Trailing spacer — flex-overflow drops right-padding in scrollers, so we
+            render a phantom 1px spacer that holds the gap from the last tile to
+            the card edge, matching the left inset. */}
+        <div aria-hidden style={trailingSpacer} />
       </div>
     </View>
   );
@@ -277,8 +281,15 @@ const scroller: React.CSSProperties = {
   overflowX: 'auto',
   overflowY: 'hidden',
   paddingLeft: 16,
-  paddingRight: 16,
+  // No paddingRight here — flex scrollers drop right-padding when content
+  // overflows. The trailingSpacer below holds the right gap instead.
   paddingBottom: 14,
+};
+
+const trailingSpacer: React.CSSProperties = {
+  flex: '0 0 auto',
+  width: 6, // gap (10) + spacer (6) = 16 right inset, matches paddingLeft
+  height: 1,
 };
 
 const tile: React.CSSProperties = {
