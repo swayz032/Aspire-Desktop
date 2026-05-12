@@ -150,24 +150,12 @@ export function PhotoGalleryHero({
 
   return (
     <View style={styles.shell} testID="photo-gallery-hero">
-      <View style={styles.header}>
-        <Text style={styles.title}>
-          {title} · {total} {total === 1 ? 'photo' : 'photos'}
-          {onClose ? '  ·  close to return to Street View' : ''}
-        </Text>
-        {onClose && (
-          <Pressable
-            onPress={onClose}
-            accessibilityRole="button"
-            accessibilityLabel="Return to Street View"
-            style={({ hovered }: any) => [styles.closeButton, hovered && styles.closeButtonHover]}
-          >
-            <Ionicons name="close" size={14} color="rgba(255,255,255,0.85)" />
-          </Pressable>
-        )}
-      </View>
+      {/* Header bar + floating close removed — to return to the
+          Street View hero the user taps the Street View card in the
+          photo lane below the canvas. No X button needed. */}
 
       <View style={styles.mainImageWrap}>
+
         <Image
           source={{ uri: current.url }}
           style={styles.mainImage}
@@ -216,19 +204,13 @@ export function PhotoGalleryHero({
         </View>
       </View>
 
-      {current.caption ? (
-        <Text style={styles.caption} numberOfLines={2}>
-          {current.caption}
-        </Text>
-      ) : null}
+      {/* Caption text removed — was eating vertical space below the
+          image. Photo speaks for itself; caption lives in the
+          accessibility label on the image. */}
 
-      {/* Internal gallery thumb strip removed — it was being clipped
-          by the heroSlot's flex height and rendering as ugly tiny
-          slivers at the bottom of the image. Within-set navigation
-          (e.g. 14 interior photos) is handled by the left/right
-          arrows + counter (1/14); cross-mode navigation
-          (Interior/Exterior/Roof/Street/Aerial) lives in the photo
-          lane cards below the canvas. */}
+      {/* Internal gallery thumb strip removed — within-set navigation
+          uses the left/right arrows + counter (1/14); cross-mode
+          navigation lives in the photo lane cards below the canvas. */}
     </View>
   );
 }
@@ -290,6 +272,32 @@ const styles = StyleSheet.create({
   },
   closeButtonHover: {
     backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  // Floating close button on top of the image — used after the header
+  // bar was removed so close-to-return-to-Street-View stays available.
+  floatingClose: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    zIndex: 2,
+    ...(Platform.OS === 'web'
+      ? (({
+          backdropFilter: 'blur(4px)',
+          WebkitBackdropFilter: 'blur(4px)',
+        } as unknown) as ViewStyle)
+      : {}),
+  },
+  floatingCloseHover: {
+    backgroundColor: 'rgba(0,0,0,0.78)',
+    borderColor: 'rgba(255,255,255,0.22)',
   },
   mainImageWrap: {
     // flex:1 + no fixed aspectRatio — the image wrap fills whatever
