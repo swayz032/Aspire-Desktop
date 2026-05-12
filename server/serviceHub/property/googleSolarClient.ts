@@ -37,12 +37,15 @@ export type SolarBuildingInsights = {
 
 // ─── Input validation ─────────────────────────────────────────────────────────
 
-const LATLNG_RE = /^-?\d{1,3}(\.\d{1,8})?$/;
-
 function sanitizeCoords(coords: { lat: number; lng: number }): boolean {
-  const latStr = String(coords.lat);
-  const lngStr = String(coords.lng);
-  if (!LATLNG_RE.test(latStr) || !LATLNG_RE.test(lngStr)) return false;
+  // Don't string-match the float repr — Google Geocoder returns IEEE-754
+  // doubles whose .toString() emits up to 17 significant digits
+  // (e.g., lng=-84.34383699999999). The old regex capped decimals at 8
+  // and silently rejected those, causing every dataLayers call to fail
+  // with 'api_failure' before any HTTP request was made. Just check the
+  // numeric range.
+  if (typeof coords.lat !== 'number' || typeof coords.lng !== 'number') return false;
+  if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) return false;
   if (coords.lat < -90 || coords.lat > 90) return false;
   if (coords.lng < -180 || coords.lng > 180) return false;
   return true;
