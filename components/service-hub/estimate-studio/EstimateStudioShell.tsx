@@ -117,10 +117,9 @@ export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
 const styles = StyleSheet.create({
   outerCanvas: {
     flex: 1,
-    // Lowered from 820 — canvas was being forced taller than typical
-    // 13" laptop viewports (768–810 inner-height after browser chrome),
-    // pushing the bottom off-screen and forcing the user to scroll.
-    minHeight: 600,
+    // No minHeight — the canvas takes whatever vertical space the
+    // ScrollView gives it (which is now exactly the viewport minus
+    // TopNav + 8px content padding, thanks to scrollContent.flexGrow=1).
     width: '100%',
     maxWidth: CANVAS_MAX_WIDTH,
     alignSelf: 'center',
@@ -138,18 +137,13 @@ const styles = StyleSheet.create({
     // page background. Goal: light at the edge, dark everywhere else.
     ...(Platform.OS === 'web'
       ? (({
-          // Real chrome above + below the canvas: ServiceHubTopNav 52 +
-          // content paddingTop 16 + paddingBottom 16 + zoom/scrollbar
-          // safety ~16 = ~100. Bumping to 128px guarantees the canvas
-          // bottom stays above the viewport fold on 13–15" laptops AND
-          // accounts for the visual extension from any outer glow.
-          height: 'calc(100vh - 128px)',
-          maxHeight: 'calc(100vh - 128px)',
-          // Amber lives ENTIRELY inside the canvas — no outer bloom, no
-          // outer rim. That keeps the page background pristine dark.
-          // Two inset layers create the ambient: a wide soft bloom that
-          // lights the workspace from its edges inward, plus a tighter
-          // inset hairline that gives the inner edge a crisp amber line.
+          // Flex owns sizing now — no explicit height calc. The
+          // parent flex chain (container > content > mainArea >
+          // scrollView with scrollContent.flexGrow=1) gives this
+          // canvas the exact viewport-minus-chrome height, and
+          // crucially keeps it CONSISTENT regardless of inner content.
+          // Amber lives ENTIRELY inside the canvas — no outer bloom,
+          // no outer rim. Page background stays pristine dark.
           boxShadow: [
             'inset 0 0 110px rgba(251,191,36,0.12)',
             'inset 0 0 28px rgba(251,191,36,0.08)',
@@ -163,11 +157,9 @@ const styles = StyleSheet.create({
   },
   outerCanvasTablet: {
     borderRadius: 12,
-    minHeight: 560,
   },
   outerCanvasMobile: {
     borderRadius: 10,
-    minHeight: 520,
   },
   row: {
     flexDirection: 'row',
@@ -178,10 +170,8 @@ const styles = StyleSheet.create({
   },
   mainZone: {
     flex: 1,
-    // Lowered from 760 to match the new outerCanvas budget — the prior
-    // value forced the main column taller than the outer container on
-    // shorter viewports.
-    minHeight: 480,
+    // No minHeight — mainZone takes whatever vertical space the row
+    // gives it, which is bounded by the outer canvas (now flex:1).
   },
   mainZonePadded: {
     paddingHorizontal: 18,
@@ -207,6 +197,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.04)',
     overflow: 'hidden',
-    minHeight: 320,
+    // No minHeight — canvasArea flexes inside mainZone, which is now
+    // bounded by the flex chain instead of a hard min.
   },
 });

@@ -58,9 +58,12 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     backgroundColor: Colors.background.primary,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 16,
+    // Trimmed from 16 to 8 — combined with scrollContent below this
+    // was producing ~32px gutter around the Estimate Studio canvas.
+    // Immersive feel calls for a tight inset.
+    paddingHorizontal: 8,
+    paddingTop: 8,
+    paddingBottom: 8,
     overflow: 'hidden',
   },
   contentStacked: {
@@ -88,8 +91,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
-    paddingBottom: 32,
+    // flexGrow:1 lets the canvas inherit the full ScrollView height so
+    // it renders the SAME size whether the content is the empty state
+    // or the heavy 3D Aerial hero. Without this, RNW shrinks the
+    // contentContainer to its children's natural height.
+    flexGrow: 1,
+    padding: 0,
+    paddingBottom: 0,
   },
 });
 
