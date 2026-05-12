@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { EventDetailModal, type EventItem } from '@/components/front-desk/EventDetailModal';
 
 const GLASSY_SCROLL_STYLE_ID = 'aspire-glassy-hscroll-css';
 
@@ -159,6 +160,7 @@ const MOCK_TODAY: FeedItem[] = [
 ];
 
 export function TodayFeed() {
+  const [openItem, setOpenItem] = useState<FeedItem | null>(null);
   useEffect(() => {
     ensureGlassyHorizontalScrollCss();
   }, []);
@@ -178,24 +180,25 @@ export function TodayFeed() {
         <span style={subtitle}>Live activity across all channels</span>
       </div>
 
-      {/* Horizontal invisible scroller */}
+      {/* Horizontal scroller */}
       <div className="aspire-glassy-hscroll" style={scroller}>
-        {/* Leading + trailing spacers act as inline padding the scrollbar
-            won't strip — guarantees symmetric 16px insets on both edges. */}
         <div aria-hidden style={edgeSpacer} />
         {MOCK_TODAY.map((item) => (
-          <FeedTile key={item.id} item={item} />
+          <FeedTile key={item.id} item={item} onOpen={setOpenItem} />
         ))}
         <div aria-hidden style={edgeSpacer} />
       </div>
+
+      <EventDetailModal item={openItem as EventItem | null} onClose={() => setOpenItem(null)} />
     </View>
   );
 }
 
-function FeedTile({ item }: { item: FeedItem }) {
+function FeedTile({ item, onOpen }: { item: FeedItem; onOpen: (i: FeedItem) => void }) {
   const meta = TYPE_META[item.type];
   return (
     <button
+      onClick={() => onOpen(item)}
       style={tile}
       onMouseEnter={(e) => {
         (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.06)';
