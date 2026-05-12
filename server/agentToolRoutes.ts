@@ -1504,12 +1504,40 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
 
   // Anam may send sparse request bodies. Build a fallback task to avoid hard
   // failing with HTTP 400 and keep voice sessions stable.
-  const fallbackTaskParts = [
+  //
+  // 2026-05-12 (W12.8): per-agent fallback synthesis. Prior fallback was
+  // Adam-only (entity_type / city / card_cache_id), so any Quinn call that
+  // arrived without `task` in the unwrapped body returned MISSING_TASK with
+  // an Adam-style error message ("I need a specific request to research...").
+  // Session d937f61d showed this fail on a Quinn customer-check that
+  // included customer_name="Thomas Mitchell" but no extractable task field.
+  // Quinn-aware fallback: if any Quinn-specific field is present, synthesize
+  // task="invoice" (or "quote" when is_quote=true).
+  const adamFallbackParts = [
     typeof body.entity_type === 'string' ? body.entity_type.trim() : '',
     typeof body.city === 'string' ? body.city.trim() : '',
     typeof body.card_cache_id === 'string' ? `cache ${body.card_cache_id.trim()}` : '',
   ].filter(Boolean);
-  const effectiveTask = normalizedTask || (fallbackTaskParts.length > 0 ? `Research ${fallbackTaskParts.join(' ')}` : '');
+
+  const hasQuinnSignal =
+    (typeof body.customer_name === 'string' && body.customer_name.trim()) ||
+    (typeof body.customer_email === 'string' && body.customer_email.trim()) ||
+    (typeof body.customer_first_name === 'string' && body.customer_first_name.trim()) ||
+    (Array.isArray(body.line_items) && body.line_items.length > 0) ||
+    Number.isFinite(Number(body.total_cents)) ||
+    typeof body.is_quote === 'boolean';
+  const quinnFallback = hasQuinnSignal
+    ? (body.is_quote === true ? 'quote' : 'invoice')
+    : '';
+
+  let effectiveTask = normalizedTask;
+  if (!effectiveTask) {
+    if (resolvedAgent === 'quinn' && quinnFallback) {
+      effectiveTask = quinnFallback;
+    } else if (adamFallbackParts.length > 0) {
+      effectiveTask = `Research ${adamFallbackParts.join(' ')}`;
+    }
+  }
 
   if (!effectiveTask) {
     logger.warn('[AgentTool] invoke missing task/query/details after normalization', {
@@ -1526,10 +1554,20 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
       reasonCode: 'MISSING_TASK',
       toolUsed: `invoke_${resolvedAgent}`,
     });
+    // 2026-05-12 (W12.8): agent-specific error message. Adam's "research"
+    // language was wrong for Quinn — confused users on invoice errors.
+    const agentErrorMessage =
+      resolvedAgent === 'quinn'
+        ? "I'm missing the invoice details — let me try that again. Who's the invoice for?"
+        : resolvedAgent === 'tec'
+          ? "I'm missing what to put in the document. What should I draft?"
+          : resolvedAgent === 'clara'
+            ? "I'm missing the contract context. Tell me what you need."
+            : 'I need a specific request to research. Tell me what to look up and I can run it now.';
     return res.status(200).json({
       error: 'MISSING_TASK',
       status: 'error',
-      message: 'I need a specific request to research. Tell me what to look up and I can run it now.',
+      message: agentErrorMessage,
     });
   }
 
