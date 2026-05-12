@@ -546,7 +546,7 @@ export function FrontDeskHubSkeleton() {
             </View>
             {/* Live session timer — centered at the top of the stage. */}
             {mode === 'voice' && sessionActive ? (
-              <View style={styles.timerSlot} pointerEvents="none">
+              <View style={[styles.timerSlot, { pointerEvents: 'none' }]}>
                 <LiveTimerChip personaName={personaName} elapsedSec={voice.elapsedSec} />
               </View>
             ) : null}
@@ -568,7 +568,7 @@ export function FrontDeskHubSkeleton() {
             ) : null}
             {/* Verified ✓ toast — bottom-center, auto-dismiss after 3s. */}
             {toastReceiptId ? (
-              <View style={styles.toastSlot} pointerEvents="box-none">
+              <View style={[styles.toastSlot, { pointerEvents: 'box-none' }]}>
                 <VerifiedToast receiptId={toastReceiptId} onDismiss={() => setToastReceiptId(null)} />
               </View>
             ) : null}
