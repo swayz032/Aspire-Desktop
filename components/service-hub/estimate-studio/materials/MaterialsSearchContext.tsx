@@ -30,7 +30,16 @@ interface MaterialsSearchContextValue {
   bundle: UseMaterialsBundleResult;
 }
 
-const MaterialsSearchContext = createContext<MaterialsSearchContextValue | null>(null);
+export const MaterialsSearchContext = createContext<MaterialsSearchContextValue | null>(null);
+
+/**
+ * Null-tolerant reader for cross-tab consumers (e.g. the Tim Rail's Context
+ * tab is mounted for ALL Estimate Studio tabs — only Materials wraps the
+ * tree in the provider). Returns null off-route instead of throwing.
+ */
+export function useMaterialsSearchContextOptional(): MaterialsSearchContextValue | null {
+  return useContext(MaterialsSearchContext);
+}
 
 interface ProviderProps {
   children: React.ReactNode;

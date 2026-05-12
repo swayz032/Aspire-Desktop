@@ -1,24 +1,21 @@
 /**
- * MaterialsSlotBar — fills the EstimateStudio contextual slot when the active
- * tab is Materials. Renders the warehouse search input + the closest-store
- * card stacked directly under it. The canvas below has no search bar — just
- * results / filters / bundle.
+ * MaterialsSlotBar — fills the EstimateStudio contextual slot when the
+ * active tab is Materials.
  *
- * Lives in the shell, NOT the canvas. State comes from MaterialsSearchContext.
- *
- * Per user spec: to set or change the project address, the user goes back to
- * the Visuals tab. The Materials tab's slot exposes the warehouse search only.
+ * Scope (per user spec, 2026-05-12 cleanup):
+ *   - Single search input ONLY. No closest-store chip, no route card.
+ *   - Drive-time + route map live in the Tim Rail's Context tab
+ *     (see MaterialsRouteContextCard).
+ *   - To set/change the project address, the user goes back to the
+ *     Visuals tab.
  */
-import React, { useState } from 'react';
+import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { MaterialsSearchBar } from './MaterialsSearchBar';
-import { ClosestStoreCard } from './ClosestStoreCard';
-import { RouteMapModal } from './RouteMapModal';
 import { useMaterialsSearchContext } from './MaterialsSearchContext';
 
 export function MaterialsSlotBar() {
   const { search } = useMaterialsSearchContext();
-  const [routeOpen, setRouteOpen] = useState(false);
 
   return (
     <View style={styles.wrap} testID="materials-slot-bar">
@@ -27,20 +24,10 @@ export function MaterialsSlotBar() {
         onChange={search.setQuery}
         onSubmit={search.submitSearch}
         onClear={search.clearSearch}
-        closestStore={search.closestStore}
-        onClosestStorePress={() => setRouteOpen(true)}
+        // Closest-store chip suppressed here — that affordance now lives
+        // in the Tim Rail Context tab (MaterialsRouteContextCard).
+        closestStore={null}
         isLoading={search.isLoading}
-      />
-      {search.closestStore && (
-        <ClosestStoreCard
-          store={search.closestStore}
-          onOpenRoute={() => setRouteOpen(true)}
-        />
-      )}
-      <RouteMapModal
-        visible={routeOpen}
-        onClose={() => setRouteOpen(false)}
-        store={search.closestStore}
       />
     </View>
   );
@@ -48,6 +35,6 @@ export function MaterialsSlotBar() {
 
 const styles = StyleSheet.create({
   wrap: {
-    gap: 10,
+    gap: 0,
   },
 });

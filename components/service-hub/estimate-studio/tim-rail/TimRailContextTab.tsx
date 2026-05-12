@@ -11,6 +11,7 @@ import React from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { PropertySummaryCard } from './PropertySummaryCard';
+import { MaterialsRouteContextCard } from './MaterialsRouteContextCard';
 import type { PropertyData } from '@/services/serviceHub/propertyDataApi';
 
 // Inject a one-shot stylesheet on web that hides the scrollbar inside
@@ -75,6 +76,9 @@ export function TimRailContextTab({ data, loading, error, onRetry }: Props) {
           </View>
         </View>
       ) : null}
+
+      {/* Materials-tab-only — renders null off-route via context check. */}
+      <MaterialsRouteContextCard />
 
       <PropertySummaryCard data={data} loading={loading} />
     </ScrollView>
