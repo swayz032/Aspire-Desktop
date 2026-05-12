@@ -25,6 +25,14 @@ export interface ProductStore {
   inTraffic?: boolean;
 }
 
+/** Coverage rule for a single product (Pass C will fill these from the
+ *  catalog + inference engine). E.g. "1 gal Behr Marquee covers 350 sq ft." */
+export interface ProductCoverage {
+  value: number;
+  unit: string;
+  source: 'rule' | 'inferred' | 'product_spec';
+}
+
 export interface Product {
   id: string;
   title: string;
@@ -39,6 +47,9 @@ export interface Product {
   fetchedAt: string; // ISO
   sku?: string;
   category?: string;
+  // Pass C dependencies — stubbed at Pass B, optional for forward compat.
+  coverage?: ProductCoverage;
+  availabilityNote?: string;
 }
 
 export interface ClosestStore {
@@ -113,7 +124,10 @@ const MOCK_CLOSEST_STORE: ClosestStore = {
 const PLACEHOLDER_IMG = (seed: string): string =>
   `https://images.weserv.nl/?url=placehold.co/400x400/1a1a1f/fbbf24.png?text=${encodeURIComponent(seed)}`;
 
-const ISO_NOW = new Date().toISOString();
+// fetchedAt is stamped at search time inside resolveMockSearch, not at module
+// load — see stampFetchedAt(). Module-level constant would freeze the value
+// at first import, making "freshness" indicators stale across sessions.
+const FETCHED_AT_PLACEHOLDER = '';
 
 // Paint set ---------------------------------------------------------------
 const PAINT_PRODUCTS: Product[] = [
@@ -128,7 +142,7 @@ const PAINT_PRODUCTS: Product[] = [
     rating: 4.7,
     reviewCount: 1842,
     source: 'home_depot',
-    fetchedAt: ISO_NOW,
+    fetchedAt: FETCHED_AT_PLACEHOLDER,
     sku: '305832',
     category: 'paint',
   },
@@ -143,7 +157,7 @@ const PAINT_PRODUCTS: Product[] = [
     rating: 4.5,
     reviewCount: 612,
     source: 'home_depot',
-    fetchedAt: ISO_NOW,
+    fetchedAt: FETCHED_AT_PLACEHOLDER,
     sku: '648211',
     category: 'paint',
   },
@@ -158,7 +172,7 @@ const PAINT_PRODUCTS: Product[] = [
     rating: 4.4,
     reviewCount: 308,
     source: 'home_depot',
-    fetchedAt: ISO_NOW,
+    fetchedAt: FETCHED_AT_PLACEHOLDER,
     sku: '301885',
     category: 'paint',
   },
@@ -173,7 +187,7 @@ const PAINT_PRODUCTS: Product[] = [
     rating: 4.6,
     reviewCount: 1102,
     source: 'home_depot',
-    fetchedAt: ISO_NOW,
+    fetchedAt: FETCHED_AT_PLACEHOLDER,
     sku: '402117',
     category: 'paint',
   },
@@ -191,7 +205,7 @@ const DRYWALL_PRODUCTS: Product[] = [
     rating: 4.6,
     reviewCount: 982,
     source: 'home_depot',
-    fetchedAt: ISO_NOW,
+    fetchedAt: FETCHED_AT_PLACEHOLDER,
     sku: '100321',
     category: 'drywall',
   },
@@ -206,7 +220,7 @@ const DRYWALL_PRODUCTS: Product[] = [
     rating: 4.7,
     reviewCount: 540,
     source: 'home_depot',
-    fetchedAt: ISO_NOW,
+    fetchedAt: FETCHED_AT_PLACEHOLDER,
     sku: '203116',
     category: 'drywall',
   },
@@ -221,7 +235,7 @@ const DRYWALL_PRODUCTS: Product[] = [
     rating: 4.5,
     reviewCount: 411,
     source: 'home_depot',
-    fetchedAt: ISO_NOW,
+    fetchedAt: FETCHED_AT_PLACEHOLDER,
     sku: '203099',
     category: 'drywall',
   },
@@ -236,7 +250,7 @@ const DRYWALL_PRODUCTS: Product[] = [
     rating: 4.4,
     reviewCount: 142,
     source: 'home_depot',
-    fetchedAt: ISO_NOW,
+    fetchedAt: FETCHED_AT_PLACEHOLDER,
     sku: '316218',
     category: 'drywall',
   },
@@ -254,7 +268,7 @@ const ROOFING_PRODUCTS: Product[] = [
     rating: 4.8,
     reviewCount: 2104,
     source: 'home_depot',
-    fetchedAt: ISO_NOW,
+    fetchedAt: FETCHED_AT_PLACEHOLDER,
     sku: '703221',
     category: 'roofing',
   },
@@ -269,7 +283,7 @@ const ROOFING_PRODUCTS: Product[] = [
     rating: 4.5,
     reviewCount: 318,
     source: 'home_depot',
-    fetchedAt: ISO_NOW,
+    fetchedAt: FETCHED_AT_PLACEHOLDER,
     sku: '702118',
     category: 'roofing',
   },
@@ -287,7 +301,7 @@ const ELECTRICAL_PRODUCTS: Product[] = [
     rating: 4.7,
     reviewCount: 487,
     source: 'home_depot',
-    fetchedAt: ISO_NOW,
+    fetchedAt: FETCHED_AT_PLACEHOLDER,
     sku: '503112',
     category: 'electrical',
   },
@@ -302,7 +316,7 @@ const ELECTRICAL_PRODUCTS: Product[] = [
     rating: 4.9,
     reviewCount: 3210,
     source: 'home_depot',
-    fetchedAt: ISO_NOW,
+    fetchedAt: FETCHED_AT_PLACEHOLDER,
     sku: '301804',
     category: 'tools',
   },
@@ -317,7 +331,7 @@ const ELECTRICAL_PRODUCTS: Product[] = [
     rating: 4.7,
     reviewCount: 1502,
     source: 'home_depot',
-    fetchedAt: ISO_NOW,
+    fetchedAt: FETCHED_AT_PLACEHOLDER,
     sku: '301921',
     category: 'electrical',
   },
@@ -375,6 +389,12 @@ interface MockSearchHit {
   specialty: SpecialtySupplier[];
 }
 
+/** Stamp products with the current ISO timestamp at the time of search. */
+function stampFetchedAt(products: Product[]): Product[] {
+  const now = new Date().toISOString();
+  return products.map((p) => ({ ...p, fetchedAt: now }));
+}
+
 function resolveMockSearch(rawQuery: string): MockSearchHit {
   const q = rawQuery.trim().toLowerCase();
   if (q.length === 0) return { products: [], specialty: [] };
@@ -388,13 +408,13 @@ function resolveMockSearch(rawQuery: string): MockSearchHit {
   }
 
   if (q.includes('paint') || q.includes('primer') || q.includes('roller') || q.includes('brush')) {
-    return { products: PAINT_PRODUCTS, specialty: [] };
+    return { products: stampFetchedAt(PAINT_PRODUCTS), specialty: [] };
   }
   if (q.includes('drywall') || q.includes('sheetrock') || q.includes('joint')) {
-    return { products: DRYWALL_PRODUCTS, specialty: [] };
+    return { products: stampFetchedAt(DRYWALL_PRODUCTS), specialty: [] };
   }
   if (q.includes('roof') || q.includes('shingle') || q.includes('felt')) {
-    return { products: ROOFING_PRODUCTS, specialty: [] };
+    return { products: stampFetchedAt(ROOFING_PRODUCTS), specialty: [] };
   }
   if (
     q.includes('electric') ||
@@ -403,16 +423,16 @@ function resolveMockSearch(rawQuery: string): MockSearchHit {
     q.includes('outlet') ||
     q.includes('tool')
   ) {
-    return { products: ELECTRICAL_PRODUCTS, specialty: [] };
+    return { products: stampFetchedAt(ELECTRICAL_PRODUCTS), specialty: [] };
   }
 
   // Fallback — mixed bag
   return {
-    products: [
+    products: stampFetchedAt([
       ...PAINT_PRODUCTS.slice(0, 2),
       ...DRYWALL_PRODUCTS.slice(0, 2),
       ...ELECTRICAL_PRODUCTS.slice(0, 2),
-    ],
+    ]),
     specialty: [],
   };
 }
@@ -541,16 +561,16 @@ export function getMockCompareSellers(product: Product): CompareSeller[] {
 /** Mock predictive add-ons — Pass D will replace with real predictions. */
 export function getPredictiveAddons(seedProduct: Product): Product[] {
   if (seedProduct.category === 'paint') {
-    return PAINT_PRODUCTS.filter((p) => p.id !== seedProduct.id).slice(0, 3);
+    return stampFetchedAt(PAINT_PRODUCTS.filter((p) => p.id !== seedProduct.id).slice(0, 3));
   }
   if (seedProduct.category === 'drywall') {
-    return DRYWALL_PRODUCTS.filter((p) => p.id !== seedProduct.id).slice(0, 3);
+    return stampFetchedAt(DRYWALL_PRODUCTS.filter((p) => p.id !== seedProduct.id).slice(0, 3));
   }
   if (seedProduct.category === 'roofing') {
-    return ROOFING_PRODUCTS.filter((p) => p.id !== seedProduct.id).slice(0, 3);
+    return stampFetchedAt(ROOFING_PRODUCTS.filter((p) => p.id !== seedProduct.id).slice(0, 3));
   }
   if (seedProduct.category === 'electrical' || seedProduct.category === 'tools') {
-    return ELECTRICAL_PRODUCTS.filter((p) => p.id !== seedProduct.id).slice(0, 3);
+    return stampFetchedAt(ELECTRICAL_PRODUCTS.filter((p) => p.id !== seedProduct.id).slice(0, 3));
   }
   return [];
 }
