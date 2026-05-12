@@ -27,6 +27,11 @@ interface Props {
 
 export function RouteMapModal({ visible, onClose, projectAddress, store }: Props) {
   const mapDivRef = useRef<HTMLDivElement | null>(null);
+  // Hold the Google Maps instance + marker refs so Pass C can call
+  // map.setDirectionsResult() on it and so we can null them out on cleanup.
+  const mapRef = useRef<any | null>(null);
+  const markersRef = useRef<any[]>([]);
+  const polylineRef = useRef<any | null>(null);
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [errMsg, setErrMsg] = useState<string | null>(null);
 
@@ -72,8 +77,9 @@ export function RouteMapModal({ visible, onClose, projectAddress, store }: Props
           zoomControl: true,
           styles: DARK_MAP_STYLE,
         });
+        mapRef.current = map;
 
-        new g.maps.Marker({
+        const originMarker = new g.maps.Marker({
           map,
           position: origin,
           title: 'Job site',
@@ -87,7 +93,7 @@ export function RouteMapModal({ visible, onClose, projectAddress, store }: Props
           },
         });
 
-        new g.maps.Marker({
+        const destMarker = new g.maps.Marker({
           map,
           position: dest,
           title: store.name,
@@ -100,9 +106,10 @@ export function RouteMapModal({ visible, onClose, projectAddress, store }: Props
             strokeWeight: 2,
           },
         });
+        markersRef.current = [originMarker, destMarker];
 
         // Pass B stub: straight-line polyline. Pass C swaps for Directions API.
-        new g.maps.Polyline({
+        polylineRef.current = new g.maps.Polyline({
           map,
           path: [origin, dest],
           strokeColor: '#fbbf24',
@@ -123,15 +130,32 @@ export function RouteMapModal({ visible, onClose, projectAddress, store }: Props
         map.fitBounds(bounds, 60);
 
         setStatus('ready');
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (cancelled) return;
         setStatus('error');
-        setErrMsg(err?.message ?? 'Failed to load map.');
+        setErrMsg(err instanceof Error ? err.message : 'Failed to load map.');
       }
     })();
 
     return () => {
       cancelled = true;
+      // Detach markers + polyline from the map, then drop references so
+      // the Map instance and DOM container can be garbage-collected.
+      for (const m of markersRef.current) {
+        try {
+          m?.setMap?.(null);
+        } catch {
+          /* swallow */
+        }
+      }
+      markersRef.current = [];
+      try {
+        polylineRef.current?.setMap?.(null);
+      } catch {
+        /* swallow */
+      }
+      polylineRef.current = null;
+      mapRef.current = null;
     };
   }, [visible, projectAddress, store]);
 
