@@ -90,10 +90,17 @@ export function LiveStreetViewHero({ coords, loading, onAerialPress, onEarthPres
             // Use `position` (not `pano`) so the SDK serves the highest-res
             // tile available at this location and the user can still click
             // arrows to walk down the street.
+            //
+            // zoom: 2 (was 1) — Google's Pano serves 832×832 tiles at zoom
+            // 1 but 1664×1664 at zoom 2. Default zoom 1 framed the camera
+            // back at the road, making the subject (the house) small and
+            // soft. Zoom 2 frames the house tight + serves the higher-res
+            // tile, so the house renders crisp without the user having to
+            // pinch-in manually. They can still zoom out via the +/- ctrl.
             new google.maps.StreetViewPanorama(containerRef.current, {
               position: panoLatLng ?? coords,
               pov: { heading, pitch: 8 },
-              zoom: 1,
+              zoom: 2,
               addressControl: false,
               fullscreenControl: false,
               motionTracking: false,
