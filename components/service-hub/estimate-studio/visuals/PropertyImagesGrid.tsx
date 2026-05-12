@@ -19,6 +19,8 @@ import type { HeroMode } from '@/hooks/useHeroMode';
 
 interface Props {
   photos?: PropertyData['photos'];
+  /** Google Static Maps satellite thumbnail for the Aerial 3D tile. */
+  aerialThumbUrl?: string;
   activeMode?: HeroMode;
   onLaneClick: (mode: HeroMode) => void;
   loading: boolean;
@@ -26,6 +28,7 @@ interface Props {
 
 export function PropertyImagesGrid({
   photos,
+  aerialThumbUrl,
   activeMode = 'streetview',
   onLaneClick,
   loading,
@@ -74,6 +77,7 @@ export function PropertyImagesGrid({
       <PhotoLaneCard
         label="Aerial 3D"
         icon="map-outline"
+        thumbnailUrl={aerialThumbUrl}
         onPress={() => onLaneClick('aerial')}
         isActive={activeMode === 'aerial'}
         loading={loading}

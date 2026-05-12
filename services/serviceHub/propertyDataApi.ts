@@ -70,6 +70,13 @@ export type PropertyData = {
   coords: { lat: number; lng: number };
   hero: {
     streetViewProxyUrl?: string;
+    /**
+     * Google Static Maps satellite thumbnail of the property — used by
+     * the Aerial 3D lane tile so it shows a real top-down Earth image
+     * instead of a generic map icon. The big canvas still uses the live
+     * Cesium 3D Tiles experience (LiveHouseInspectorHero).
+     */
+    aerialThumbUrl?: string;
   };
   facts: {
     sqft?: number;

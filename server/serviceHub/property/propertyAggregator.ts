@@ -580,6 +580,9 @@ export async function aggregatePropertyData(
     coords: finalCoords,
     hero: {
       streetViewProxyUrl,
+      aerialThumbUrl: (formattedAddress || cleanAddress)
+        ? `/api/property/aerial-thumb?address=${encodeURIComponent(formattedAddress || cleanAddress)}`
+        : undefined,
     },
     facts,
     photos: decorateRoofWithSolarAerial(

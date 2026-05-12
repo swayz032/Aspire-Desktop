@@ -90,6 +90,7 @@ export default function VisualsTab() {
       <View style={styles.gridSlot}>
         <PropertyImagesGrid
           photos={data?.photos}
+          aerialThumbUrl={data?.hero?.aerialThumbUrl}
           activeMode={mode}
           onLaneClick={(lane: HeroMode) => setMode(lane)}
           loading={isLoading}
