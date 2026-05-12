@@ -43,12 +43,18 @@ export class MaterialsApiError extends Error {
 export interface MaterialsSearchParams {
   /** Normalised search query (max 500 chars, no PII) */
   q: string;
+  /** Full project address (street + city + state). Backend resolves to
+   *  lat/lng → closest HD store (Tool mode) or Yelp `find_loc` (Supplier
+   *  mode). This is the project address from the Visuals tab address bar. */
+  address?: string;
   /** ZIP code for local store lookup */
   zip_code?: string;
   /** Home Depot store ID override */
   store_id?: string;
   /** Include Google Shopping results */
   include_shopping?: boolean;
+  /** 'tool' (default — Home Depot retail) or 'supplier' (Yelp B2B). */
+  mode?: 'tool' | 'supplier';
   /** Client-generated UUID for dedup */
   idempotency_key?: string;
   /** X-Office-Id injected by the hook via headers */
@@ -248,9 +254,11 @@ export async function searchMaterials(
 ): Promise<MaterialsSearchResponse> {
   const qs = new URLSearchParams();
   qs.set('q', params.q);
+  if (params.address) qs.set('address', params.address);
   if (params.zip_code) qs.set('zip_code', params.zip_code);
   if (params.store_id) qs.set('store_id', params.store_id);
   if (params.include_shopping) qs.set('include_shopping', 'true');
+  if (params.mode) qs.set('mode', params.mode);
   if (params.idempotency_key) qs.set('idempotency_key', params.idempotency_key);
 
   const url = `${API_BASE}/api/v1/materials/search?${qs.toString()}`;

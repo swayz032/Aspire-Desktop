@@ -100,10 +100,13 @@ interface ProviderProps {
 }
 
 export function MaterialsSearchProvider({ children, projectAddress }: ProviderProps) {
-  const search = useMaterialsSearch();
+  // Mode declared first so it can flow into useMaterialsSearch() — when mode
+  // changes the search instance re-binds and subsequent submitSearch calls
+  // hit the right backend branch (Home Depot vs Yelp).
+  const [mode, setModeRaw] = useState<MaterialsMode>('tool');
+  const search = useMaterialsSearch({ mode });
   const bundle = useMaterialsBundle(projectAddress);
   const [canvasView, setCanvasView] = useState<MaterialsCanvasView>('results');
-  const [mode, setModeRaw] = useState<MaterialsMode>('tool');
   const [autoFlipKeyword, setAutoFlipKeyword] = useState<string | null>(null);
 
   // Auto-revert to results when the closest store disappears (e.g. user

@@ -21,6 +21,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { useTenant } from '@/providers';
+import { useProjectAddress } from '@/hooks/useProjectAddress';
 import {
   searchMaterials,
   mapServerResponse,
@@ -235,7 +236,15 @@ function _deriveFilters(products: Product[]): MaterialsFilter[] {
 
 const SUGGESTED_QUERIES = ['paint', 'drywall sheets', 'roofing materials', 'electrical tools'];
 
-export function useMaterialsSearch(): UseMaterialsSearchResult {
+interface UseMaterialsSearchOptions {
+  /** 'tool' (Home Depot retail, default) or 'supplier' (Yelp B2B). */
+  mode?: 'tool' | 'supplier';
+}
+
+export function useMaterialsSearch(
+  opts: UseMaterialsSearchOptions = {},
+): UseMaterialsSearchResult {
+  const { mode = 'tool' } = opts;
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [results, setResults] = useState<Product[] | null>(null);
@@ -247,6 +256,10 @@ export function useMaterialsSearch(): UseMaterialsSearchResult {
   // Auth + tenant context
   const { authenticatedFetch } = useAuthFetch();
   const { officeId } = useTenant();
+  // Project address from Visuals tab — flows through to backend so the
+  // search route can resolve closest HD store (Tool mode) or Yelp
+  // `find_loc` (Supplier mode).
+  const { address: projectAddress } = useProjectAddress();
 
   // Abort controller ref so we can cancel in-flight requests on new search
   const abortRef = useRef<AbortController | null>(null);
@@ -289,6 +302,8 @@ export function useMaterialsSearch(): UseMaterialsSearchResult {
           authenticatedFetch,
           {
             q,
+            mode,
+            address: projectAddress || undefined,
             officeId: officeId ?? '',
           },
           controller.signal,
@@ -316,7 +331,7 @@ export function useMaterialsSearch(): UseMaterialsSearchResult {
         }
       }
     },
-    [query, authenticatedFetch, officeId],
+    [query, authenticatedFetch, officeId, mode, projectAddress],
   );
 
   const clearSearch = useCallback(() => {
