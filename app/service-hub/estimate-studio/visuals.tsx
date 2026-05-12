@@ -231,6 +231,12 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   heroSlot: {
+    // flex:1 + minHeight:360 — width untouched (always 100%). The
+    // hero fills whatever vertical space is LEFT after the photo
+    // lane (gridSlot) reserves its 130px row. On big viewports the
+    // hero is large; on shorter ones it just gets a little shorter
+    // so the photo lane cards always fit on the canvas.
+    flex: 1,
     width: '100%',
     minHeight: 360,
     borderRadius: 12,
@@ -251,7 +257,11 @@ const styles = StyleSheet.create({
   },
   gridSlot: {
     width: '100%',
-    minHeight: 96,
+    // Fixed reservation — photo cards need ~130px (image + label +
+    // count badge). Was minHeight: 96 which was getting clipped at
+    // the bottom of the canvas. heroSlot now flexes to give us this
+    // row guaranteed.
+    height: 130,
   },
   skeletonRow: {
     height: 96,

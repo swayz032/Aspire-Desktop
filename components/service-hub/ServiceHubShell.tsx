@@ -59,11 +59,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: Colors.background.primary,
     paddingHorizontal: 16,
-    // Tighter than 28 (was added for nav breathing room) — 18 keeps
-    // visual separation from the pill nav but saves ~10px the inner
-    // workspace needs so the photo lane cards aren't clipped.
-    paddingTop: 18,
-    paddingBottom: 10,
+    paddingTop: 16,
+    paddingBottom: 16,
     overflow: 'hidden',
   },
   contentStacked: {

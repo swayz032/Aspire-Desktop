@@ -179,10 +179,8 @@ const styles = StyleSheet.create({
   },
   mainZonePadded: {
     paddingHorizontal: 18,
-    // Tightened 16 → 10 to claw back vertical space for the photo
-    // lane at the bottom without touching the hero.
-    paddingTop: 10,
-    paddingBottom: 2,
+    paddingTop: 16,
+    paddingBottom: 4,
   },
   contextualSlot: {
     paddingHorizontal: 18,
@@ -191,8 +189,8 @@ const styles = StyleSheet.create({
   },
   tabBarSlot: {
     paddingHorizontal: 18,
-    paddingTop: 2,
-    paddingBottom: 2,
+    paddingTop: 4,
+    paddingBottom: 4,
   },
   canvasArea: {
     flex: 1,
