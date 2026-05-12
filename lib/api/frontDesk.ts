@@ -536,6 +536,39 @@ export async function deleteRoutingContact(
 // Contacts — Green tier (read-only list of Tiffany-captured caller records).
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Today Feed inbox — Green tier (unified chronological activity feed).
+// ---------------------------------------------------------------------------
+
+export interface TodayInboxResponse {
+  items: import('./frontDeskAdapters').BackendInboxItem[];
+  count: number;
+  suite_id: string;
+  since?: string | null;
+  until?: string | null;
+}
+
+/**
+ * Green tier — fetch today's unified inbox feed.
+ * Calls GET /api/front-desk/inbox?since=<today-midnight-iso>
+ * which proxies to GET /v1/front-desk/inbox on the orchestrator.
+ */
+export async function fetchTodayInbox(
+  opts: FetchOpts,
+): Promise<TodayInboxResponse> {
+  // since = start of today in UTC (ISO)
+  const todayMidnight = new Date();
+  todayMidnight.setUTCHours(0, 0, 0, 0);
+  const since = todayMidnight.toISOString();
+  const url = `${API_BASE}/api/front-desk/inbox?since=${encodeURIComponent(since)}`;
+  const resp = await opts.authenticatedFetch(url, {
+    method: 'GET',
+    headers: { 'X-Office-Id': opts.officeId },
+    signal: opts.signal,
+  });
+  return expectJson<TodayInboxResponse>(resp, 'FRONT_DESK_INBOX_FAILED');
+}
+
 // Re-export for consumers that only import from frontDesk.ts.
 export type { BackendContact } from './frontDeskAdapters';
 

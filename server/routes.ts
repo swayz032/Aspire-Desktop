@@ -9142,6 +9142,27 @@ router.delete('/api/voicemail/:id', async (req: Request, res: Response) => {
   });
 });
 
+// ─── Front Desk Inbox (Fix 3) ────────────────────────────────────────────────
+//
+// GET /api/front-desk/inbox → /v1/front-desk/inbox (Green — unified today feed)
+// Proxies the TodayFeed widget request to the orchestrator inbox endpoint.
+
+router.get('/api/front-desk/inbox', async (req: Request, res: Response) => {
+  const params = new URLSearchParams();
+  if (typeof req.query.since === 'string') params.set('since', req.query.since);
+  if (typeof req.query.until === 'string') params.set('until', req.query.until);
+  if (typeof req.query.limit === 'string') params.set('limit', req.query.limit);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  await proxyForward({
+    orchestratorPath: `/v1/front-desk/inbox${qs}`,
+    method: 'GET',
+    logTag: 'FrontDeskInbox',
+    timeoutMs: 8_000,
+    req,
+    res,
+  });
+});
+
 // ─── Contacts (Pass J) ───────────────────────────────────────────────────────
 //
 // GET /api/contacts → /v1/contacts (Green — list Tiffany-captured contact records)

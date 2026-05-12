@@ -9,6 +9,10 @@ import { LoadingSkeleton } from '@/components/front-desk/states/LoadingSkeleton'
 import { EmptyState } from '@/components/front-desk/states/EmptyState';
 import { ErrorState } from '@/components/front-desk/states/ErrorState';
 import { UnknownAvatar } from '@/components/front-desk/states/UnknownAvatar';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { useTenant } from '@/providers/TenantProvider';
+import { fetchTodayInbox } from '@/lib/api/frontDesk';
+import { mapToFeedItem } from '@/lib/api/frontDeskAdapters';
 
 const GLASSY_SCROLL_STYLE_ID = 'aspire-glassy-hscroll-css';
 
@@ -81,7 +85,21 @@ export function TodayFeed() {
     ensureGlassyHorizontalScrollCss();
   }, []);
 
-  const fetcher = useCallback(() => Promise.resolve(MOCK_FEED_ITEMS), []);
+  const { authenticatedFetch } = useAuthFetch();
+  const { tenant } = useTenant();
+  const officeId = tenant?.officeId ?? '';
+
+  // ?mock=1 in URL falls back to fixture data for local dev
+  const isMockMode =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('mock') === '1';
+
+  const fetcher = useCallback(async (): Promise<FeedItem[]> => {
+    if (isMockMode || !officeId) return MOCK_FEED_ITEMS;
+    const resp = await fetchTodayInbox({ authenticatedFetch, officeId });
+    return (resp.items ?? []).map(mapToFeedItem);
+  }, [authenticatedFetch, officeId, isMockMode]);
+
   const { data, loading, error, refresh } = useFrontDeskSection<FeedItem>(fetcher, {
     mock: MOCK_FEED_ITEMS,
   });
