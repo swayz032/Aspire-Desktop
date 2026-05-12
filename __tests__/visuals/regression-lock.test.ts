@@ -189,4 +189,51 @@ describe('Visuals Tab — Design Lock v1.0', () => {
       expect(src).toMatch(/fontVariant:\s*\[\s*['"]tabular-nums['"]\s*\]/);
     });
   });
+
+  describe('Lock #13: Street View shell flexes to fill heroSlot (4K crispness)', () => {
+    const src = read(
+      'components/service-hub/estimate-studio/visuals/LiveStreetViewHero.tsx',
+    );
+
+    // The shell style block — find from `shell: {` to its matching `},`.
+    const shellMatch = src.match(/shell:\s*\{[\s\S]*?\n\s{2}\}/);
+
+    it('shell style block exists', () => {
+      expect(shellMatch).toBeTruthy();
+    });
+
+    it('shell sets flex: 1 (without it the pano renders at a fixed size '
+       + 'and Google serves lower-res tiles = blurry Street View)', () => {
+      expect(shellMatch![0]).toMatch(/\bflex:\s*1\b/);
+    });
+
+    it('shell does NOT cap with aspectRatio (legacy 12/5 was the blur cause)', () => {
+      // The whole point of the regression: any aspectRatio reintroduces
+      // the fixed-letterbox sizing that triggers low-res Pano tiles.
+      expect(shellMatch![0]).not.toMatch(/\baspectRatio\s*:/);
+    });
+
+    it('shell keeps a minHeight floor (>= 320) so the pano never collapses', () => {
+      const minHeightMatch = shellMatch![0].match(/minHeight:\s*(\d+)/);
+      expect(minHeightMatch).toBeTruthy();
+      expect(Number(minHeightMatch![1])).toBeGreaterThanOrEqual(320);
+    });
+  });
+
+  describe('Lock #14: PhotoGalleryHero shell flexes + black bg (immersive)', () => {
+    const src = read(
+      'components/service-hub/estimate-studio/visuals/PhotoGalleryHero.tsx',
+    );
+    const shellMatch = src.match(/shell:\s*\{[\s\S]*?\n\s{2}\}/);
+
+    it('shell uses flex:1 and #000000 bg', () => {
+      expect(shellMatch).toBeTruthy();
+      expect(shellMatch![0]).toMatch(/\bflex:\s*1\b/);
+      expect(shellMatch![0]).toMatch(/backgroundColor:\s*['"]#000000['"]/);
+    });
+
+    it('shell does NOT pin a fixed aspectRatio (would clip images)', () => {
+      expect(shellMatch![0]).not.toMatch(/\baspectRatio\s*:/);
+    });
+  });
 });

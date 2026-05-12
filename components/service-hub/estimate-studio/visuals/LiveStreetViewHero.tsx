@@ -311,10 +311,18 @@ export function LiveStreetViewHero({ coords, loading, onAerialPress, onEarthPres
 
 const styles = StyleSheet.create({
   shell: {
-    // flex:1 + remove aspectRatio so the panorama fills the heroSlot's
-    // full available space. Bigger container = Google serves higher-
-    // resolution tiles = crisp 4K Street View instead of the soft 12/5
-    // letterboxed view. Pure black bg for immersive feel.
+    // ╔══════════════════════════════════════════════════════════════╗
+    // ║  LOCKED — DO NOT add aspectRatio here. DO NOT remove flex:1.  ║
+    // ║                                                                ║
+    // ║  Google Maps Street View serves tile resolution based on the  ║
+    // ║  container's rendered size. A fixed aspectRatio (e.g. 12/5)   ║
+    // ║  caps the container even when the heroSlot has more space —   ║
+    // ║  Google then ships LOWER-resolution tiles and the pano looks  ║
+    // ║  blurry. We hit this regression twice. Don't make it three.   ║
+    // ║                                                                ║
+    // ║  Invariants enforced by __tests__/visuals/regression-lock     ║
+    // ║  Lock #13. CI fails if these drift.                            ║
+    // ╚══════════════════════════════════════════════════════════════╝
     flex: 1,
     width: '100%',
     minHeight: 360,
