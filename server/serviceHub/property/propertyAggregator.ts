@@ -45,7 +45,7 @@ import {
 } from './adamResearchClient';
 import { validateAddress } from './googleAddressValidationClient';
 import { geocodeAddress } from './googleGeocodingClient';
-import { fetchSolarInsights } from './googleSolarClient';
+import { fetchSolarInsights, fetchSolarRoofAerial } from './googleSolarClient';
 
 import { materialSignalsHeuristic } from './materialSignalsHeuristic';
 import { costBandHeuristic } from './costBandHeuristic';
@@ -456,6 +456,19 @@ export async function aggregatePropertyData(
     solarResult = await withTimeout(fetchSolarInsights(coords), STAGE2_TIMEOUT_MS);
   }
 
+  // Solar buildingInsights coverage != dataLayers coverage. Insights returns
+  // 'ok' for many rural addresses where dataLayers (the actual aerial imagery)
+  // has no tiles. Pre-flight the dataLayers endpoint so the client gets an
+  // accurate roofImagery flag and never tries to render a 404'd Solar image.
+  let solarAerialAvailable = false;
+  if (coords && solarResult?.status === 'ok') {
+    const aerialProbe = await withTimeout(
+      fetchSolarRoofAerial(coords, { radiusMeters: 50, timeoutMs: 5_000 }),
+      6_000,
+    );
+    solarAerialAvailable = aerialProbe?.status === 'ok';
+  }
+
   // Adam source row.
   const adamStatus = adamResult?.status;
   if (adamStatus === 'ok' || adamStatus === 'partial') {
@@ -561,15 +574,13 @@ export async function aggregatePropertyData(
     photos: decorateRoofWithSolarAerial(
       buildPhotoLanesFromAdam(adamResult?.photos, streetViewProxyUrl),
       formattedAddress || cleanAddress,
-      solarResult?.status === 'ok',
+      solarAerialAvailable,
     ),
-    // Solar building insights ('ok') strongly correlates with dataLayers
-    // aerial availability (same coverage map). When Solar said 'ok' the
-    // roof canvas can render the Solar 4K aerial via PhotoGalleryHero.
-    // When Solar said 'missing' or 'api_failure', the canvas falls back
-    // to the interactive Street View Pano (LiveStreetViewHero) — same
-    // 4K experience users get on the Street View card.
-    roofImagery: solarResult?.status === 'ok' ? 'solar' : 'streetview',
+    // roofImagery now reflects the ACTUAL dataLayers result (preflight above).
+    // Insights 'ok' doesn't guarantee aerial tiles exist; 2934 Bicycle Rd
+    // is the canonical counter-example. When dataLayers said 'missing',
+    // the canvas falls back to the interactive Street View Pano.
+    roofImagery: solarAerialAvailable ? 'solar' : 'streetview',
     signals: {
       materials,
       roofType: solarRoofType,

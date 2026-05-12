@@ -119,6 +119,34 @@ export function PhotoGalleryHero({
   }
 
   const current = safePhotos[index];
+  // Defensive: index can briefly point past the array end between a photo
+  // list shrinking and the useEffect reset firing on the next render. Bail
+  // to the empty state so the gallery doesn't crash on undefined.url.
+  if (!current) {
+    return (
+      <View style={[styles.shell, styles.empty]} testID="photo-gallery-hero-empty">
+        <View style={styles.emptyHeader}>
+          <Text style={styles.title}>{title} · 0 photos</Text>
+          {onClose && (
+            <Pressable
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Return to Street View"
+              style={({ hovered }: any) => [styles.closeButton, hovered && styles.closeButtonHover]}
+            >
+              <Ionicons name="close" size={14} color="rgba(255,255,255,0.85)" />
+            </Pressable>
+          )}
+        </View>
+        <View style={styles.emptyBody}>
+          <View style={styles.emptyIcon}>
+            <Ionicons name="cloud-upload-outline" size={28} color="rgba(255,255,255,0.55)" />
+          </View>
+          <Text style={styles.emptyTitle}>No {title.toLowerCase()} photos available</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.shell} testID="photo-gallery-hero">
