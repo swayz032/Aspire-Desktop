@@ -13,7 +13,9 @@ const PERSONA_DISPLAY: Record<Persona, string> = {
 
 export function FrontDeskHeaderStrip() {
   const router = useRouter();
-  const [persona, setPersona] = useState<Persona>('sarah');
+  // Default persona = Tiffany (founder lock 2026-05-12). FrontDeskConfig
+  // override still wins if the user picks a different persona in Setup.
+  const [persona, setPersona] = useState<Persona>('tiffany');
 
   useEffect(() => {
     let cancelled = false;

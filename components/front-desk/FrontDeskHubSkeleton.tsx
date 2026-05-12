@@ -22,6 +22,72 @@ const PERSONA_DISPLAY: Record<Persona, string> = {
   tiffany: 'Tiffany',
 };
 
+function StageVideo({ personaName }: { personaName: string }) {
+  if (Platform.OS !== 'web') return null;
+  return (
+    <div style={videoModeWrap}>
+      <img
+        src="/tiffany-reception.png"
+        alt=""
+        aria-hidden
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          // Subtle Ken-Burns at idle (matches Ava Desk feel)
+          transform: 'scale(1.04)',
+          filter: 'saturate(1.05)',
+        }}
+      />
+      {/* Dim overlay so the foreground UI stays readable */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background:
+            'radial-gradient(70% 50% at 50% 50%, rgba(0,0,0,0.30) 0%, rgba(0,0,0,0.65) 100%)',
+        }}
+      />
+
+      {/* Centered foreground */}
+      <div style={videoModeCenter}>
+        <div style={videoIconRing}>
+          <div style={videoIconCore}>
+            <Ionicons name="videocam" size={28} color="#ffffff" />
+          </div>
+        </div>
+        <div style={videoTitle}>{`Video with ${personaName}`}</div>
+        <div style={videoSubtitle}>Start a face-to-face session</div>
+        <button
+          style={connectBtn}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)';
+            (e.currentTarget as HTMLElement).style.boxShadow =
+              '0 14px 28px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.30)';
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.transform = 'translateY(0)';
+            (e.currentTarget as HTMLElement).style.boxShadow =
+              '0 10px 22px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.25)';
+          }}
+          onMouseDown={(e) => {
+            (e.currentTarget as HTMLElement).style.transform = 'translateY(1px) scale(0.98)';
+          }}
+          onMouseUp={(e) => {
+            (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)';
+          }}
+        >
+          <Ionicons name="videocam" size={18} color="#ffffff" />
+          <span style={connectBtnLabel}>{`Connect to ${personaName}`}</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function StageBlob() {
   const ref = useRef<HTMLVideoElement>(null);
 
@@ -218,7 +284,9 @@ export function FrontDeskHubSkeleton() {
   const { width } = useWindowDimensions();
   const twoCol = width >= BREAKPOINT_TWO_COL;
   const [mode, setMode] = useState<StageMode>('voice');
-  const [persona, setPersona] = useState<Persona>('sarah');
+  // Default persona = Tiffany (founder lock 2026-05-12). FrontDeskConfig
+  // override still wins if the user picks a different persona in Setup.
+  const [persona, setPersona] = useState<Persona>('tiffany');
 
   useEffect(() => {
     let cancelled = false;
@@ -246,11 +314,15 @@ export function FrontDeskHubSkeleton() {
               <StageToggle mode={mode} personaName={personaName} onChange={setMode} />
             </View>
             <View style={styles.stageCenter}>
-              {mode === 'voice' ? <StageBlob /> : null}
+              {mode === 'voice' ? <StageBlob /> : <StageVideo personaName={personaName} />}
             </View>
-            <View style={styles.voiceBtnSlot}>
-              <VoiceTapButton />
-            </View>
+            {/* Voice tap mic only shows in Voice mode — Video has its own
+                Connect-to-{persona} CTA centered in the stage. */}
+            {mode === 'voice' ? (
+              <View style={styles.voiceBtnSlot}>
+                <VoiceTapButton />
+              </View>
+            ) : null}
           </View>
           <View style={[styles.glassCard, { flex: 3 }]}>
             <TodayFeed />
@@ -329,6 +401,99 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+
+const videoModeWrap: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  overflow: 'hidden',
+  borderRadius: 14,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
+
+const videoModeCenter: React.CSSProperties = {
+  position: 'relative',
+  zIndex: 2,
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: 12,
+  paddingLeft: 24,
+  paddingRight: 24,
+  textAlign: 'center',
+};
+
+const videoIconRing: React.CSSProperties = {
+  width: 96,
+  height: 96,
+  borderRadius: 48,
+  background:
+    'radial-gradient(60% 60% at 50% 50%, rgba(239,68,68,0.40) 0%, rgba(124,58,237,0.32) 50%, rgba(59,130,246,0.40) 100%)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  boxShadow:
+    '0 0 0 1px rgba(255,255,255,0.10) inset, 0 10px 30px rgba(0,0,0,0.5), 0 0 40px rgba(124,58,237,0.25)',
+  marginBottom: 4,
+};
+
+const videoIconCore: React.CSSProperties = {
+  width: 64,
+  height: 64,
+  borderRadius: 32,
+  backgroundImage:
+    'linear-gradient(135deg, #EF4444 0%, #DC2626 30%, #7C3AED 50%, #3B82F6 70%, #2563EB 100%)',
+  boxShadow:
+    'inset 0 1px 0 rgba(255,255,255,0.25), inset 0 -2px 6px rgba(0,0,0,0.30), 0 6px 14px rgba(0,0,0,0.5)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
+
+const videoTitle: React.CSSProperties = {
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 22,
+  fontWeight: 700,
+  color: '#ffffff',
+  letterSpacing: -0.3,
+  textShadow: '0 2px 12px rgba(0,0,0,0.6)',
+};
+
+const videoSubtitle: React.CSSProperties = {
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 13,
+  fontWeight: 400,
+  color: 'rgba(255,255,255,0.75)',
+  marginBottom: 6,
+  textShadow: '0 2px 8px rgba(0,0,0,0.6)',
+};
+
+const connectBtn: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  height: 44,
+  paddingLeft: 18,
+  paddingRight: 20,
+  borderRadius: 22,
+  border: 'none',
+  outline: 'none',
+  cursor: 'pointer',
+  backgroundImage:
+    'linear-gradient(135deg, #EF4444 0%, #DC2626 30%, #7C3AED 50%, #3B82F6 70%, #2563EB 100%)',
+  boxShadow:
+    '0 10px 22px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.25)',
+  transition: 'transform 0.12s ease, box-shadow 0.15s ease',
+};
+
+const connectBtnLabel: React.CSSProperties = {
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 14,
+  fontWeight: 700,
+  color: '#ffffff',
+  letterSpacing: 0.2,
+};
 
 const voiceBtnStyles = StyleSheet.create({
   nativeFallback: {
