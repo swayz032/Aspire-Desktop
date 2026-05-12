@@ -1,0 +1,229 @@
+/**
+ * BundleSummaryBar — sticky bottom bar showing bundle stats + Push to Estimate
+ * and Draft RFQ Packet actions. Hidden when bundle is empty.
+ */
+import React from 'react';
+import { View, Text, StyleSheet, Pressable, Platform, type ViewStyle } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+
+interface Props {
+  itemCount: number;
+  supplierCount: number;
+  subtotal: number;
+  onPushToEstimate: () => void;
+  onDraftRfq: () => void;
+  onClear?: () => void;
+}
+
+const WEB_TRANSITION: ViewStyle =
+  Platform.OS === 'web'
+    ? (({ transition: 'all 200ms ease' } as unknown) as ViewStyle)
+    : {};
+
+function formatPrice(n: number): string {
+  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+export function BundleSummaryBar({
+  itemCount,
+  supplierCount,
+  subtotal,
+  onPushToEstimate,
+  onDraftRfq,
+  onClear,
+}: Props) {
+  if (itemCount === 0) return null;
+
+  return (
+    <View style={styles.bar} testID="materials-bundle-summary-bar">
+      <View style={styles.stats}>
+        <Stat label="Items" value={String(itemCount)} />
+        <Stat label="Suppliers" value={String(supplierCount)} />
+        <Stat label="Subtotal" value={formatPrice(subtotal)} accent testID="bundle-subtotal" />
+      </View>
+
+      <View style={styles.actions}>
+        {onClear && (
+          <Pressable
+            onPress={onClear}
+            style={({ hovered, pressed }: any) => [
+              styles.ghostBtn,
+              hovered && styles.ghostBtnHovered,
+              pressed && styles.ghostBtnPressed,
+              WEB_TRANSITION,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Clear bundle"
+          >
+            <Text style={styles.ghostBtnText}>CLEAR</Text>
+          </Pressable>
+        )}
+        <Pressable
+          onPress={onDraftRfq}
+          style={({ hovered, pressed }: any) => [
+            styles.secondaryBtn,
+            hovered && styles.secondaryBtnHovered,
+            pressed && styles.secondaryBtnPressed,
+            WEB_TRANSITION,
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Draft RFQ packet from bundle"
+          testID="bundle-draft-rfq-btn"
+        >
+          <Ionicons name="document-text-outline" size={13} color="#60a5fa" />
+          <Text style={styles.secondaryBtnText}>DRAFT RFQ</Text>
+        </Pressable>
+        <Pressable
+          onPress={onPushToEstimate}
+          style={({ hovered, pressed }: any) => [
+            styles.primaryBtn,
+            hovered && styles.primaryBtnHovered,
+            pressed && styles.primaryBtnPressed,
+            WEB_TRANSITION,
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Push bundle to estimate"
+          testID="bundle-push-to-estimate-btn"
+        >
+          <Ionicons name="arrow-forward" size={13} color="#0a0a0f" />
+          <Text style={styles.primaryBtnText}>PUSH TO ESTIMATE</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+interface StatProps {
+  label: string;
+  value: string;
+  accent?: boolean;
+  testID?: string;
+}
+
+function Stat({ label, value, accent, testID }: StatProps) {
+  return (
+    <View style={styles.statTile} testID={testID}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={[styles.statValue, accent && styles.statValueAccent]}>{value}</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  bar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.22)',
+    ...(Platform.OS === 'web'
+      ? (({
+          position: 'sticky' as any,
+          bottom: 8,
+          backdropFilter: 'blur(8px)',
+          boxShadow: '0 -8px 24px rgba(0,0,0,0.32)',
+        } as unknown) as ViewStyle)
+      : {}),
+  },
+  stats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 18,
+  },
+  statTile: {
+    gap: 2,
+  },
+  statLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.45)',
+    letterSpacing: 1.0,
+    textTransform: 'uppercase',
+  },
+  statValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.96)',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: -0.3,
+  },
+  statValueAccent: {
+    color: '#fbbf24',
+  },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  ghostBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 7,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  ghostBtnHovered: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  ghostBtnPressed: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  ghostBtnText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.55)',
+    letterSpacing: 0.8,
+  },
+  secondaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 7,
+    backgroundColor: 'rgba(96,165,250,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(96,165,250,0.30)',
+  },
+  secondaryBtnHovered: {
+    backgroundColor: 'rgba(96,165,250,0.18)',
+  },
+  secondaryBtnPressed: {
+    backgroundColor: 'rgba(96,165,250,0.26)',
+  },
+  secondaryBtnText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#60a5fa',
+    letterSpacing: 0.8,
+  },
+  primaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 7,
+    backgroundColor: '#fbbf24',
+    borderWidth: 1,
+    borderColor: '#fbbf24',
+  },
+  primaryBtnHovered: {
+    backgroundColor: '#f5a623',
+  },
+  primaryBtnPressed: {
+    backgroundColor: '#e09010',
+  },
+  primaryBtnText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#0a0a0f',
+    letterSpacing: 0.8,
+  },
+});
