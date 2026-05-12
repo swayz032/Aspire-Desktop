@@ -42,7 +42,12 @@ const callsHero = require('@/assets/images/calls-hero.jpg');
 // DTMF Dialpad Audio (Web Audio API) -- copied exactly from working version
 // ---------------------------------------------------------------------------
 
-const DTMF_FREQUENCIES: Record<string, [number, number]> = {
+// Pass 1 of front-desk-hub extraction (2026-05-11): added `export` keywords to
+// DTMF/dialpad helpers so the new `components/front-desk/DialPadCard.tsx` can
+// import them without duplicating logic. Pure additive change — the legacy
+// `/session/calls` route still owns + uses these symbols. Pass 5 will redirect
+// `/session/calls` to `/session/front-desk` and these can move out of this file.
+export const DTMF_FREQUENCIES: Record<string, [number, number]> = {
   '1': [697, 1209], '2': [697, 1336], '3': [697, 1477],
   '4': [770, 1209], '5': [770, 1336], '6': [770, 1477],
   '7': [852, 1209], '8': [852, 1336], '9': [852, 1477],
@@ -68,7 +73,7 @@ const getAudioContext = (): AudioContext | null => {
   }
 };
 
-const resumeAudioContextFromGesture = async (): Promise<void> => {
+export const resumeAudioContextFromGesture = async (): Promise<void> => {
   const audioCtx = getAudioContext();
   if (!audioCtx) return;
   if (audioCtx.state !== 'suspended') return;
@@ -79,7 +84,7 @@ const resumeAudioContextFromGesture = async (): Promise<void> => {
   }
 };
 
-const playDTMFTone = (digit: string) => {
+export const playDTMFTone = (digit: string) => {
   const frequencies = DTMF_FREQUENCIES[digit];
   if (!frequencies) return;
 
@@ -153,7 +158,7 @@ const stopRinging = () => {
 // Dial pad layout
 // ---------------------------------------------------------------------------
 
-const DIAL_PAD = [
+export const DIAL_PAD = [
   { digit: '1', letters: '' },
   { digit: '2', letters: 'ABC' },
   { digit: '3', letters: 'DEF' },
@@ -244,7 +249,7 @@ function getRelativeTime(isoDate: string): string {
   return `${days}d ago`;
 }
 
-function formatE164Display(number: string): string {
+export function formatE164Display(number: string): string {
   const cleaned = number.replace(/\D/g, '');
   if (cleaned.length === 11 && cleaned.startsWith('1')) {
     return `+1 (${cleaned.slice(1, 4)}) ${cleaned.slice(4, 7)}-${cleaned.slice(7)}`;
@@ -255,7 +260,7 @@ function formatE164Display(number: string): string {
   return number;
 }
 
-function formatPhoneNumber(number: string): string {
+export function formatPhoneNumber(number: string): string {
   const cleaned = number.replace(/\D/g, '');
   if (cleaned.length <= 3) return cleaned;
   if (cleaned.length <= 6) return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3)}`;

@@ -1,13 +1,16 @@
-import 'dotenv/config';
-// Also load .env.local for local dev overrides (e.g. DEV_BYPASS_AUTH)
-// dotenv/config only reads .env — .env.local must be loaded explicitly.
+// Pass D fix 2026-05-12: load .env with override:true so the checked-in
+// dev secrets WIN over any stale Windows user-env vars that leaked from
+// past `setx` sessions (e.g. a truncated ELEVENLABS_API_KEY from a
+// Railway CLI display). Without override, shell-poisoned values silently
+// beat .env and the server sends invalid creds to upstream providers.
 import dotenv from 'dotenv';
 import { existsSync } from 'fs';
 import * as fs from 'fs';
 import { resolve } from 'path';
+dotenv.config({ override: true });
 const localEnvPath = resolve(process.cwd(), '.env.local');
 if (existsSync(localEnvPath)) {
-  dotenv.config({ path: localEnvPath, override: false });
+  dotenv.config({ path: localEnvPath, override: true });
 }
 import express from 'express';
 import cors from 'cors';
@@ -99,6 +102,14 @@ const PUBLIC_PATHS = [
                                       //  Supabase session cookies; the Anam JWT is what authorizes the
                                       //  SDK's WebRTC connect downstream, so HTML alone has no value
                                       //  without the matching token).
+  '/api/property/aerial-thumb',      // Google Static Maps satellite thumbnail for the Aerial 3D card
+                                      //  small tile. Public for same reason as streetview/roof-aerial:
+                                      //  <img src=> can't carry a Bearer token. Server validates the
+                                      //  address input and proxies Google Static Maps. No PII.
+  '/api/property/roof-aerial',       // Google Solar 4K aerial roof image — public for same reason as
+                                      //  streetview: <img src=> can't carry a Bearer token. Handler
+                                      //  validates address input, fetches Solar dataLayers GeoTIFF,
+                                      //  polygon-crops via sharp, returns processed WebP. No PII.
   '/api/places/streetview',          // Street View image proxy — must be public because <img src=> cannot
                                       //  carry a Bearer token. Protected by handler-level input validation:
                                       //  ASCII-only address whitelist, 200-char cap, numeric lat/lng regex,
@@ -231,10 +242,36 @@ app.use(async (req, res, next) => {
       });
     }
 
-    // JWT present: validate and extract suite_id
+    // JWT present: validate and extract suite_id.
+    // NOTE: supabase-js 2.95.x has a regression where supabaseAdmin.auth.getUser(token)
+    // returns "Auth session missing!" even when given a valid JWT (the SDK looks for an
+    // attached session instead of using the passed token). We bypass with a direct REST
+    // call to GET /auth/v1/user — that endpoint validates the Bearer JWT server-side.
     const token = bearerToken;
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
-    if (error || !user) {
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+    const supabaseApiKey = process.env.SUPABASE_ANON_KEY
+      || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
+      || process.env.SUPABASE_SERVICE_ROLE_KEY
+      || '';
+    let user: { id: string; email?: string; user_metadata?: Record<string, unknown> } | null = null;
+    let validationError: string | null = null;
+    try {
+      const userResp = await fetch(`${supabaseUrl}/auth/v1/user`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          apikey: supabaseApiKey,
+        },
+      });
+      if (userResp.ok) {
+        user = (await userResp.json()) as typeof user;
+      } else {
+        validationError = `${userResp.status} ${userResp.statusText}`;
+      }
+    } catch (fetchErr) {
+      validationError = fetchErr instanceof Error ? fetchErr.message : 'fetch_failed';
+    }
+    if (!user) {
       // Decode JWT payload (no verification) for diagnostic purposes only — the token is already rejected.
       let jwtClaims: Record<string, unknown> | null = null;
       try {
@@ -245,7 +282,7 @@ app.use(async (req, res, next) => {
       } catch { /* swallow */ }
       logger.warn('[auth-debug] INVALID_TOKEN', {
         path: req.path,
-        supabase_error: error?.message ?? 'no_user_returned',
+        validation_error: validationError ?? 'no_user_returned',
         token_len: token.length,
         jwt_iss: jwtClaims?.iss ?? null,
         jwt_aud: jwtClaims?.aud ?? null,
@@ -431,7 +468,7 @@ app.use(helmet({
       // If any future feature needs esm.sh, prefer self-hosting via the same
       // /vendor pattern instead of widening CSP.
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:", "https://cdn.plaid.com", "https://elevenlabs.io", "https://unpkg.com", "https://cdn.jsdelivr.net", "https://source.zoom.us", "https://zoom.us", "https://*.zoom.us"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://source.zoom.us", "https://zoom.us"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://source.zoom.us", "https://zoom.us", "https://cdn.jsdelivr.net"],
       imgSrc: ["'self'", "data:", "blob:", "https:"],
       connectSrc: [
         "'self'",
@@ -453,6 +490,8 @@ app.use(helmet({
         "https://*.stripe.com",
         "https://*.plaid.com",
         "https://maps.googleapis.com",
+        "https://aerialview.googleapis.com",
+        "https://tile.googleapis.com",
         "https://api.deepgram.com",
         "wss://api.deepgram.com",
         "https://cdn.jsdelivr.net",
@@ -468,9 +507,9 @@ app.use(helmet({
         "https://*.twilio.com",
         "wss://*.twilio.com",
       ],
-      mediaSrc: ["'self'", "data:", "blob:", "https://zoom.us", "https://*.zoom.us"],
+      mediaSrc: ["'self'", "data:", "blob:", "https://zoom.us", "https://*.zoom.us", "https://storage.googleapis.com"],
       frameSrc: ["'self'", "https://*.pandadoc.com", "https://*.stripe.com", "https://*.plaid.com", "https://zoom.us", "https://*.zoom.us"],
-      workerSrc: ["'self'", "blob:", "https://source.zoom.us"],
+      workerSrc: ["'self'", "blob:", "https://source.zoom.us", "https://cdn.jsdelivr.net"],
       fontSrc: ["'self'", "data:", "https://cdn.jsdelivr.net", "https://unpkg.com", "https://source.zoom.us"],
       objectSrc: ["'none'"],
       upgradeInsecureRequests: [],
@@ -738,6 +777,56 @@ try {
   logger.info('Google Places proxy routes registered');
 } catch (e) {
   logger.warn('Places routes not available, skipping');
+}
+
+try {
+  const propertyRoutes = require('./serviceHub/property/propertyRoutes').default;
+  app.use(propertyRoutes);
+  logger.info('Service Hub property routes registered');
+} catch (e) {
+  logger.warn('Service Hub property routes not available, skipping', {
+    reason: e instanceof Error ? e.message.slice(0, 160) : 'unknown',
+  });
+}
+
+try {
+  const aerialViewRoute = require('./serviceHub/property/aerialViewRoute').default;
+  app.use(aerialViewRoute);
+  logger.info('Aerial View route registered (GET /api/property/aerial-video)');
+} catch (e) {
+  logger.warn('Aerial View route not available, skipping', {
+    reason: e instanceof Error ? e.message.slice(0, 160) : 'unknown',
+  });
+}
+
+try {
+  const buildingFootprintRoute = require('./serviceHub/property/buildingFootprintRoute').default;
+  app.use(buildingFootprintRoute);
+  logger.info('[INFO] Building footprint route registered (GET /api/property/building-footprint)');
+} catch (e) {
+  logger.warn('Building footprint route not available, skipping', {
+    reason: e instanceof Error ? e.message.slice(0, 160) : 'unknown',
+  });
+}
+
+try {
+  const { handleRoofAerial } = require('./serviceHub/property/roofAerialRoute');
+  app.get('/api/property/roof-aerial', handleRoofAerial);
+  logger.info('[INFO] Roof Aerial route registered (GET /api/property/roof-aerial)');
+} catch (e) {
+  logger.warn('Roof Aerial route not available, skipping', {
+    reason: e instanceof Error ? e.message.slice(0, 160) : 'unknown',
+  });
+}
+
+try {
+  const { handleAerialThumb } = require('./serviceHub/property/aerialThumbRoute');
+  app.get('/api/property/aerial-thumb', handleAerialThumb);
+  logger.info('[INFO] Aerial Thumb route registered (GET /api/property/aerial-thumb)');
+} catch (e) {
+  logger.warn('Aerial Thumb route not available, skipping', {
+    reason: e instanceof Error ? e.message.slice(0, 160) : 'unknown',
+  });
 }
 
 // Public client config — returns non-secret keys that the browser needs at runtime.

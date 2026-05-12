@@ -24,6 +24,7 @@
  */
 
 import { API_BASE } from './officeMemory';
+import type { BackendContact } from './frontDeskAdapters'; // used by FetchContactsResponse + re-export
 
 type FetchFn = (url: string, options?: RequestInit) => Promise<Response>;
 
@@ -529,6 +530,150 @@ export async function deleteRoutingContact(
     signal: opts.signal,
   });
   await expectJson<{ success: boolean }>(resp, 'ROUTING_CONTACT_DELETE_FAILED');
+}
+
+// ---------------------------------------------------------------------------
+// Contacts — Green tier (read-only list of Tiffany-captured caller records).
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Today Feed inbox — Green tier (unified chronological activity feed).
+// ---------------------------------------------------------------------------
+
+export interface TodayInboxResponse {
+  items: import('./frontDeskAdapters').BackendInboxItem[];
+  count: number;
+  suite_id: string;
+  since?: string | null;
+  until?: string | null;
+}
+
+/**
+ * Green tier — fetch today's unified inbox feed.
+ * Calls GET /api/front-desk/inbox?since=<today-midnight-iso>
+ * which proxies to GET /v1/front-desk/inbox on the orchestrator.
+ */
+export async function fetchTodayInbox(
+  opts: FetchOpts,
+): Promise<TodayInboxResponse> {
+  // since = start of today in UTC (ISO)
+  const todayMidnight = new Date();
+  todayMidnight.setUTCHours(0, 0, 0, 0);
+  const since = todayMidnight.toISOString();
+  const url = `${API_BASE}/api/front-desk/inbox?since=${encodeURIComponent(since)}`;
+  const resp = await opts.authenticatedFetch(url, {
+    method: 'GET',
+    headers: { 'X-Office-Id': opts.officeId },
+    signal: opts.signal,
+  });
+  return expectJson<TodayInboxResponse>(resp, 'FRONT_DESK_INBOX_FAILED');
+}
+
+/**
+ * Green tier — fetch a wider unified inbox window (default 30 days).
+ * Used by Voicemail/SMS/Missed/Incoming/Outgoing/All workspaces which
+ * need history beyond "today". Backend returns the same merged feed
+ * (call_sessions + frontdesk_voicemails + sms_messages + callback_promises);
+ * workspaces filter by event type client-side.
+ */
+export async function fetchInboxWindow(
+  opts: FetchOpts & { sinceDays?: number; limit?: number },
+): Promise<TodayInboxResponse> {
+  const days = opts.sinceDays ?? 30;
+  const since = new Date(Date.now() - days * 86_400_000).toISOString();
+  const params = new URLSearchParams();
+  params.set('since', since);
+  if (opts.limit != null) params.set('limit', String(opts.limit));
+  const url = `${API_BASE}/api/front-desk/inbox?${params.toString()}`;
+  const resp = await opts.authenticatedFetch(url, {
+    method: 'GET',
+    headers: { 'X-Office-Id': opts.officeId },
+    signal: opts.signal,
+  });
+  return expectJson<TodayInboxResponse>(resp, 'FRONT_DESK_INBOX_FAILED');
+}
+
+/** Callback record shape returned by GET /api/callbacks. */
+export interface BackendCallbackRow {
+  id: string;
+  name?: string | null;
+  phone: string;
+  bucket?: string | null;
+  promise_time?: string | null;
+  due_label?: string | null;
+  context?: string | null;
+}
+
+export interface FetchCallbacksResponse {
+  callbacks: BackendCallbackRow[];
+  count?: number;
+}
+
+export interface FetchCallbacksOpts {
+  authenticatedFetch: FetchFn;
+  officeId: string;
+  bucket?: 'all' | 'today' | 'tomorrow' | 'this_week' | 'overdue';
+  signal?: AbortSignal;
+}
+
+/**
+ * Green tier — list pending callback promises for this office.
+ * Calls GET /api/callbacks → proxy → /v1/callbacks on orchestrator (Pass G).
+ */
+export async function fetchCallbacks(
+  opts: FetchCallbacksOpts,
+): Promise<FetchCallbacksResponse> {
+  const params = new URLSearchParams();
+  if (opts.bucket && opts.bucket !== 'all') params.set('bucket', opts.bucket);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  const url = `${API_BASE}/api/callbacks${qs}`;
+  const resp = await opts.authenticatedFetch(url, {
+    method: 'GET',
+    headers: { 'X-Office-Id': opts.officeId },
+    signal: opts.signal,
+  });
+  return expectJson<FetchCallbacksResponse>(resp, 'CALLBACKS_FETCH_FAILED');
+}
+
+// Re-export for consumers that only import from frontDesk.ts.
+export type { BackendContact } from './frontDeskAdapters';
+
+export interface FetchContactsResponse {
+  contacts: BackendContact[];
+  has_more: boolean;
+  next_cursor?: string;
+  receipt_id?: string;
+}
+
+export interface FetchContactsOpts {
+  authenticatedFetch: FetchFn;
+  officeId: string;
+  bucket?: 'all' | 'lead' | 'client' | 'unknown';
+  limit?: number;
+  cursor?: string;
+  signal?: AbortSignal;
+}
+
+
+/**
+ * Green tier — list frontdesk_contacts for this office.
+ * Records are written by Tiffany's `capture_message` tool during calls.
+ */
+export async function fetchContacts(
+  opts: FetchContactsOpts,
+): Promise<FetchContactsResponse> {
+  const params = new URLSearchParams();
+  if (opts.bucket && opts.bucket !== 'all') params.set('bucket', opts.bucket);
+  if (opts.limit != null) params.set('limit', String(opts.limit));
+  if (opts.cursor) params.set('cursor', opts.cursor);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  const url = `${API_BASE}/api/contacts${qs}`;
+  const resp = await opts.authenticatedFetch(url, {
+    method: 'GET',
+    headers: { 'X-Office-Id': opts.officeId },
+    signal: opts.signal,
+  });
+  return expectJson<FetchContactsResponse>(resp, 'CONTACTS_FETCH_FAILED');
 }
 
 /**

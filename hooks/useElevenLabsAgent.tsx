@@ -645,6 +645,11 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
         industry: userProfile?.industry || '',
         time_of_day: getTimeOfDay(),
         current_date: new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+        // Defense-in-depth default for tool-required vars (Pass D fix 2026-05-12).
+        // Tiffany Front Desk tools declare `called_number` as required; this
+        // satisfies the EL precondition even when the server enrichment is
+        // unavailable. Server payload (serverVars) overrides if present.
+        called_number: '',
         ...serverVars,
       };
 
@@ -672,7 +677,11 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
   startSessionRef.current = startSession;
 
   const endSession = useCallback(async () => {
-    if (!sessionActiveRef.current) return;
+    // Pass D fix 2026-05-12: previously bailed out if sessionActiveRef was
+    // already false, which caused the mic tap to look "stuck" when the
+    // session went into an error/connecting/post-failure state but the SDK
+    // still held the audio track. Always force the disconnect + reset UI
+    // state — idempotent on the SDK side.
     // Cancel any pending reconnect
     if (reconnectTimerRef.current) {
       clearTimeout(reconnectTimerRef.current);

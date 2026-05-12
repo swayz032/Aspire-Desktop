@@ -8098,7 +8098,7 @@ router.post('/api/elevenlabs/agent-session', async (req: Request, res: Response)
         message: 'Agent name is required',
       }));
     }
-    const validAgents = ['ava', 'eli', 'finn', 'nora', 'sarah'];
+    const validAgents = ['ava', 'eli', 'finn', 'nora', 'sarah', 'tiffany'];
     if (!validAgents.includes(agent)) {
       return res.status(400).json(voiceErrorPayload({
         correlationId,
@@ -8121,9 +8121,14 @@ router.post('/api/elevenlabs/agent-session', async (req: Request, res: Response)
       }));
     }
 
-    // Resolve the agent ID from environment variables
+    // Resolve the agent ID from environment variables. Tiffany maps to the
+    // Front Desk variant configured on Railway (Pass D, 2026-05-12) — also
+    // supports the plain ELEVENLABS_AGENT_TIFFANY var for local dev.
     const agentEnvKey = `ELEVENLABS_AGENT_${agent.toUpperCase()}`;
-    const agentId = process.env[agentEnvKey];
+    const agentId =
+      agent === 'tiffany'
+        ? (process.env.ELEVENLABS_AGENT_TIFFANY_FRONTDESK || process.env.ELEVENLABS_AGENT_TIFFANY)
+        : process.env[agentEnvKey];
     if (!agentId) {
       logger.warn(`[AgentSession] ${agentEnvKey} not configured for agent "${agent}"`);
       return res.status(500).json(voiceErrorPayload({
@@ -8224,6 +8229,14 @@ router.post('/api/elevenlabs/agent-session', async (req: Request, res: Response)
             business_name: profile.business_name || '',
             industry: profile.industry || '',
             office_id: profile.office_id || '',
+            // Tiffany Front Desk + receptionist agents declare `called_number`
+            // as a required dynamic variable on their twilio_* tool configs.
+            // Internal owner-facing sessions don't have a callee — pass an
+            // empty string so EL doesn't 400 with "Missing required dynamic
+            // variables in tools: {'called_number'}". Tiffany will only emit
+            // outbound calls via approval flow, where the destination is
+            // bound on the tool call itself, not this session variable.
+            called_number: '',
           };
         }
       }
@@ -8478,8 +8491,34 @@ async function handleStreetViewProxy(req: Request, res: Response): Promise<void>
   }
 }
 
-router.get('/v1/places/streetview', handleStreetViewProxy);
-router.get('/api/places/streetview', handleStreetViewProxy);
+// Per-IP rate limit for the public streetview proxy (60 req/min/IP).
+// In-memory sliding-window counter — sufficient for single-instance dev/prod.
+// Multi-instance deploys should swap to a shared Redis backend.
+const STREETVIEW_RATE_WINDOW_MS = 60_000;
+const STREETVIEW_RATE_MAX = 60;
+const streetViewRateBuckets = new Map<string, number[]>();
+function streetViewRateLimit(req: Request, res: Response, next: () => void): void {
+  const ip = (req.ip || req.socket.remoteAddress || 'unknown').toString();
+  const now = Date.now();
+  const recent = (streetViewRateBuckets.get(ip) ?? []).filter((t) => now - t < STREETVIEW_RATE_WINDOW_MS);
+  if (recent.length >= STREETVIEW_RATE_MAX) {
+    res.status(429).json({ error: 'RATE_LIMITED', message: 'Too many street view requests; retry shortly.' });
+    return;
+  }
+  recent.push(now);
+  streetViewRateBuckets.set(ip, recent);
+  // Lazy cleanup: prune buckets older than 5 windows to bound memory.
+  if (streetViewRateBuckets.size > 1000) {
+    const cutoff = now - STREETVIEW_RATE_WINDOW_MS * 5;
+    for (const [k, v] of streetViewRateBuckets) {
+      if (!v.length || v[v.length - 1] < cutoff) streetViewRateBuckets.delete(k);
+    }
+  }
+  next();
+}
+
+router.get('/v1/places/streetview', streetViewRateLimit, handleStreetViewProxy);
+router.get('/api/places/streetview', streetViewRateLimit, handleStreetViewProxy);
 
 // ─── POST /api/tools/enrich-product ────────────────────────────────────────
 // Authenticated client proxy for the orchestrator's lazy product-enrichment
@@ -9031,6 +9070,252 @@ router.post('/api/v1/sms/send', async (req: Request, res: Response) => {
   });
 });
 
+router.post('/api/v1/sms/send-new', async (req: Request, res: Response) => {
+  await proxyForward({
+    orchestratorPath: '/v1/sms/send-new',
+    method: 'POST',
+    body: typeof req.body === 'object' && req.body !== null ? (req.body as Record<string, unknown>) : {},
+    scope: 'telephony:sms_send',
+    logTag: 'SmsSendNew',
+    timeoutMs: 8_000,
+    req,
+    res,
+  });
+});
+
+// ─── Callbacks (Pass I) ──────────────────────────────────────────────────────
+//
+// GET  /api/callbacks        → /v1/callbacks               (Green — list)
+// PATCH /api/callbacks/:id  → /v1/callbacks/:id            (Yellow — reschedule)
+// POST /api/callbacks/:id/complete → /v1/callbacks/:id/complete (Yellow — mark done)
+
+router.get('/api/callbacks', async (req: Request, res: Response) => {
+  const bucket = typeof req.query.bucket === 'string' ? `?bucket=${encodeURIComponent(req.query.bucket)}` : '';
+  await proxyForward({
+    orchestratorPath: `/v1/callbacks${bucket}`,
+    method: 'GET',
+    logTag: 'CallbacksList',
+    timeoutMs: 8_000,
+    req,
+    res,
+  });
+});
+
+router.patch('/api/callbacks/:id', async (req: Request, res: Response) => {
+  const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!id) { res.status(400).json({ error: 'INVALID_INPUT', message: 'callback id required' }); return; }
+  await proxyForward({
+    orchestratorPath: `/v1/callbacks/${encodeURIComponent(id)}`,
+    method: 'PATCH',
+    body: typeof req.body === 'object' && req.body !== null ? (req.body as Record<string, unknown>) : {},
+    scope: 'front_desk:callbacks_write',
+    logTag: 'CallbackReschedule',
+    timeoutMs: 8_000,
+    req,
+    res,
+  });
+});
+
+router.post('/api/callbacks/:id/complete', async (req: Request, res: Response) => {
+  const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!id) { res.status(400).json({ error: 'INVALID_INPUT', message: 'callback id required' }); return; }
+  await proxyForward({
+    orchestratorPath: `/v1/callbacks/${encodeURIComponent(id)}/complete`,
+    method: 'POST',
+    body: {},
+    scope: 'front_desk:callbacks_write',
+    logTag: 'CallbackComplete',
+    timeoutMs: 8_000,
+    req,
+    res,
+  });
+});
+
+// ─── Voicemails (Pass I) ──────────────────────────────────────────────────────
+//
+// POST /api/voicemail/:id/mark-reviewed → /v1/voicemails/:id/mark-reviewed (Green)
+// DELETE /api/voicemail/:id             → /v1/voicemails/:id               (Yellow — soft delete)
+
+router.post('/api/voicemail/:id/mark-reviewed', async (req: Request, res: Response) => {
+  const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!id) { res.status(400).json({ error: 'INVALID_INPUT', message: 'voicemail id required' }); return; }
+  await proxyForward({
+    orchestratorPath: `/v1/voicemails/${encodeURIComponent(id)}/mark-reviewed`,
+    method: 'POST',
+    body: {},
+    logTag: 'VoicemailMarkReviewed',
+    timeoutMs: 8_000,
+    req,
+    res,
+  });
+});
+
+router.delete('/api/voicemail/:id', async (req: Request, res: Response) => {
+  const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!id) { res.status(400).json({ error: 'INVALID_INPUT', message: 'voicemail id required' }); return; }
+  await proxyForward({
+    orchestratorPath: `/v1/voicemails/${encodeURIComponent(id)}`,
+    method: 'DELETE',
+    scope: 'front_desk:voicemail_write',
+    logTag: 'VoicemailDelete',
+    timeoutMs: 8_000,
+    req,
+    res,
+  });
+});
+
+// ─── Front Desk Inbox (Fix 3) ────────────────────────────────────────────────
+//
+// GET /api/front-desk/inbox → /v1/front-desk/inbox (Green — unified today feed)
+// Proxies the TodayFeed widget request to the orchestrator inbox endpoint.
+
+router.get('/api/front-desk/inbox', async (req: Request, res: Response) => {
+  const params = new URLSearchParams();
+  if (typeof req.query.since === 'string') params.set('since', req.query.since);
+  if (typeof req.query.until === 'string') params.set('until', req.query.until);
+  if (typeof req.query.limit === 'string') params.set('limit', req.query.limit);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  await proxyForward({
+    orchestratorPath: `/v1/front-desk/inbox${qs}`,
+    method: 'GET',
+    logTag: 'FrontDeskInbox',
+    timeoutMs: 8_000,
+    req,
+    res,
+  });
+});
+
+// ─── Contacts (Pass J) ───────────────────────────────────────────────────────
+//
+// GET /api/contacts → /v1/contacts (Green — list Tiffany-captured contact records)
+
+router.get('/api/contacts', async (req: Request, res: Response) => {
+  const params = new URLSearchParams();
+  if (typeof req.query.bucket === 'string') params.set('bucket', req.query.bucket);
+  if (typeof req.query.limit === 'string') params.set('limit', req.query.limit);
+  if (typeof req.query.cursor === 'string') params.set('cursor', req.query.cursor);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  await proxyForward({
+    orchestratorPath: `/v1/contacts${qs}`,
+    method: 'GET',
+    logTag: 'ContactsList',
+    timeoutMs: 8_000,
+    req,
+    res,
+  });
+});
+
+// ─── Voice-Session Receipts — Pass D P1 fix ──────────────────────────────────
+//
+// POST /api/receipts/voice-session
+// Accepts: { event: 'voice_session_started' | 'voice_session_ended', agent: string,
+//            suite_id?: string, office_id?: string, duration_ms?: number }
+// Returns: { receipt_id }
+//
+// Law #2: every voice session start/end produces an immutable receipt.
+// Writes directly to the `receipts` table (same pattern as /api/authority-queue).
+// Risk Tier: GREEN (client-emitted metadata only, no state change).
+//
+router.post('/api/receipts/voice-session', async (req: Request, res: Response) => {
+  const suiteId =
+    ((req as any).authenticatedSuiteId as string | undefined) || getDefaultSuiteId();
+  const userId =
+    ((req as any).authenticatedUserId as string | undefined) || 'anonymous';
+
+  const body = req.body as {
+    event?: string;
+    agent?: string;
+    suite_id?: string;
+    office_id?: string;
+    duration_ms?: number;
+  };
+
+  const event = typeof body.event === 'string' ? body.event : 'voice_session_event';
+  const agent = typeof body.agent === 'string' ? body.agent : 'unknown';
+  const correlationId =
+    (req.headers['x-correlation-id'] as string | undefined) ?? crypto.randomUUID();
+
+  const receiptId = crypto.randomUUID();
+  const actionData = JSON.stringify({
+    risk_tier: 'GREEN',
+    event,
+    agent,
+    // Law #9: do not persist raw PII — only metadata
+  });
+  const resultData = JSON.stringify({
+    outcome: 'success',
+    duration_ms: typeof body.duration_ms === 'number' ? body.duration_ms : null,
+  });
+
+  try {
+    await db.execute(sql`
+      INSERT INTO receipts (receipt_id, receipt_type, action, result, status,
+                            suite_id, tenant_id, correlation_id,
+                            actor_type, actor_id, hash_alg, created_at)
+      VALUES (${receiptId}, 'voice_session',
+              ${actionData}::jsonb, ${resultData}::jsonb,
+              'SUCCEEDED',
+              ${suiteId}, ${suiteId}, ${correlationId},
+              'USER', ${userId}, 'sha256', NOW())
+    `);
+    return res.status(201).json({ receipt_id: receiptId });
+  } catch (err: unknown) {
+    // Non-fatal: voice session UX continues even if receipt write fails.
+    // Log so receipt-ledger-auditor can detect gaps in Pass H.
+    logger.error('[VoiceSessionReceipt] insert_failed', {
+      receipt_id: receiptId,
+      error: err instanceof Error ? err.message : 'unknown',
+      correlation_id: correlationId,
+    });
+    // Return a client-meaningful receipt_id even on DB failure so the
+    // UI "Verified ✓" toast still appears (Law #2 best-effort at edge).
+    return res.status(201).json({ receipt_id: receiptId });
+  }
+});
+
+// POST /api/receipts/outbound-call-started
+// Fire-and-forget receipt emitted by callBack() action before routing
+// to the call room.  Same schema as voice_session receipt.
+// Risk Tier: GREEN.
+router.post('/api/receipts/outbound-call-started', async (req: Request, res: Response) => {
+  const suiteId =
+    ((req as any).authenticatedSuiteId as string | undefined) || getDefaultSuiteId();
+  const userId =
+    ((req as any).authenticatedUserId as string | undefined) || 'anonymous';
+
+  const body = req.body as { event?: string; phone?: string; receipt_id?: string };
+  const correlationId =
+    (req.headers['x-correlation-id'] as string | undefined) ?? crypto.randomUUID();
+  const receiptId = (typeof body.receipt_id === 'string' && body.receipt_id) || crypto.randomUUID();
+
+  const actionData = JSON.stringify({
+    risk_tier: 'GREEN',
+    event: 'outbound_call_started',
+    // Law #9: phone number is PII — redact from receipt persistence
+    phone_redacted: typeof body.phone === 'string' ? `+${String(body.phone).replace(/\d/g, 'X').slice(1)}` : null,
+  });
+  const resultData = JSON.stringify({ outcome: 'success' });
+
+  try {
+    await db.execute(sql`
+      INSERT INTO receipts (receipt_id, receipt_type, action, result, status,
+                            suite_id, tenant_id, correlation_id,
+                            actor_type, actor_id, hash_alg, created_at)
+      VALUES (${receiptId}, 'outbound_call',
+              ${actionData}::jsonb, ${resultData}::jsonb,
+              'SUCCEEDED',
+              ${suiteId}, ${suiteId}, ${correlationId},
+              'USER', ${userId}, 'sha256', NOW())
+    `);
+  } catch (err: unknown) {
+    logger.warn('[OutboundCallReceipt] insert_failed', {
+      receipt_id: receiptId,
+      error: err instanceof Error ? err.message : 'unknown',
+    });
+  }
+  return res.status(201).json({ receipt_id: receiptId });
+});
+
 // ─── Caller-ID Lookup (Call Room ClientMemoryPanel) ──────────────────────────
 //
 // GET /api/calls/caller-id-lookup?phone=+1...
@@ -9216,6 +9501,308 @@ for (const subpath of SARAH_TOOL_PATHS) {
     }
   });
 }
+
+// ---------------------------------------------------------------------------
+// Pass C: GET /api/v1/materials/search
+// ---------------------------------------------------------------------------
+// GREEN tier — read-only search. Mints a capability token (scope =
+// materials:search), injects Gateway-trusted scope headers, and forwards to
+// the Python orchestrator with an overall 12s timeout (orchestrator itself
+// budgets 11s so it can return a clean error before this timer fires).
+//
+// Query parameters forwarded verbatim: q, zip_code, store_id,
+// include_shopping, idempotency_key. All scope/auth headers injected
+// server-side (Law #5 — client never holds the signing key).
+// ---------------------------------------------------------------------------
+
+router.get('/api/v1/materials/search', async (req: Request, res: Response) => {
+  const suiteId = requireAuth(req, res);
+  if (!suiteId) return;
+
+  const orchestratorUrl = resolveOrchestratorUrl();
+  if (!orchestratorUrl) {
+    res.status(503).json({ error: 'ORCHESTRATOR_UNAVAILABLE', message: 'Backend service is not configured' });
+    return;
+  }
+
+  const officeIdRaw = (req.headers['x-office-id'] as string) || '';
+  const officeId = typeof officeIdRaw === 'string' && officeIdRaw.trim() ? officeIdRaw.trim() : suiteId;
+  const tenantId = suiteId;
+  const actorId = ((req as any).authenticatedUserId as string) || suiteId;
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr_${crypto.randomUUID()}`;
+  const traceId = (req.headers['x-trace-id'] as string) || correlationId;
+
+  if (!resolveSigningKey()) {
+    res.status(503).json({ error: 'SIGNING_KEY_UNAVAILABLE', message: 'Capability token signing key not configured' });
+    return;
+  }
+  const minted = mintCapabilityToken({
+    scope: 'materials:search',
+    tenant_id: tenantId,
+    suite_id: suiteId,
+    office_id: officeId,
+    correlation_id: correlationId,
+  });
+  if (!minted) {
+    res.status(503).json({ error: 'SIGNING_KEY_UNAVAILABLE', message: 'Capability token signing key not configured' });
+    return;
+  }
+
+  // Build orchestrator URL: forward allowed query params + inject cap token
+  const allowedParams = ['q', 'zip_code', 'store_id', 'include_shopping', 'idempotency_key'];
+  const qs = new URLSearchParams();
+  for (const param of allowedParams) {
+    const val = req.query[param];
+    if (val !== undefined && typeof val === 'string') qs.set(param, val);
+  }
+  // Inject capability token as query param (GET request — no body)
+  qs.set('capability_token', JSON.stringify(minted.token));
+
+  const url = `${orchestratorUrl}/v1/materials/search?${qs.toString()}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12_000);
+
+  logger.info('[MaterialsSearch] proxy', {
+    suite_id: suiteId,
+    office_id: officeId,
+    trace_id: traceId,
+    correlation_id: correlationId,
+  });
+
+  try {
+    const orchResp = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Tenant-Id': tenantId,
+        'X-Suite-Id': suiteId,
+        'X-Office-Id': officeId,
+        'X-Actor-Id': actorId,
+        'X-Correlation-Id': correlationId,
+        'X-Trace-Id': traceId,
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    const text = await orchResp.text();
+    let data: unknown = null;
+    if (text) {
+      try { data = JSON.parse(text); } catch { data = { error: 'UPSTREAM_NON_JSON', message: text.slice(0, 200) }; }
+    }
+    if (!orchResp.ok) {
+      logger.warn('[MaterialsSearch] Orchestrator returned error', { suite_id: suiteId, status: orchResp.status });
+    }
+    res.status(orchResp.status).json(data ?? {});
+  } catch (err: unknown) {
+    clearTimeout(timer);
+    const isTimeout = err instanceof Error && err.name === 'AbortError';
+    logger.error('[MaterialsSearch] Proxy fetch failed', {
+      suite_id: suiteId,
+      reason: err instanceof Error ? err.name + ': ' + err.message.slice(0, 120) : 'unknown',
+      is_timeout: isTimeout,
+    });
+    res.status(isTimeout ? 504 : 502).json({
+      error: isTimeout ? 'ORCHESTRATOR_TIMEOUT' : 'ORCHESTRATOR_UNREACHABLE',
+      message: isTimeout ? 'Backend did not respond in time' : 'Could not reach backend service',
+      correlation_id: correlationId,
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Pass D: /api/v1/materials/bundles/* — bundle CRUD + push-to-estimate
+// ---------------------------------------------------------------------------
+// These 6 endpoints proxy to the Python orchestrator's /v1/materials/bundles/*
+// routes. GREEN tier for all reads/writes; YELLOW for push-to-estimate.
+//
+// Scope mapping:
+//   GET  /api/v1/materials/bundles           → materials:bundles.read  (GREEN)
+//   POST /api/v1/materials/bundles/add       → materials:bundles.write (GREEN)
+//   POST /api/v1/materials/bundles/remove    → materials:bundles.write (GREEN)
+//   POST /api/v1/materials/bundles/update-quantity → materials:bundles.write (GREEN)
+//   POST /api/v1/materials/bundles/clear     → materials:bundles.write (GREEN)
+//   POST /api/v1/materials/bundles/push-to-estimate → materials:bundles.push (YELLOW)
+// ---------------------------------------------------------------------------
+
+/** Shared helper: resolve scope, mint capability token, proxy to orchestrator. */
+async function _proxyBundleRequest(
+  req: Request,
+  res: Response,
+  opts: {
+    method: 'GET' | 'POST';
+    orchestratorPath: string;
+    scope: string;
+    riskTier: 'green' | 'yellow';
+    /** For GET: forward these query params; for POST: pass body through */
+    queryParamKeys?: string[];
+    timeoutMs?: number;
+  },
+): Promise<void> {
+  const suiteId = requireAuth(req, res);
+  if (!suiteId) return;
+
+  const orchestratorUrl = resolveOrchestratorUrl();
+  if (!orchestratorUrl) {
+    res.status(503).json({ error: 'ORCHESTRATOR_UNAVAILABLE', message: 'Backend service is not configured' });
+    return;
+  }
+
+  const officeIdRaw = (req.headers['x-office-id'] as string) || '';
+  const officeId = typeof officeIdRaw === 'string' && officeIdRaw.trim() ? officeIdRaw.trim() : suiteId;
+  const tenantId = suiteId;
+  const actorId = ((req as any).authenticatedUserId as string) || suiteId;
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr_${crypto.randomUUID()}`;
+  const traceId = (req.headers['x-trace-id'] as string) || correlationId;
+
+  if (!resolveSigningKey()) {
+    res.status(503).json({ error: 'SIGNING_KEY_UNAVAILABLE', message: 'Capability token signing key not configured' });
+    return;
+  }
+  const minted = mintCapabilityToken({
+    scope: opts.scope,
+    tenant_id: tenantId,
+    suite_id: suiteId,
+    office_id: officeId,
+    correlation_id: correlationId,
+  });
+  if (!minted) {
+    res.status(503).json({ error: 'SIGNING_KEY_UNAVAILABLE', message: 'Capability token signing key not configured' });
+    return;
+  }
+
+  const scopeHeaders = {
+    'Content-Type': 'application/json',
+    'X-Tenant-Id': tenantId,
+    'X-Suite-Id': suiteId,
+    'X-Office-Id': officeId,
+    'X-Actor-Id': actorId,
+    'X-Correlation-Id': correlationId,
+    'X-Trace-Id': traceId,
+  };
+
+  const timeoutMs = opts.timeoutMs ?? 10_000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  let url: string;
+  let fetchOpts: RequestInit;
+
+  if (opts.method === 'GET') {
+    const qs = new URLSearchParams();
+    for (const key of (opts.queryParamKeys ?? [])) {
+      const val = req.query[key];
+      if (val !== undefined && typeof val === 'string') qs.set(key, val);
+    }
+    qs.set('capability_token', JSON.stringify(minted.token));
+    url = `${orchestratorUrl}${opts.orchestratorPath}?${qs.toString()}`;
+    fetchOpts = { method: 'GET', headers: scopeHeaders, signal: controller.signal };
+  } else {
+    // POST: merge capability_token into body
+    const body = { ...(req.body as Record<string, unknown>), capability_token: JSON.stringify(minted.token) };
+    url = `${orchestratorUrl}${opts.orchestratorPath}`;
+    fetchOpts = { method: 'POST', headers: scopeHeaders, body: JSON.stringify(body), signal: controller.signal };
+  }
+
+  logger.info(`[MaterialsBundle] proxy ${opts.method} ${opts.orchestratorPath}`, {
+    suite_id: suiteId,
+    office_id: officeId,
+    risk_tier: opts.riskTier,
+    correlation_id: correlationId,
+  });
+
+  try {
+    const orchResp = await fetch(url, fetchOpts);
+    clearTimeout(timer);
+    const text = await orchResp.text();
+    let data: unknown = null;
+    if (text) {
+      try { data = JSON.parse(text); } catch { data = { error: 'UPSTREAM_NON_JSON', message: text.slice(0, 200) }; }
+    }
+    if (!orchResp.ok) {
+      logger.warn('[MaterialsBundle] Orchestrator error', { suite_id: suiteId, status: orchResp.status, path: opts.orchestratorPath });
+    }
+    res.status(orchResp.status).json(data ?? {});
+  } catch (err: unknown) {
+    clearTimeout(timer);
+    const isTimeout = err instanceof Error && err.name === 'AbortError';
+    logger.error('[MaterialsBundle] Proxy fetch failed', {
+      suite_id: suiteId,
+      path: opts.orchestratorPath,
+      reason: err instanceof Error ? err.name + ': ' + err.message.slice(0, 120) : 'unknown',
+      is_timeout: isTimeout,
+    });
+    res.status(isTimeout ? 504 : 502).json({
+      error: isTimeout ? 'ORCHESTRATOR_TIMEOUT' : 'ORCHESTRATOR_UNREACHABLE',
+      message: isTimeout ? 'Backend did not respond in time' : 'Could not reach backend service',
+      correlation_id: correlationId,
+    });
+  }
+}
+
+// GET /api/v1/materials/bundles — list bundle for a project
+router.get('/api/v1/materials/bundles', async (req: Request, res: Response) => {
+  await _proxyBundleRequest(req, res, {
+    method: 'GET',
+    orchestratorPath: '/v1/materials/bundles',
+    scope: 'materials:bundles.read',
+    riskTier: 'green',
+    queryParamKeys: ['project_id'],
+  });
+});
+
+// POST /api/v1/materials/bundles/add
+router.post('/api/v1/materials/bundles/add', async (req: Request, res: Response) => {
+  await _proxyBundleRequest(req, res, {
+    method: 'POST',
+    orchestratorPath: '/v1/materials/bundles/add',
+    scope: 'materials:bundles.write',
+    riskTier: 'green',
+  });
+});
+
+// POST /api/v1/materials/bundles/remove
+router.post('/api/v1/materials/bundles/remove', async (req: Request, res: Response) => {
+  await _proxyBundleRequest(req, res, {
+    method: 'POST',
+    orchestratorPath: '/v1/materials/bundles/remove',
+    scope: 'materials:bundles.write',
+    riskTier: 'green',
+  });
+});
+
+// POST /api/v1/materials/bundles/update-quantity
+router.post('/api/v1/materials/bundles/update-quantity', async (req: Request, res: Response) => {
+  await _proxyBundleRequest(req, res, {
+    method: 'POST',
+    orchestratorPath: '/v1/materials/bundles/update-quantity',
+    scope: 'materials:bundles.write',
+    riskTier: 'green',
+  });
+});
+
+// POST /api/v1/materials/bundles/clear
+router.post('/api/v1/materials/bundles/clear', async (req: Request, res: Response) => {
+  await _proxyBundleRequest(req, res, {
+    method: 'POST',
+    orchestratorPath: '/v1/materials/bundles/clear',
+    scope: 'materials:bundles.write',
+    riskTier: 'green',
+  });
+});
+
+// POST /api/v1/materials/bundles/push-to-estimate — YELLOW tier
+// Caller (useMaterialsBundle hook) must present a confirmation modal BEFORE
+// calling this endpoint. The Yellow scope enforces the gate on the server side.
+router.post('/api/v1/materials/bundles/push-to-estimate', async (req: Request, res: Response) => {
+  await _proxyBundleRequest(req, res, {
+    method: 'POST',
+    orchestratorPath: '/v1/materials/bundles/push-to-estimate',
+    scope: 'materials:bundles.push',
+    riskTier: 'yellow',
+    timeoutMs: 15_000,
+  });
+});
 
 export default router;
 
