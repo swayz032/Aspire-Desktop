@@ -121,38 +121,34 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: CANVAS_MAX_WIDTH,
     alignSelf: 'center',
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    // Transparent fill — earlier 'rgba(255,255,255,0.02)' was picking up
+    // the amber bloom and rendering as a faint white wash. Removing it
+    // lets the glow read as pure warmth, not glare.
+    backgroundColor: 'transparent',
     borderRadius: 14,
     borderWidth: 1,
-    // Soft amber-tinted rim — picks up the ambient glow without screaming.
-    borderColor: 'rgba(251,191,36,0.14)',
+    // Barely-there amber rim — invisible until you look for it.
+    borderColor: 'rgba(251,191,36,0.06)',
     overflow: 'hidden',
     // Web-only: cap the canvas at the viewport so the rail can scroll
-    // internally rather than stretching the whole page. Also layers the
-    // soft amber ambient glow around the OUTER canvas edges (not the
-    // inner canvasArea):
-    //   1) inset hairline rim — warms the edge from within
-    //   2) close halo — 24px amber bloom for premium presence
-    //   3) ambient halo — 80px wide warmth, very subtle
-    //   4) grounding shadow — keeps the card seated on the dark bg
+    // internally rather than stretching the whole page. Ambient glow is
+    // a single wide low-opacity amber halo — blends into the page,
+    // doesn't compete with the content. No black drop shadow (the prior
+    // 0.45 black created a hard seam that read as a white edge against
+    // the page bg).
     ...(Platform.OS === 'web'
       ? (({
           height: 'calc(100vh - 90px)',
           maxHeight: 'calc(100vh - 90px)',
-          boxShadow: [
-            'inset 0 0 0 1px rgba(251,191,36,0.06)',
-            '0 0 24px rgba(251,191,36,0.12)',
-            '0 0 80px rgba(251,191,36,0.06)',
-            '0 30px 90px rgba(0,0,0,0.45)',
-          ].join(', '),
+          boxShadow: '0 0 120px rgba(251,191,36,0.045)',
         } as unknown) as ViewStyle)
       : {
-          // Native fallback — single-color amber drop shadow.
+          // Native fallback — single amber halo, very low opacity.
           shadowColor: '#fbbf24',
           shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: 0.18,
-          shadowRadius: 24,
-          elevation: 12,
+          shadowOpacity: 0.06,
+          shadowRadius: 32,
+          elevation: 4,
         }),
   },
   outerCanvasTablet: {
