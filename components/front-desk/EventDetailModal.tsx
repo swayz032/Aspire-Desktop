@@ -111,16 +111,45 @@ export function EventDetailModal({
         <div style={header}>
           <div style={headerLeft}>
             {item.kind === 'unknown' ? (
-              <UnknownAvatar size={44} />
+              <UnknownAvatar size={56} />
             ) : (
               <Avatar initials={item.initials} color={item.avatarColor} size={44} />
             )}
             <div style={headerText}>
               <div style={headerNameRow}>
-                <span style={{ ...headerName, color: item.kind === 'unknown' ? 'rgba(255,255,255,0.75)' : '#fff' }}>
-                  {item.kind === 'unknown' ? 'Unknown caller' : item.name}
+                {/* Unknown callers lead with the phone number as the title
+                    (Pass D 2026-05-12 founder feedback). Known callers keep
+                    the name as title. */}
+                <span
+                  style={{
+                    ...headerName,
+                    color: '#fff',
+                    fontVariantNumeric: item.kind === 'unknown' ? 'tabular-nums' : 'normal',
+                    letterSpacing: item.kind === 'unknown' ? 0 : undefined,
+                  }}
+                >
+                  {item.kind === 'unknown' ? (item.phone || 'Unknown number') : item.name}
                 </span>
-                {item.entity && item.entity !== 'Unknown' ? (
+                {item.kind === 'unknown' ? (
+                  <span
+                    style={{
+                      fontFamily: 'Inter, -apple-system, system-ui, sans-serif',
+                      fontSize: 10,
+                      fontWeight: 700,
+                      letterSpacing: 0.7,
+                      textTransform: 'uppercase',
+                      color: '#60A5FA',
+                      padding: '3px 8px',
+                      borderRadius: 999,
+                      backgroundImage:
+                        'linear-gradient(135deg, rgba(59,130,246,0.18) 0%, rgba(37,99,235,0.08) 100%)',
+                      border: '1px solid rgba(59,130,246,0.28)',
+                      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
+                    }}
+                  >
+                    {item.areaCode ? `UNKNOWN · ${item.areaCode} AREA` : 'UNKNOWN CALLER'}
+                  </span>
+                ) : item.entity && item.entity !== 'Unknown' ? (
                   <span
                     style={{
                       ...entityPill,

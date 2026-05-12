@@ -211,7 +211,8 @@ function VoiceTapButton({
         onPress={onClick}
         style={voiceBtnStyles.nativeFallback}
       >
-        <Ionicons name={state === 'idle' || state === 'error' ? 'mic' : 'stop'} size={24} color="#fff" />
+        {/* Mic icon always — tap-to-toggle (Pass D 2026-05-12). */}
+        <Ionicons name="mic" size={24} color="#fff" />
       </Pressable>
     );
   }
@@ -222,20 +223,35 @@ function VoiceTapButton({
     state === 'processing' ||
     state === 'responding';
 
-  const activeBg =
-    'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)';
+  // Idle / error keep the Aspire red→violet→blue identity gradient. Active
+  // session swaps to a pure premium Aspire-blue gradient (no red) so the
+  // button doesn't read as "stop" when Tiffany is talking (Pass D fix).
   const idleBg =
     'linear-gradient(135deg, #EF4444 0%, #DC2626 30%, #7C3AED 50%, #3B82F6 70%, #2563EB 100%)';
+  const activeBg =
+    'linear-gradient(135deg, #60A5FA 0%, #3B82F6 35%, #2563EB 70%, #1D4ED8 100%)';
   const errorBg =
     'linear-gradient(135deg, #EF4444 0%, #B91C1C 70%, #7C3AED 100%)';
 
   const bg = isActive ? activeBg : state === 'error' ? errorBg : idleBg;
-  const iconName: keyof typeof Ionicons.glyphMap = isActive ? 'stop' : 'mic';
+  // Mic icon ALWAYS — tap-to-toggle (no red stop sign during active call).
+  const iconName: keyof typeof Ionicons.glyphMap = 'mic';
   const ariaLabel = isActive
     ? 'End voice session with Tiffany'
     : state === 'error'
       ? 'Retry voice session with Tiffany'
       : 'Start voice session with Tiffany';
+
+  // Premium Aspire-blue glow while Tiffany is talking — pulses softly to
+  // signal "live". Only when responding/listening (not connecting), to
+  // avoid pulsing while still handshaking.
+  const showBlueGlow =
+    state === 'listening' || state === 'processing' || state === 'responding';
+  // Subtle premium glow — restrained so the button stays a "button", not a
+  // beacon. Single soft halo, ~12px spread, low opacity. Tweaked 2026-05-12.
+  const activeGlow = showBlueGlow
+    ? '0 0 14px 2px rgba(59,130,246,0.30)'
+    : '';
 
   return (
     <button
@@ -252,14 +268,21 @@ function VoiceTapButton({
         position: 'relative',
         padding: 0,
         backgroundImage: bg,
-        // Neutral depth shadow only — no colored glow / light bleed.
+        // Neutral depth shadow + premium Aspire-blue glow while Tiffany is
+        // active (Pass D 2026-05-12). Glow stays off in idle/error so the
+        // gradient identity reads cleanly.
         boxShadow: [
+          activeGlow,
           '0 10px 22px rgba(0,0,0,0.55)',
           '0 3px 6px rgba(0,0,0,0.45)',
           'inset 0 1px 0 rgba(255,255,255,0.25)',
           'inset 0 -2px 6px rgba(0,0,0,0.30)',
-        ].join(', '),
-        transition: 'transform 0.15s ease, box-shadow 0.2s ease, background-image 0.2s ease',
+        ].filter(Boolean).join(', '),
+        animationName: showBlueGlow ? 'aspireVoiceBluePulse' : undefined,
+        animationDuration: showBlueGlow ? '2.2s' : undefined,
+        animationIterationCount: showBlueGlow ? 'infinite' : undefined,
+        animationTimingFunction: showBlueGlow ? 'ease-in-out' : undefined,
+        transition: 'transform 0.15s ease, box-shadow 0.3s ease, background-image 0.25s ease',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -290,6 +313,26 @@ function VoiceTapButton({
       }}
     >
       <Ionicons name={iconName} size={28} color="#ffffff" />
+      {showBlueGlow ? (
+        <style>{`@keyframes aspireVoiceBluePulse {
+          0%, 100% {
+            box-shadow:
+              0 0 10px 1px rgba(59,130,246,0.22),
+              0 10px 22px rgba(0,0,0,0.55),
+              0 3px 6px rgba(0,0,0,0.45),
+              inset 0 1px 0 rgba(255,255,255,0.25),
+              inset 0 -2px 6px rgba(0,0,0,0.30);
+          }
+          50% {
+            box-shadow:
+              0 0 18px 3px rgba(59,130,246,0.38),
+              0 10px 22px rgba(0,0,0,0.55),
+              0 3px 6px rgba(0,0,0,0.45),
+              inset 0 1px 0 rgba(255,255,255,0.25),
+              inset 0 -2px 6px rgba(0,0,0,0.30);
+          }
+        }`}</style>
+      ) : null}
     </button>
   );
 }
@@ -500,15 +543,15 @@ export function FrontDeskHubSkeleton() {
   );
 
   const handleMicTap = useCallback(() => {
+    // Pass D fix 2026-05-12: error-state tap now ENDS (not retries). The
+    // ErrorState overlay already exposes its own Retry button — letting
+    // mic-tap also retry made the mic feel "stuck" because each click
+    // immediately fails again with no visible change. Mic is now a clean
+    // toggle: idle → start, anything else → end.
     if (voice.state === 'idle') {
       void voice.start();
       return;
     }
-    if (voice.state === 'error') {
-      void voice.start();
-      return;
-    }
-    // Any active state → end.
     void voice.end();
   }, [voice]);
 

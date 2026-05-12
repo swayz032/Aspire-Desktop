@@ -569,6 +569,72 @@ export async function fetchTodayInbox(
   return expectJson<TodayInboxResponse>(resp, 'FRONT_DESK_INBOX_FAILED');
 }
 
+/**
+ * Green tier — fetch a wider unified inbox window (default 30 days).
+ * Used by Voicemail/SMS/Missed/Incoming/Outgoing/All workspaces which
+ * need history beyond "today". Backend returns the same merged feed
+ * (call_sessions + frontdesk_voicemails + sms_messages + callback_promises);
+ * workspaces filter by event type client-side.
+ */
+export async function fetchInboxWindow(
+  opts: FetchOpts & { sinceDays?: number; limit?: number },
+): Promise<TodayInboxResponse> {
+  const days = opts.sinceDays ?? 30;
+  const since = new Date(Date.now() - days * 86_400_000).toISOString();
+  const params = new URLSearchParams();
+  params.set('since', since);
+  if (opts.limit != null) params.set('limit', String(opts.limit));
+  const url = `${API_BASE}/api/front-desk/inbox?${params.toString()}`;
+  const resp = await opts.authenticatedFetch(url, {
+    method: 'GET',
+    headers: { 'X-Office-Id': opts.officeId },
+    signal: opts.signal,
+  });
+  return expectJson<TodayInboxResponse>(resp, 'FRONT_DESK_INBOX_FAILED');
+}
+
+/** Callback record shape returned by GET /api/callbacks. */
+export interface BackendCallbackRow {
+  id: string;
+  name?: string | null;
+  phone: string;
+  bucket?: string | null;
+  promise_time?: string | null;
+  due_label?: string | null;
+  context?: string | null;
+}
+
+export interface FetchCallbacksResponse {
+  callbacks: BackendCallbackRow[];
+  count?: number;
+}
+
+export interface FetchCallbacksOpts {
+  authenticatedFetch: FetchFn;
+  officeId: string;
+  bucket?: 'all' | 'today' | 'tomorrow' | 'this_week' | 'overdue';
+  signal?: AbortSignal;
+}
+
+/**
+ * Green tier — list pending callback promises for this office.
+ * Calls GET /api/callbacks → proxy → /v1/callbacks on orchestrator (Pass G).
+ */
+export async function fetchCallbacks(
+  opts: FetchCallbacksOpts,
+): Promise<FetchCallbacksResponse> {
+  const params = new URLSearchParams();
+  if (opts.bucket && opts.bucket !== 'all') params.set('bucket', opts.bucket);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  const url = `${API_BASE}/api/callbacks${qs}`;
+  const resp = await opts.authenticatedFetch(url, {
+    method: 'GET',
+    headers: { 'X-Office-Id': opts.officeId },
+    signal: opts.signal,
+  });
+  return expectJson<FetchCallbacksResponse>(resp, 'CALLBACKS_FETCH_FAILED');
+}
+
 // Re-export for consumers that only import from frontDesk.ts.
 export type { BackendContact } from './frontDeskAdapters';
 

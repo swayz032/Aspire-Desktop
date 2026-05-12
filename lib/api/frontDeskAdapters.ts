@@ -410,6 +410,8 @@ export function mapToFeedItem(b: BackendInboxItem): FeedItemVM {
     name: identity.name,
     initials: identity.initials,
     avatarColor: identity.avatarColor,
+    phone: identity.phone,
+    areaCode: extractAreaCode(phone ?? ''),
     entity,
     type: eventType,
     preview: b.preview ?? '',

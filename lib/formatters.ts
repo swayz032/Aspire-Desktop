@@ -58,7 +58,10 @@ export function formatDuration(seconds: number): string {
   return `${mins}:${String(secs).padStart(2, '0')}`;
 }
 
-export function formatPhoneNumber(phone: string): string {
+export function formatPhoneNumber(phone: string | null | undefined): string {
+  // Defensive: TodayFeed inbox items can have null/undefined phone (voicemail
+  // without caller-id, system events). Crash-fix 2026-05-12.
+  if (typeof phone !== 'string' || phone.length === 0) return '';
   const cleaned = phone.replace(/\D/g, '');
   if (cleaned.length === 10) {
     return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
@@ -202,7 +205,8 @@ export function extractInitials(name: string): string {
  *   "(617) 555-0188" → "617"
  *   "+442071234567" → null  (UK number — not 10 or 11 US digits)
  */
-export function extractAreaCode(phone: string): string | null {
+export function extractAreaCode(phone: string | null | undefined): string | null {
+  if (typeof phone !== 'string' || phone.length === 0) return null;
   const digits = phone.replace(/\D/g, '');
   if (digits.length === 10) return digits.slice(0, 3);
   if (digits.length === 11 && digits[0] === '1') return digits.slice(1, 4);

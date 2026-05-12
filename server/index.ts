@@ -1,13 +1,16 @@
-import 'dotenv/config';
-// Also load .env.local for local dev overrides (e.g. DEV_BYPASS_AUTH)
-// dotenv/config only reads .env — .env.local must be loaded explicitly.
+// Pass D fix 2026-05-12: load .env with override:true so the checked-in
+// dev secrets WIN over any stale Windows user-env vars that leaked from
+// past `setx` sessions (e.g. a truncated ELEVENLABS_API_KEY from a
+// Railway CLI display). Without override, shell-poisoned values silently
+// beat .env and the server sends invalid creds to upstream providers.
 import dotenv from 'dotenv';
 import { existsSync } from 'fs';
 import * as fs from 'fs';
 import { resolve } from 'path';
+dotenv.config({ override: true });
 const localEnvPath = resolve(process.cwd(), '.env.local');
 if (existsSync(localEnvPath)) {
-  dotenv.config({ path: localEnvPath, override: false });
+  dotenv.config({ path: localEnvPath, override: true });
 }
 import express from 'express';
 import cors from 'cors';

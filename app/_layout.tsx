@@ -403,6 +403,19 @@ function useAuthGate() {
       return;
     }
 
+    // Fast-path 2026-05-12: if the JWT user_metadata carries a suite_id, the
+    // user is unambiguously past onboarding (signup wizard writes it on the
+    // last step). Skip the API call and lock the ref so transient session
+    // blips during EL voice session refresh (clicking Tiffany) don't bounce
+    // an authenticated user to /(auth)/onboarding.
+    const jwtSuiteId = (session.user?.user_metadata as any)?.suite_id;
+    if (typeof jwtSuiteId === 'string' && jwtSuiteId.length > 0) {
+      onboardingConfirmedRef.current = true;
+      setOnboardingChecked(true);
+      setOnboardingComplete(true);
+      return;
+    }
+
     // If suiteId is null, the user might need onboarding OR suiteId might
     // still be loading from user_metadata. Don't assume — check the API.
     // Only skip the API check and immediately redirect to onboarding if

@@ -231,6 +231,10 @@ export interface FeedItemVM {
   name: string;
   initials: string;
   avatarColor: string;
+  /** Formatted phone (e.g. "(617) 555-0188"). Empty string if no caller-id. */
+  phone: string;
+  /** 3-digit US area code if resolvable, else null. */
+  areaCode: string | null;
   entity: EntityType | null;
   type: FeedEventType;
   preview: string;
@@ -253,6 +257,8 @@ export interface EventItemVM {
   time: string;
   /** E.164 or display-formatted phone — used by footer action buttons (Pass F). */
   phone?: string;
+  /** 3-digit US area code if resolvable — used by unknown-caller header tag. */
+  areaCode?: string | null;
 }
 
 // ---------------------------------------------------------------------------

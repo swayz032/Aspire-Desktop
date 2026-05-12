@@ -176,23 +176,41 @@ function FeedTile({ item, onOpen }: { item: FeedItem; onOpen: (i: FeedItem) => v
           </div>
         )}
         <div style={tileNameCol}>
-          <div style={{ ...tileName, color: item.kind === 'unknown' ? 'rgba(255,255,255,0.75)' : '#ffffff' }}>
-            {item.kind === 'unknown' ? 'Unknown caller' : item.name}
-          </div>
-          <div style={tileMetaRow}>
-            {item.entity && item.entity !== 'Unknown' ? (
-              <span
-                style={{
-                  ...tilePill,
-                  background: ENTITY_PILL[item.entity as 'Lead' | 'Client' | 'Vendor'].bg,
-                  color: ENTITY_PILL[item.entity as 'Lead' | 'Client' | 'Vendor'].fg,
-                }}
-              >
-                {item.entity}
-              </span>
-            ) : null}
-            <span style={tileTime}>{item.time}</span>
-          </div>
+          {/* For unknown callers we lead with the PHONE NUMBER as the
+              headline (Pass D 2026-05-12 — founder feedback "can't see the
+              numbers"). The "Unknown caller · {area} area" subtitle keeps the
+              identity context without burying the dial-back-able digits. */}
+          {item.kind === 'unknown' ? (
+            <>
+              <div style={{ ...tileName, color: '#ffffff', fontVariantNumeric: 'tabular-nums', letterSpacing: 0 }}>
+                {item.phone || 'Unknown number'}
+              </div>
+              <div style={tileMetaRow}>
+                <span style={tileUnknownTag}>
+                  {item.areaCode ? `UNKNOWN · ${item.areaCode} AREA` : 'UNKNOWN CALLER'}
+                </span>
+                <span style={tileTime}>{item.time}</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ ...tileName, color: '#ffffff' }}>{item.name}</div>
+              <div style={tileMetaRow}>
+                {item.entity && item.entity !== 'Unknown' ? (
+                  <span
+                    style={{
+                      ...tilePill,
+                      background: ENTITY_PILL[item.entity as 'Lead' | 'Client' | 'Vendor'].bg,
+                      color: ENTITY_PILL[item.entity as 'Lead' | 'Client' | 'Vendor'].fg,
+                    }}
+                  >
+                    {item.entity}
+                  </span>
+                ) : null}
+                <span style={tileTime}>{item.time}</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -362,6 +380,24 @@ const tilePill: React.CSSProperties = {
   paddingRight: 6,
   borderRadius: 999,
   letterSpacing: 0.2,
+};
+
+/** Premium small-caps Aspire-blue tag for unknown-caller subtitle. */
+const tileUnknownTag: React.CSSProperties = {
+  fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, system-ui, sans-serif',
+  fontSize: 9,
+  fontWeight: 700,
+  letterSpacing: 0.8,
+  textTransform: 'uppercase',
+  color: '#60A5FA',
+  paddingTop: 1,
+  paddingBottom: 1,
+  paddingLeft: 6,
+  paddingRight: 6,
+  borderRadius: 999,
+  backgroundImage:
+    'linear-gradient(135deg, rgba(59,130,246,0.18) 0%, rgba(37,99,235,0.08) 100%)',
+  border: '1px solid rgba(59,130,246,0.24)',
 };
 
 const tileTime: React.CSSProperties = {
