@@ -119,10 +119,11 @@ const styles = StyleSheet.create({
     flex: 1,
     // No minHeight — the canvas takes whatever vertical space the
     // ScrollView gives it (which is now exactly the viewport minus
-    // TopNav + 8px content padding, thanks to scrollContent.flexGrow=1).
+    // TopNav + 4px content padding, thanks to scrollContent.flexGrow=1).
     width: '100%',
-    maxWidth: CANVAS_MAX_WIDTH,
-    alignSelf: 'center',
+    // Drop the 1440 cap — caps that small leave page-bg gutters on
+    // 1600+ monitors. Canvas is now full-width inside its parent.
+    alignSelf: 'stretch',
     // Transparent fill — earlier 'rgba(255,255,255,0.02)' was picking up
     // the amber bloom and rendering as a faint white wash. Removing it
     // lets the glow read as pure warmth, not glare.
@@ -190,8 +191,13 @@ const styles = StyleSheet.create({
   },
   canvasArea: {
     flex: 1,
-    margin: 18,
-    marginTop: 8,
+    // Tightened from 18 → 6 horizontal, 8 → 4 top, 18 → 6 bottom so
+    // the property hero (3D Aerial / Street View / etc.) hugs the
+    // outer canvas edges. The big visual is the workspace — chrome
+    // around it should be minimal.
+    marginHorizontal: 6,
+    marginTop: 4,
+    marginBottom: 6,
     borderRadius: 10,
     backgroundColor: 'rgba(0,0,0,0.18)',
     borderWidth: 1,

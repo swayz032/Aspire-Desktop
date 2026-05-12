@@ -58,12 +58,13 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     backgroundColor: Colors.background.primary,
-    // Trimmed from 16 to 8 — combined with scrollContent below this
-    // was producing ~32px gutter around the Estimate Studio canvas.
-    // Immersive feel calls for a tight inset.
-    paddingHorizontal: 8,
-    paddingTop: 8,
-    paddingBottom: 8,
+    // Truly immersive — 4px breathing edge between TopNav and canvas
+    // top, and 4px on the sides so the canvas's amber inner glow has
+    // room to read without bleeding into the TopNav. Zero would clip
+    // the rounded corners against the viewport edge on web.
+    paddingHorizontal: 4,
+    paddingTop: 4,
+    paddingBottom: 4,
     overflow: 'hidden',
   },
   contentStacked: {
