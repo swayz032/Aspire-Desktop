@@ -147,10 +147,17 @@ const styles = StyleSheet.create({
           // does NOT lift the surrounding page bg the way the prior
           // 0.20 wide halo did.
           boxShadow: [
-            'inset 0 0 36px rgba(251,191,36,0.05)',
+            // Inner ambient — wide soft bloom INSIDE the canvas. This is
+            // the 'ambient glow' lighting the workspace from its edges
+            // inward, not flooding the page bg.
+            'inset 0 0 90px rgba(251,191,36,0.10)',
+            'inset 0 0 24px rgba(251,191,36,0.07)',
+            // Hairline rim — crisp edge.
             '0 0 0 1px rgba(251,191,36,0.22)',
+            // Tight outer LED bloom — falls off within ~14px, no wider
+            // halo (the wide outer scatter is what was lifting the page
+            // background).
             '0 0 14px 1px rgba(251,191,36,0.30)',
-            '0 0 56px rgba(251,191,36,0.08)',
           ].join(', '),
         } as unknown) as ViewStyle)
       : {
