@@ -128,8 +128,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     borderRadius: 10,
-    padding: 12,
-    gap: 7,
+    padding: 14,
+    gap: 8,
+    ...(Platform.OS === 'web'
+      ? (({
+          transition: 'background-color 200ms ease, border-color 200ms ease, transform 200ms ease',
+        } as unknown) as ViewStyle)
+      : {}),
   },
   cardHead: {
     flexDirection: 'row',
@@ -182,13 +187,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
-    paddingVertical: 6,
-    borderRadius: 7,
+    gap: 6,
+    minHeight: 36,
+    paddingVertical: 9,
+    borderRadius: 8,
     backgroundColor: 'rgba(96,165,250,0.10)',
     borderWidth: 1,
     borderColor: 'rgba(96,165,250,0.30)',
-    marginTop: 2,
+    marginTop: 4,
   },
   rfqBtnHovered: {
     backgroundColor: 'rgba(96,165,250,0.18)',

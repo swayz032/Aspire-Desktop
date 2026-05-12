@@ -8,7 +8,7 @@
  *   - tabular-nums on drive-time
  *   - 200ms hover/focus transition on web
  */
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,8 @@ import {
   TextInput,
   Pressable,
   Platform,
+  Animated,
+  Easing,
   type ViewStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -48,16 +50,61 @@ export function MaterialsSearchBar({
   placeholder = 'Search materials — paint, drywall, romex, shingles…',
 }: Props) {
   const [focused, setFocused] = useState(false);
+  const shake = useRef(new Animated.Value(0)).current;
+  const flash = useRef(new Animated.Value(0)).current;
+
+  const triggerShake = useCallback(() => {
+    shake.setValue(0);
+    Animated.sequence([
+      Animated.timing(shake, { toValue: 1, duration: 50, useNativeDriver: true, easing: Easing.linear }),
+      Animated.timing(shake, { toValue: -1, duration: 50, useNativeDriver: true, easing: Easing.linear }),
+      Animated.timing(shake, { toValue: 1, duration: 50, useNativeDriver: true, easing: Easing.linear }),
+      Animated.timing(shake, { toValue: 0, duration: 50, useNativeDriver: true, easing: Easing.linear }),
+    ]).start();
+  }, [shake]);
+
+  const triggerFlash = useCallback(() => {
+    flash.setValue(1);
+    Animated.timing(flash, {
+      toValue: 0,
+      duration: 280,
+      useNativeDriver: false,
+      easing: Easing.out(Easing.quad),
+    }).start();
+  }, [flash]);
 
   const handleSubmit = useCallback(() => {
-    if (value.trim().length === 0) return;
+    if (value.trim().length === 0) {
+      triggerShake();
+      return;
+    }
+    triggerFlash();
     onSubmit();
-  }, [value, onSubmit]);
+  }, [value, onSubmit, triggerShake, triggerFlash]);
+
+  const translateX = shake.interpolate({
+    inputRange: [-1, 1],
+    outputRange: [-6, 6],
+  });
+
+  // Animated gold flash on submit — interpolated border color
+  const flashBorderColor = flash.interpolate({
+    inputRange: [0, 1],
+    outputRange: [
+      focused ? 'rgba(251,191,36,0.50)' : 'rgba(255,255,255,0.10)',
+      'rgba(251,191,36,1)',
+    ],
+  });
 
   return (
     <View style={styles.wrap}>
-      <View
-        style={[styles.fieldRow, focused && styles.fieldRowFocused, WEB_TRANSITION]}
+      <Animated.View
+        style={[
+          styles.fieldRow,
+          focused && styles.fieldRowFocused,
+          WEB_TRANSITION,
+          { transform: [{ translateX }], borderColor: flashBorderColor as any },
+        ]}
         testID="materials-search-bar"
       >
         <Ionicons name="search" size={16} color="rgba(255,255,255,0.55)" />
@@ -119,9 +166,9 @@ export function MaterialsSearchBar({
           accessibilityLabel="Submit search"
           testID="materials-search-submit"
         >
-          <Text style={styles.submitText}>{isLoading ? 'Searching' : 'Search'}</Text>
+          <Text style={styles.submitText}>{isLoading ? 'SEARCHING…' : 'SEARCH'}</Text>
         </Pressable>
-      </View>
+      </Animated.View>
 
       {closestStore && (
         <Pressable
@@ -162,17 +209,28 @@ const styles = StyleSheet.create({
   fieldRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     backgroundColor: 'rgba(255,255,255,0.035)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.10)',
     borderRadius: 10,
+    ...(Platform.OS === 'web'
+      ? (({
+          boxShadow: '0 1px 0 rgba(255,255,255,0.04) inset, 0 1px 2px rgba(0,0,0,0.25)',
+        } as unknown) as ViewStyle)
+      : {}),
   },
   fieldRowFocused: {
-    borderColor: 'rgba(251,191,36,0.50)',
-    backgroundColor: 'rgba(251,191,36,0.04)',
+    borderColor: 'rgba(251,191,36,0.55)',
+    backgroundColor: 'rgba(251,191,36,0.045)',
+    ...(Platform.OS === 'web'
+      ? (({
+          boxShadow:
+            '0 0 0 3px rgba(251,191,36,0.14), 0 1px 0 rgba(255,255,255,0.04) inset',
+        } as unknown) as ViewStyle)
+      : {}),
   },
   input: {
     flex: 1,
@@ -180,7 +238,9 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.92)',
     letterSpacing: -0.1,
     paddingVertical: 0,
-    ...(Platform.OS === 'web' ? ({ outlineWidth: 0 } as any) : {}),
+    ...(Platform.OS === 'web'
+      ? ({ outlineWidth: 0, outlineStyle: 'none' } as any)
+      : {}),
   } as any,
   iconBtn: {
     width: 26,

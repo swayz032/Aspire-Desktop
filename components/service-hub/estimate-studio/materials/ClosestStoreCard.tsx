@@ -71,13 +71,19 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    gap: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderRadius: 12,
     backgroundColor: 'rgba(251,191,36,0.04)',
     borderWidth: 1,
-    borderColor: 'rgba(251,191,36,0.18)',
+    borderColor: 'rgba(251,191,36,0.22)',
+    ...(Platform.OS === 'web'
+      ? (({
+          boxShadow:
+            '0 1px 0 rgba(251,191,36,0.06) inset, 0 4px 12px rgba(0,0,0,0.18)',
+        } as unknown) as ViewStyle)
+      : {}),
   },
   iconWrap: {
     width: 34,
@@ -134,12 +140,12 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   statValue: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: '700',
     color: '#fbbf24',
     fontVariant: ['tabular-nums'],
-    letterSpacing: -0.4,
-    lineHeight: 20,
+    letterSpacing: -0.5,
+    lineHeight: 24,
   },
   statUnit: {
     fontSize: 10,

@@ -135,6 +135,16 @@ export function RouteMapModal({ visible, onClose, projectAddress, store }: Props
     };
   }, [visible, projectAddress, store]);
 
+  // Escape-key close on web
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !visible) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [visible, onClose]);
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} testID="route-map-backdrop">
@@ -226,6 +236,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
+    ...(Platform.OS === 'web'
+      ? (({ backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' } as unknown) as ViewStyle)
+      : {}),
   },
   card: cardStyle,
   header: {
@@ -248,8 +261,8 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.55)',
   },
   closeBtn: {
-    width: 28,
-    height: 28,
+    width: 32,
+    height: 32,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',

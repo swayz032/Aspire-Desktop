@@ -12,7 +12,7 @@
  *   │ [Add to bundle] [Compare]    │
  *   └──────────────────────────────┘
  */
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -47,18 +47,30 @@ function formatReviewCount(n: number): string {
 }
 
 export function ProductCard({ product, onAdd, onCompare, isInBundle = false }: Props) {
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const [hover, setHover] = useState(false);
+  const webHoverHandlers =
+    Platform.OS === 'web'
+      ? {
+          onMouseEnter: () => setHover(true),
+          onMouseLeave: () => setHover(false),
+        }
+      : {};
   return (
     <View
-      style={[styles.card, WEB_TRANSITION]}
+      {...(webHoverHandlers as any)}
+      style={[styles.card, hover && styles.cardHovered, isInBundle && styles.cardInBundle, WEB_TRANSITION]}
       testID={`materials-product-card-${product.id}`}
     >
       {/* Image area */}
       <View style={styles.imageWrap}>
+        {!imgLoaded && <View style={styles.imageSkeleton} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />}
         <Image
           source={{ uri: product.imageUrl }}
-          style={styles.image}
+          style={[styles.image, !imgLoaded && styles.imageLoading]}
           resizeMode="cover"
           accessibilityLabel={`${product.brand} ${product.title}`}
+          onLoad={() => setImgLoaded(true)}
         />
 
         <View style={styles.imageOverlay}>
@@ -151,6 +163,33 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     padding: 10,
     gap: 10,
+    ...(Platform.OS === 'web'
+      ? (({
+          transition: 'transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease, background-color 200ms ease',
+          boxShadow: '0 1px 0 rgba(255,255,255,0.03) inset',
+        } as unknown) as ViewStyle)
+      : {}),
+  },
+  cardHovered: {
+    backgroundColor: 'rgba(255,255,255,0.045)',
+    borderColor: 'rgba(255,255,255,0.14)',
+    ...(Platform.OS === 'web'
+      ? (({
+          transform: 'translateY(-2px)' as any,
+          boxShadow:
+            '0 8px 24px rgba(0,0,0,0.32), 0 1px 0 rgba(255,255,255,0.06) inset',
+        } as unknown) as ViewStyle)
+      : {}),
+  },
+  cardInBundle: {
+    borderColor: 'rgba(52,199,89,0.30)',
+  },
+  imageSkeleton: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  imageLoading: {
+    opacity: 0,
   },
   imageWrap: {
     width: '100%',
@@ -251,7 +290,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   price: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
     color: '#fbbf24',
     letterSpacing: -0.3,
@@ -271,12 +310,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    paddingVertical: 7,
+    gap: 5,
+    minHeight: 36,
+    paddingVertical: 8,
     borderRadius: 7,
-    backgroundColor: 'rgba(251,191,36,0.10)',
+    backgroundColor: 'rgba(251,191,36,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(251,191,36,0.32)',
+    borderColor: 'rgba(251,191,36,0.34)',
   },
   addBtnHovered: {
     backgroundColor: 'rgba(251,191,36,0.18)',
@@ -300,9 +340,10 @@ const styles = StyleSheet.create({
   compareBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
+    minHeight: 36,
     paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingVertical: 8,
     borderRadius: 7,
     backgroundColor: 'rgba(255,255,255,0.04)',
     borderWidth: 1,

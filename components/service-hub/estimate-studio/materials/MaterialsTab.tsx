@@ -247,23 +247,23 @@ export function MaterialsTab() {
 const styles = StyleSheet.create({
   tab: {
     flex: 1,
-    padding: 16,
+    padding: 20,
     gap: 12,
   },
   scroll: {
     flex: 1,
   },
   scrollContent: {
-    gap: 16,
-    paddingBottom: 24,
+    gap: 22,
+    paddingBottom: 96, // leave room for sticky BundleSummaryBar
   },
   cachedBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
     backgroundColor: 'rgba(251,191,36,0.06)',
     borderWidth: 1,
     borderColor: 'rgba(251,191,36,0.22)',

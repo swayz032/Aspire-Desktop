@@ -72,15 +72,21 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   iconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(251,191,36,0.06)',
     borderWidth: 1,
-    borderColor: 'rgba(251,191,36,0.22)',
-    marginBottom: 4,
+    borderColor: 'rgba(251,191,36,0.24)',
+    marginBottom: 8,
+    ...(Platform.OS === 'web'
+      ? (({
+          boxShadow:
+            '0 0 0 4px rgba(251,191,36,0.04), 0 8px 28px rgba(251,191,36,0.08)',
+        } as unknown) as ViewStyle)
+      : {}),
   },
   title: {
     fontSize: 18,
@@ -118,8 +124,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    minHeight: 36,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     borderRadius: 8,
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderWidth: 1,

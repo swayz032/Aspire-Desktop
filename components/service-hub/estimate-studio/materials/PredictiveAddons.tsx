@@ -107,11 +107,14 @@ const styles = StyleSheet.create({
     minWidth: 220,
     flexDirection: 'row',
     gap: 10,
-    padding: 8,
+    padding: 10,
     borderRadius: 10,
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
+    ...(Platform.OS === 'web'
+      ? (({ transition: 'background-color 200ms ease, border-color 200ms ease' } as unknown) as ViewStyle)
+      : {}),
   },
   thumb: {
     width: 54,
@@ -147,13 +150,14 @@ const styles = StyleSheet.create({
   miniAddBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 7,
-    paddingVertical: 4,
-    borderRadius: 5,
-    backgroundColor: 'rgba(251,191,36,0.10)',
+    gap: 4,
+    minHeight: 28,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 6,
+    backgroundColor: 'rgba(251,191,36,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(251,191,36,0.30)',
+    borderColor: 'rgba(251,191,36,0.32)',
   },
   miniAddBtnHovered: {
     backgroundColor: 'rgba(251,191,36,0.18)',

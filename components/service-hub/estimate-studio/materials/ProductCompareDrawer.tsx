@@ -2,7 +2,7 @@
  * ProductCompareDrawer — slide-over (right side) showing cross-seller pricing
  * for a single product. Pass B: mock 3-seller data. Pass F: real shopping API.
  */
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -36,6 +36,16 @@ function formatDelta(n: number): string {
 }
 
 export function ProductCompareDrawer({ visible, onClose, product, onUseAlt }: Props) {
+  // Escape key close on web — hook must run unconditionally.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !visible) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [visible, onClose]);
+
   if (!product) return null;
   const sellers: CompareSeller[] = getMockCompareSellers(product);
   const cheapest = sellers.reduce((min, s) => (s.price < min.price ? s : min), sellers[0]);
@@ -170,6 +180,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.55)',
     flexDirection: 'row',
     justifyContent: 'flex-end',
+    ...(Platform.OS === 'web'
+      ? (({ backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' } as unknown) as ViewStyle)
+      : {}),
   },
   drawer: drawerStyle,
   header: {
@@ -204,8 +217,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   closeBtn: {
-    width: 30,
-    height: 30,
+    width: 34,
+    height: 34,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
@@ -243,10 +256,11 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.92)',
   },
   bestPrice: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
     color: '#34c759',
     fontVariant: ['tabular-nums'],
+    letterSpacing: -0.3,
   },
 
   table: {
