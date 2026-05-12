@@ -251,7 +251,7 @@ export function FrontDeskHubSkeleton() {
               <VoiceTapButton />
             </View>
           </View>
-          <View style={[styles.card, { flex: 3 }]} />
+          <View style={[styles.glassCard, { flex: 3 }]} />
         </View>
         <View style={twoCol ? styles.railCol : styles.railColStacked}>
           <InboxRail />
@@ -289,6 +289,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: CARD_BORDER,
     borderRadius: CARD_RADIUS,
+  },
+  glassCard: {
+    backgroundColor: '#000000',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: CARD_RADIUS,
+    overflow: 'hidden',
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage:
+            'radial-gradient(120% 80% at 50% 0%, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0) 60%), linear-gradient(180deg, #050507 0%, #000000 100%)',
+        } as any)
+      : null),
   },
   stageCard: {
     backgroundColor: STAGE_BG,
