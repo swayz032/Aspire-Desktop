@@ -78,8 +78,7 @@ export function MaterialsTab() {
   const handleSuggestionPick = useCallback(
     (q: string) => {
       setQuery(q);
-      // Run search after state propagates.
-      setTimeout(() => submitSearch(), 0);
+      submitSearch(q);
     },
     [setQuery, submitSearch],
   );

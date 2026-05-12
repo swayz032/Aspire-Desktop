@@ -83,7 +83,7 @@ export interface CompareSeller {
 export interface UseMaterialsSearchResult {
   query: string;
   setQuery: (q: string) => void;
-  submitSearch: () => void;
+  submitSearch: (explicitQuery?: string) => void;
   clearSearch: () => void;
   results: Product[] | null;
   closestStore: ClosestStore | null;
@@ -461,19 +461,22 @@ export function useMaterialsSearch(): UseMaterialsSearchResult {
   const [submitted, setSubmitted] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const submitSearch = useCallback(() => {
-    const q = query.trim();
-    if (q.length === 0) {
-      setSubmitted(null);
-      return;
-    }
-    setIsLoading(true);
-    // Mock "network" cycle — 250ms feels alive, not instant-fake.
-    setTimeout(() => {
-      setSubmitted(q);
-      setIsLoading(false);
-    }, 250);
-  }, [query]);
+  const submitSearch = useCallback(
+    (explicitQuery?: string) => {
+      const q = (explicitQuery ?? query).trim();
+      if (q.length === 0) {
+        setSubmitted(null);
+        return;
+      }
+      setIsLoading(true);
+      // Mock "network" cycle — 250ms feels alive, not instant-fake.
+      setTimeout(() => {
+        setSubmitted(q);
+        setIsLoading(false);
+      }, 250);
+    },
+    [query],
+  );
 
   const clearSearch = useCallback(() => {
     setQuery('');
