@@ -239,36 +239,70 @@ export function PropertySummaryCard({ data, loading }: Props) {
       {showOwnerSection && (
         <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
-            <Ionicons name="person-circle-outline" size={11} color="rgba(255,255,255,0.45)" />
+            <Ionicons name="person-circle-outline" size={11} color="rgba(255,255,255,0.62)" />
             <Text style={styles.sectionLabel}>Owner &amp; Valuation</Text>
           </View>
+
+          {/* Hero stat cards — the marquee numbers a contractor uses first */}
+          {(hasAvm || hasLastSale) && (
+            <View style={styles.statGrid}>
+              {hasAvm && (
+                <View style={[styles.statCard, styles.statCardAccent]}>
+                  <Text style={styles.statLabel}>AVM</Text>
+                  <Text style={[styles.statValue, styles.statValueAccent]} numberOfLines={1}>
+                    {formatCurrency(f.estimatedValue!)}
+                  </Text>
+                  {typeof f.estimatedValueLow === 'number' &&
+                    typeof f.estimatedValueHigh === 'number' && (
+                      <Text style={styles.statSub} numberOfLines={1}>
+                        {formatCurrency(f.estimatedValueLow)} – {formatCurrency(f.estimatedValueHigh)}
+                      </Text>
+                    )}
+                </View>
+              )}
+              {hasLastSale && (
+                <View style={styles.statCard}>
+                  <Text style={styles.statLabel}>Last Sale</Text>
+                  <Text style={styles.statValue} numberOfLines={1}>
+                    {formatCurrency(f.lastSaleAmount!)}
+                  </Text>
+                  <Text style={styles.statSub} numberOfLines={1}>{f.lastSaleDate}</Text>
+                </View>
+              )}
+            </View>
+          )}
+
           <View style={styles.sectionBody}>
             {ownerLine && (
               <View style={styles.factRow}>
                 <Text style={styles.factLabel}>Owner</Text>
-                <Text style={styles.factValue} numberOfLines={1}>
-                  {ownerLine}
-                </Text>
+                <Text style={styles.factValue} numberOfLines={1}>{f.ownerName}</Text>
               </View>
             )}
-            {hasAvm && (
+            {!!f.previousOwnerName && (
               <View style={styles.factRow}>
-                <Text style={styles.factLabel}>AVM</Text>
-                <Text style={styles.factValue} numberOfLines={1}>
-                  {formatCurrency(f.estimatedValue!)}
-                  {typeof f.estimatedValueLow === 'number' &&
-                  typeof f.estimatedValueHigh === 'number'
-                    ? ` (${formatCurrency(f.estimatedValueLow)}–${formatCurrency(f.estimatedValueHigh)})`
-                    : ''}
-                </Text>
+                <Text style={styles.factLabel}>Prior owner</Text>
+                <Text style={styles.factValue} numberOfLines={1}>{f.previousOwnerName}</Text>
               </View>
             )}
-            {hasLastSale && (
-              <View style={styles.factRow}>
-                <Text style={styles.factLabel}>Last sale</Text>
-                <Text style={styles.factValue} numberOfLines={1}>
-                  {formatCurrency(f.lastSaleAmount!)} · {f.lastSaleDate}
-                </Text>
+            {/* Boolean flag chips — visual signal density without row clutter */}
+            {(f.ownerOccupied || f.absenteeOwner || f.homeownerExemption) && (
+              <View style={styles.chipRow}>
+                {f.ownerOccupied && (
+                  <View style={[styles.chip, styles.chipPositive]}>
+                    <Text style={[styles.chipText, styles.chipTextPositive]}>OWNER OCCUPIED</Text>
+                  </View>
+                )}
+                {f.absenteeOwner && (
+                  <View style={[styles.chip, styles.chipWarning]}>
+                    <Text style={[styles.chipText, styles.chipTextWarning]}>ABSENTEE</Text>
+                  </View>
+                )}
+                {f.homeownerExemption && (
+                  <View style={[styles.chip, styles.chipPositive]}>
+                    <Text style={[styles.chipText, styles.chipTextPositive]}>HOMESTEAD EXEMPT</Text>
+                  </View>
+                )}
               </View>
             )}
             {hasTax && (
@@ -276,7 +310,7 @@ export function PropertySummaryCard({ data, loading }: Props) {
                 <Text style={styles.factLabel}>Annual tax</Text>
                 <Text style={styles.factValue} numberOfLines={1}>
                   {formatCurrency(f.annualTax!)}
-                  {f.taxYear ? ` (${f.taxYear})` : ''}
+                  {f.taxYear ? ` · ${f.taxYear}` : ''}
                 </Text>
               </View>
             )}
@@ -292,9 +326,7 @@ export function PropertySummaryCard({ data, loading }: Props) {
             {typeof f.avmPricePerSqft === 'number' && (
               <View style={styles.factRow}>
                 <Text style={styles.factLabel}>AVM $/sqft</Text>
-                <Text style={styles.factValue} numberOfLines={1}>
-                  {formatCurrency(f.avmPricePerSqft)}
-                </Text>
+                <Text style={styles.factValue}>{formatCurrency(f.avmPricePerSqft)}</Text>
               </View>
             )}
           </View>
@@ -305,17 +337,25 @@ export function PropertySummaryCard({ data, loading }: Props) {
       {(typeof f.lastSalePricePerSqft === 'number' ||
         !!f.lastSaleType ||
         typeof f.lastSaleArmsLength === 'boolean' ||
-        typeof f.appreciationPct === 'number') && (
+        typeof f.appreciationPct === 'number' ||
+        !!f.lastSaleCashOrMortgage ||
+        typeof f.lastSalePricePerBed === 'number') && (
         <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
-            <Ionicons name="trending-up-outline" size={11} color="rgba(255,255,255,0.45)" />
+            <Ionicons name="trending-up-outline" size={11} color="rgba(255,255,255,0.62)" />
             <Text style={styles.sectionLabel}>Sale Detail</Text>
           </View>
           <View style={styles.sectionBody}>
             {typeof f.lastSalePricePerSqft === 'number' && (
               <View style={styles.factRow}>
-                <Text style={styles.factLabel}>Last sale $/sqft</Text>
+                <Text style={styles.factLabel}>$/sqft at sale</Text>
                 <Text style={styles.factValue}>{formatCurrency(f.lastSalePricePerSqft)}</Text>
+              </View>
+            )}
+            {typeof f.lastSalePricePerBed === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>$/bed at sale</Text>
+                <Text style={styles.factValue}>{formatCurrency(f.lastSalePricePerBed)}</Text>
               </View>
             )}
             {!!f.lastSaleType && (
@@ -324,16 +364,40 @@ export function PropertySummaryCard({ data, loading }: Props) {
                 <Text style={styles.factValue}>{f.lastSaleType}</Text>
               </View>
             )}
-            {typeof f.lastSaleArmsLength === 'boolean' && (
+            {!!f.lastSaleCashOrMortgage && (
               <View style={styles.factRow}>
-                <Text style={styles.factLabel}>Arm's length</Text>
-                <Text style={styles.factValue}>{f.lastSaleArmsLength ? 'Yes' : 'No'}</Text>
+                <Text style={styles.factLabel}>Financing</Text>
+                <Text style={styles.factValue}>{f.lastSaleCashOrMortgage}</Text>
               </View>
             )}
             {typeof f.appreciationPct === 'number' && (
               <View style={styles.factRow}>
                 <Text style={styles.factLabel}>Appreciation</Text>
-                <Text style={styles.factValue}>{f.appreciationPct.toFixed(1)}%</Text>
+                <Text
+                  style={[
+                    styles.factValue,
+                    f.appreciationPct > 0 && styles.factValueAccent,
+                  ]}
+                >
+                  {f.appreciationPct > 0 ? '+' : ''}
+                  {f.appreciationPct.toFixed(1)}%
+                </Text>
+              </View>
+            )}
+            {typeof f.lastSaleArmsLength === 'boolean' && (
+              <View style={styles.chipRow}>
+                <View
+                  style={[styles.chip, f.lastSaleArmsLength ? styles.chipPositive : styles.chipWarning]}
+                >
+                  <Text
+                    style={[
+                      styles.chipText,
+                      f.lastSaleArmsLength ? styles.chipTextPositive : styles.chipTextWarning,
+                    ]}
+                  >
+                    {f.lastSaleArmsLength ? "ARM'S LENGTH" : 'NON ARM\'S LENGTH'}
+                  </Text>
+                </View>
               </View>
             )}
           </View>
@@ -347,9 +411,30 @@ export function PropertySummaryCard({ data, loading }: Props) {
         typeof f.availableEquity === 'number') && (
         <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
-            <Ionicons name="cash-outline" size={11} color="rgba(255,255,255,0.45)" />
+            <Ionicons name="cash-outline" size={11} color="rgba(255,255,255,0.62)" />
             <Text style={styles.sectionLabel}>Mortgage &amp; Equity</Text>
           </View>
+
+          {/* Equity + LTV stat cards — the numbers that drive the pitch */}
+          {(typeof f.availableEquity === 'number' || typeof f.ltvRatio === 'number') && (
+            <View style={styles.statGrid}>
+              {typeof f.availableEquity === 'number' && (
+                <View style={[styles.statCard, styles.statCardAccent]}>
+                  <Text style={styles.statLabel}>Available Equity</Text>
+                  <Text style={[styles.statValue, styles.statValueAccent]} numberOfLines={1}>
+                    {formatCurrency(f.availableEquity)}
+                  </Text>
+                </View>
+              )}
+              {typeof f.ltvRatio === 'number' && (
+                <View style={styles.statCard}>
+                  <Text style={styles.statLabel}>LTV</Text>
+                  <Text style={styles.statValue} numberOfLines={1}>{f.ltvRatio}%</Text>
+                </View>
+              )}
+            </View>
+          )}
+
           <View style={styles.sectionBody}>
             {!!f.mortgageLender && (
               <View style={styles.factRow}>
@@ -362,7 +447,7 @@ export function PropertySummaryCard({ data, loading }: Props) {
             )}
             {typeof f.mortgageAmount === 'number' && (
               <View style={styles.factRow}>
-                <Text style={styles.factLabel}>Mortgage</Text>
+                <Text style={styles.factLabel}>Original loan</Text>
                 <Text style={styles.factValue} numberOfLines={1}>
                   {formatCurrency(f.mortgageAmount)}
                   {f.mortgageDate ? ` · ${f.mortgageDate}` : ''}
@@ -371,7 +456,7 @@ export function PropertySummaryCard({ data, loading }: Props) {
             )}
             {typeof f.currentLoanBalance === 'number' && (
               <View style={styles.factRow}>
-                <Text style={styles.factLabel}>Loan balance</Text>
+                <Text style={styles.factLabel}>Current balance</Text>
                 <Text style={styles.factValue}>{formatCurrency(f.currentLoanBalance)}</Text>
               </View>
             )}
@@ -381,29 +466,20 @@ export function PropertySummaryCard({ data, loading }: Props) {
                 <Text style={styles.factValue}>{formatCurrency(f.estimatedMonthlyPayment)}</Text>
               </View>
             )}
-            {typeof f.ltvRatio === 'number' && (
-              <View style={styles.factRow}>
-                <Text style={styles.factLabel}>LTV</Text>
-                <Text style={styles.factValue}>{f.ltvRatio}%</Text>
-              </View>
-            )}
-            {typeof f.availableEquity === 'number' && (
-              <View style={styles.factRow}>
-                <Text style={styles.factLabel}>Available equity</Text>
-                <Text style={styles.factValue}>{formatCurrency(f.availableEquity)}</Text>
-              </View>
-            )}
           </View>
         </View>
       )}
 
       {/* PERMITS — building permits pulled from attom.building_permits */}
-      {Array.isArray(f.permits) && f.permits.length > 0 && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeaderRow}>
-            <Ionicons name="document-text-outline" size={11} color="rgba(255,255,255,0.45)" />
-            <Text style={styles.sectionLabel}>Permits ({f.permits.length})</Text>
-          </View>
+      <View style={styles.section}>
+        <View style={styles.sectionHeaderRow}>
+          <Ionicons name="document-text-outline" size={11} color="rgba(255,255,255,0.62)" />
+          <Text style={styles.sectionLabel}>
+            Building Permits
+            {Array.isArray(f.permits) && f.permits.length > 0 ? ` · ${f.permits.length}` : ''}
+          </Text>
+        </View>
+        {Array.isArray(f.permits) && f.permits.length > 0 ? (
           <View style={styles.sectionBody}>
             {f.permits.slice(0, 8).map((p, idx) => {
               const headline = [p.type, p.description].filter(Boolean).join(' · ');
@@ -429,8 +505,15 @@ export function PropertySummaryCard({ data, loading }: Props) {
               <Text style={styles.muted}>+{f.permits.length - 8} more permits</Text>
             )}
           </View>
-        </View>
-      )}
+        ) : (
+          <View style={styles.surface}>
+            <Text style={styles.muted}>
+              Adam queried ATTOM building_permits but the slim pipeline
+              didn't surface them. Verify directly with city/county records.
+            </Text>
+          </View>
+        )}
+      </View>
 
       {/* RENTAL ESTIMATE (only for properties with ATTOM rental AVM) */}
       {typeof f.estimatedRent === 'number' && f.estimatedRent > 0 && (
@@ -720,10 +803,25 @@ function SkeletonSection({ lines }: { lines: number }) {
 
 const styles = StyleSheet.create({
   card: {
-    padding: 14,
-    gap: 18,
+    padding: 16,
+    gap: 22,
   },
   section: {
+    gap: 10,
+    paddingBottom: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  sectionLast: {
+    borderBottomWidth: 0,
+    paddingBottom: 0,
+  },
+  surface: {
+    backgroundColor: 'rgba(255,255,255,0.025)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 12,
+    padding: 12,
     gap: 8,
   },
   heroSection: {
@@ -742,8 +840,8 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: 10,
     fontWeight: '700',
-    color: 'rgba(255,255,255,0.45)',
-    letterSpacing: 1.2,
+    color: 'rgba(255,255,255,0.62)',
+    letterSpacing: 1.4,
     textTransform: 'uppercase',
   },
   sectionLabelMeta: {
@@ -836,17 +934,107 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 8,
+    minHeight: 22,
   },
   factLabel: {
     fontSize: 11,
-    color: 'rgba(255,255,255,0.45)',
+    color: 'rgba(255,255,255,0.50)',
     fontWeight: '500',
+    letterSpacing: 0.1,
   },
   factValue: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.85)',
+    fontSize: 12.5,
+    color: 'rgba(255,255,255,0.92)',
     fontWeight: '600',
     letterSpacing: -0.1,
+    fontVariant: ['tabular-nums'],
+    flexShrink: 1,
+    textAlign: 'right',
+  },
+  factValueAccent: {
+    color: '#fbbf24',
+    fontWeight: '700',
+  },
+
+  // CHIPS (boolean flags / classifications)
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 2,
+  },
+  chip: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  chipPositive: {
+    backgroundColor: 'rgba(52,211,153,0.10)',
+    borderColor: 'rgba(52,211,153,0.30)',
+  },
+  chipWarning: {
+    backgroundColor: 'rgba(251,191,36,0.10)',
+    borderColor: 'rgba(251,191,36,0.30)',
+  },
+  chipText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.80)',
+    letterSpacing: 0.3,
+  },
+  chipTextPositive: {
+    color: 'rgb(110,231,183)',
+  },
+  chipTextWarning: {
+    color: '#fbbf24',
+  },
+
+  // STAT CARDS (premium tiles for marquee values like AVM, equity)
+  statGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  statCard: {
+    flexBasis: '48%',
+    flexGrow: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    gap: 4,
+  },
+  statCardAccent: {
+    backgroundColor: 'rgba(251,191,36,0.06)',
+    borderColor: 'rgba(251,191,36,0.22)',
+  },
+  statLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.50)',
+    letterSpacing: 1.0,
+    textTransform: 'uppercase',
+  },
+  statValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.96)',
+    letterSpacing: -0.3,
+    fontVariant: ['tabular-nums'],
+  },
+  statValueAccent: {
+    color: '#fbbf24',
+  },
+  statSub: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.50)',
+    letterSpacing: -0.05,
+    fontVariant: ['tabular-nums'],
   },
   pillRow: {
     flexDirection: 'row',

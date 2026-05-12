@@ -107,6 +107,16 @@ export type AdamPropertyResult = {
     taxAssessedImprovement?: number;
     taxMarketValue?: number;
     taxPerSqft?: number;
+    /** Prior owner (last grantee before current owner) — useful for follow-ups. */
+    previousOwnerName?: string;
+    /** Absentee owner indicator — owner_occupied=false + non-local mailing. */
+    absenteeOwner?: boolean;
+    /** Owner's homeowner property-tax exemption (state-specific flag). */
+    homeownerExemption?: boolean;
+    /** Last sale cash-vs-mortgage classification. */
+    lastSaleCashOrMortgage?: string;
+    /** Last sale per-bed price (alt comp basis). */
+    lastSalePricePerBed?: number;
     address?: {
       formatted: string;
       street?: string;
@@ -453,6 +463,17 @@ function normalizeRecord(
   const taxAssessedImprovement = toFiniteNumber(r.tax_assessed_improvement);
   const taxMarketValue = toFiniteNumber(r.tax_market_value);
   const taxPerSqft = toFiniteNumber(r.tax_per_sqft);
+  const previousOwnerName = toTrimmedString(r.previous_owner_name);
+  const absenteeOwner =
+    typeof r.absentee_owner_indicator === 'boolean'
+      ? (r.absentee_owner_indicator as boolean)
+      : undefined;
+  const homeownerExemption =
+    typeof r.homeowner_exemption === 'boolean'
+      ? (r.homeowner_exemption as boolean)
+      : undefined;
+  const lastSaleCashOrMortgage = toTrimmedString(r.last_sale_cash_or_mortgage);
+  const lastSalePricePerBed = toFiniteNumber(r.last_sale_price_per_bed);
 
   const facts: AdamPropertyResult['facts'] = {
     ...(sqft !== undefined ? { sqft } : {}),
@@ -501,6 +522,11 @@ function normalizeRecord(
     ...(taxAssessedImprovement !== undefined ? { taxAssessedImprovement } : {}),
     ...(taxMarketValue !== undefined ? { taxMarketValue } : {}),
     ...(taxPerSqft !== undefined ? { taxPerSqft } : {}),
+    ...(previousOwnerName !== undefined ? { previousOwnerName } : {}),
+    ...(absenteeOwner !== undefined ? { absenteeOwner } : {}),
+    ...(homeownerExemption !== undefined ? { homeownerExemption } : {}),
+    ...(lastSaleCashOrMortgage !== undefined ? { lastSaleCashOrMortgage } : {}),
+    ...(lastSalePricePerBed !== undefined ? { lastSalePricePerBed } : {}),
     ...(address !== undefined ? { address } : {}),
     ...(coords !== undefined ? { coords } : {}),
   };

@@ -139,6 +139,12 @@ export type PropertyData = {
     taxAssessedImprovement?: number;
     taxMarketValue?: number;
     taxPerSqft?: number;
+    /** Prior owner + occupancy / exemption signals. */
+    previousOwnerName?: string;
+    absenteeOwner?: boolean;
+    homeownerExemption?: boolean;
+    lastSaleCashOrMortgage?: string;
+    lastSalePricePerBed?: number;
   };
   photos: {
     interior: PhotoLane;

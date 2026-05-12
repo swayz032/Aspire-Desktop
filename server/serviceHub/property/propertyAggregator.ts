@@ -594,6 +594,11 @@ export async function aggregatePropertyData(
     taxAssessedImprovement: adamFacts?.taxAssessedImprovement,
     taxMarketValue: adamFacts?.taxMarketValue,
     taxPerSqft: adamFacts?.taxPerSqft,
+    previousOwnerName: adamFacts?.previousOwnerName,
+    absenteeOwner: adamFacts?.absenteeOwner,
+    homeownerExemption: adamFacts?.homeownerExemption,
+    lastSaleCashOrMortgage: adamFacts?.lastSaleCashOrMortgage,
+    lastSalePricePerBed: adamFacts?.lastSalePricePerBed,
   };
 
   const data: PropertyData = {
