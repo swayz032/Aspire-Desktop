@@ -428,12 +428,13 @@ function validateAnamAvaPromptAndConfig(prompt: string, personaId: string): stri
   }
 
   // Contract GD-2: AI self-reference rule MUST appear in Guardrails (within
-  // first 1000 chars of block body).
+  // first 2000 chars of block body). Bumped from 1200 → 2000 on 2026-05-12
+  // after the NEVER SAY block expanded with internal-tool-name bans.
   if (guardrailsBlock) {
-    const guardrailsHead = guardrailsBlock.slice(0, 1200);
+    const guardrailsHead = guardrailsBlock.slice(0, 2000);
     if (!/Never discuss being an AI/i.test(guardrailsHead)) {
       errors.push(
-        'Contract GD-2: Guardrails block missing AI self-reference rule in first 1000 chars. ' +
+        'Contract GD-2: Guardrails block missing AI self-reference rule in first 2000 chars. ' +
         'Add "Never discuss being an AI..." near the top of # Guardrails.',
       );
     }

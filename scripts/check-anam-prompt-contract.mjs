@@ -84,9 +84,9 @@ const docs = ['Ava_Voice_Rules_v6', 'Strategic_Playbook_v6', 'Tools_and_Cards_v6
 const missing = docs.filter(d => !rawPrompt.includes(d));
 if (missing.length > 1) errors.push(`G-5: missing KB doc refs: ${missing.join(', ')}`);
 
-// GD-2 AI self-reference in Guardrails first 1200 chars
+// GD-2 AI self-reference in Guardrails first 2000 chars (NEVER SAY block expanded)
 if (guardrails) {
-  if (!/Never discuss being an AI/i.test(guardrails.slice(0, 1200))) errors.push('GD-2: Guardrails missing AI self-reference rule in head');
+  if (!/Never discuss being an AI/i.test(guardrails.slice(0, 2000))) errors.push('GD-2: Guardrails missing AI self-reference rule in head');
 }
 
 console.log(`\n=== Anam Ava Prompt Contract Check ===`);
