@@ -9061,6 +9061,87 @@ router.post('/api/v1/sms/send', async (req: Request, res: Response) => {
   });
 });
 
+// ─── Callbacks (Pass I) ──────────────────────────────────────────────────────
+//
+// GET  /api/callbacks        → /v1/callbacks               (Green — list)
+// PATCH /api/callbacks/:id  → /v1/callbacks/:id            (Yellow — reschedule)
+// POST /api/callbacks/:id/complete → /v1/callbacks/:id/complete (Yellow — mark done)
+
+router.get('/api/callbacks', async (req: Request, res: Response) => {
+  const bucket = typeof req.query.bucket === 'string' ? `?bucket=${encodeURIComponent(req.query.bucket)}` : '';
+  await proxyForward({
+    orchestratorPath: `/v1/callbacks${bucket}`,
+    method: 'GET',
+    logTag: 'CallbacksList',
+    timeoutMs: 8_000,
+    req,
+    res,
+  });
+});
+
+router.patch('/api/callbacks/:id', async (req: Request, res: Response) => {
+  const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!id) { res.status(400).json({ error: 'INVALID_INPUT', message: 'callback id required' }); return; }
+  await proxyForward({
+    orchestratorPath: `/v1/callbacks/${encodeURIComponent(id)}`,
+    method: 'PATCH',
+    body: typeof req.body === 'object' && req.body !== null ? (req.body as Record<string, unknown>) : {},
+    scope: 'front_desk:callbacks_write',
+    logTag: 'CallbackReschedule',
+    timeoutMs: 8_000,
+    req,
+    res,
+  });
+});
+
+router.post('/api/callbacks/:id/complete', async (req: Request, res: Response) => {
+  const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!id) { res.status(400).json({ error: 'INVALID_INPUT', message: 'callback id required' }); return; }
+  await proxyForward({
+    orchestratorPath: `/v1/callbacks/${encodeURIComponent(id)}/complete`,
+    method: 'POST',
+    body: {},
+    scope: 'front_desk:callbacks_write',
+    logTag: 'CallbackComplete',
+    timeoutMs: 8_000,
+    req,
+    res,
+  });
+});
+
+// ─── Voicemails (Pass I) ──────────────────────────────────────────────────────
+//
+// POST /api/voicemail/:id/mark-reviewed → /v1/voicemails/:id/mark-reviewed (Green)
+// DELETE /api/voicemail/:id             → /v1/voicemails/:id               (Yellow — soft delete)
+
+router.post('/api/voicemail/:id/mark-reviewed', async (req: Request, res: Response) => {
+  const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!id) { res.status(400).json({ error: 'INVALID_INPUT', message: 'voicemail id required' }); return; }
+  await proxyForward({
+    orchestratorPath: `/v1/voicemails/${encodeURIComponent(id)}/mark-reviewed`,
+    method: 'POST',
+    body: {},
+    logTag: 'VoicemailMarkReviewed',
+    timeoutMs: 8_000,
+    req,
+    res,
+  });
+});
+
+router.delete('/api/voicemail/:id', async (req: Request, res: Response) => {
+  const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!id) { res.status(400).json({ error: 'INVALID_INPUT', message: 'voicemail id required' }); return; }
+  await proxyForward({
+    orchestratorPath: `/v1/voicemails/${encodeURIComponent(id)}`,
+    method: 'DELETE',
+    scope: 'front_desk:voicemail_write',
+    logTag: 'VoicemailDelete',
+    timeoutMs: 8_000,
+    req,
+    res,
+  });
+});
+
 // ─── Voice-Session Receipts — Pass D P1 fix ──────────────────────────────────
 //
 // POST /api/receipts/voice-session

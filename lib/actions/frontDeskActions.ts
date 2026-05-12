@@ -209,52 +209,60 @@ export async function callBack(phoneNumber: string): Promise<ActionResult> {
 /**
  * Send an SMS on an existing thread.
  *
- * Target: POST /api/v1/sms/send (exists — wired in Pass A routes).
- * Receipt: server returns receipt_id on 2xx, client-generated on failure.
+ * Backend SmsSendRequest requires thread_memory_id + idempotency_key (Pass I fix).
+ * Previously sent { thread_id, body } which the backend rejected silently.
  */
 export async function sendSms(threadId: string, body: string): Promise<ActionResult> {
-  return apiPost('/api/v1/sms/send', { thread_id: threadId, body });
+  return apiPost('/api/v1/sms/send', {
+    thread_memory_id: threadId,
+    body,
+    idempotency_key: crypto.randomUUID(),
+  });
 }
 
 /**
  * Send a new SMS to a fresh recipient.
+ *
+ * NOTE: The backend /v1/sms/send requires a thread_memory_id to resolve the
+ * to-number — it has no ad-hoc to_phone path. This function is a UI stub until
+ * a POST /v1/sms/send-new endpoint is built in the backend (tracked as
+ * Pass I follow-up). For now it returns a client-side receipt explaining
+ * the gap so callers can surface a clear "unavailable" message instead of a
+ * silent 422.
  */
 export async function sendNewSms(toPhone: string, body: string): Promise<ActionResult> {
-  return apiPost('/api/v1/sms/send', { to: toPhone, body });
+  const receiptId = crypto.randomUUID();
+  console.warn(
+    '[frontDeskActions] sendNewSms: POST /v1/sms/send-new not yet implemented. ' +
+    'Backend requires a thread_memory_id. Track as Pass I backend follow-up.'
+  );
+  return {
+    ok: false,
+    error: 'SMS to new recipients is not yet available. Use an existing thread.',
+    receipt_id: receiptId,
+  };
 }
 
 /**
  * Mark a voicemail as reviewed.
  *
- * Target: POST /api/voicemail/{id}/mark-reviewed.
- * NOTE: Endpoint doesn't exist yet (Pass G adds it). Fail-soft: return
- * client receipt so UI flow works.  Pass H ledger-auditor will flag.
+ * Target: POST /api/voicemail/{id}/mark-reviewed (Pass I — endpoint now exists).
+ * Backend sets read_at; idempotent.
  */
 export async function markVoicemailReviewed(voicemailId: string): Promise<ActionResult> {
-  const result = await apiPost(`/api/voicemail/${encodeURIComponent(voicemailId)}/mark-reviewed`, {
+  return apiPost(`/api/voicemail/${encodeURIComponent(voicemailId)}/mark-reviewed`, {
     voicemail_id: voicemailId,
   });
-  if (!result.ok && result.error?.includes('404')) {
-    // Pass G endpoint not yet built — fail-soft per plan
-    console.warn('[frontDeskActions] markVoicemailReviewed: endpoint not yet built (Pass G). Returning client receipt.');
-    return { ok: true, receipt_id: result.receipt_id };
-  }
-  return result;
 }
 
 /**
- * Delete a voicemail.
+ * Soft-delete a voicemail (sets archived_at; row is preserved for audit).
  *
- * Target: DELETE /api/voicemail/{id}.
- * Fail-soft: endpoint added in Pass G.
+ * Target: DELETE /api/voicemail/{id} (Pass I — endpoint now exists).
+ * Yellow tier; idempotent.
  */
 export async function deleteVoicemail(voicemailId: string): Promise<ActionResult> {
-  const result = await apiDelete(`/api/voicemail/${encodeURIComponent(voicemailId)}`);
-  if (!result.ok && result.error?.includes('404')) {
-    console.warn('[frontDeskActions] deleteVoicemail: endpoint not yet built (Pass G). Returning client receipt.');
-    return { ok: true, receipt_id: result.receipt_id };
-  }
-  return result;
+  return apiDelete(`/api/voicemail/${encodeURIComponent(voicemailId)}`);
 }
 
 /**
