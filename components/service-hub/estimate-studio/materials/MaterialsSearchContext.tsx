@@ -13,7 +13,7 @@
  * Aspire Law #7: pure render — hooks own all state. The shell wraps the
  * tree in MaterialsSearchProvider when the active route is Materials.
  */
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   useMaterialsSearch,
   type UseMaterialsSearchResult,
@@ -55,7 +55,7 @@ export function MaterialsSearchProvider({ children, projectAddress }: ProviderPr
 
   // Auto-revert to results when the closest store disappears (e.g. user
   // cleared the search) — keeps the canvas honest.
-  React.useEffect(() => {
+  useEffect(() => {
     if (canvasView === 'route' && !search.closestStore) {
       setCanvasView('results');
     }
