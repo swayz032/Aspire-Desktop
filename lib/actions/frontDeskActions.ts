@@ -18,6 +18,21 @@ import { router } from 'expo-router';
 import { API_BASE } from '@/lib/api/officeMemory';
 import { createRoutingContact } from '@/lib/api/frontDesk';
 import type { RoutingContactCreatePayload } from '@/lib/api/frontDesk';
+import { supabase } from '@/lib/supabase';
+
+/** Build headers with current Supabase Bearer token. Best-effort; if the
+ *  session lookup fails the request goes out unauthenticated and the server
+ *  returns a clean 401 that apiPost/apiPatch/apiDelete surface as an error. */
+async function authHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { ...(extra ?? {}) };
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+  } catch {
+    // swallow — let server respond 401
+  }
+  return headers;
+}
 
 // ---------------------------------------------------------------------------
 // Result shape — every action returns this
@@ -60,7 +75,7 @@ async function apiPost(
   try {
     const resp = await fetch(`${BASE}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body),
       signal: controller.signal,
     });
@@ -108,7 +123,7 @@ async function apiPatch(
   try {
     const resp = await fetch(`${BASE}${path}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body),
       signal: controller.signal,
     });
@@ -150,6 +165,7 @@ async function apiDelete(
   try {
     const resp = await fetch(`${BASE}${path}`, {
       method: 'DELETE',
+      headers: await authHeaders(),
       signal: controller.signal,
     });
     clearTimeout(timer);
@@ -191,18 +207,24 @@ async function apiDelete(
  * immediately and returns ok:true with a client receipt_id.  The call
  * room handles the real session mint.
  */
-export async function callBack(phoneNumber: string): Promise<ActionResult> {
+export async function callBack(
+  phoneNumber: string,
+  opts?: { officeId?: string },
+): Promise<ActionResult> {
   const clientId = clientReceiptId();
-  // Fire-and-forget receipt — do NOT await (call room will handle the real receipt)
+  const cleaned = phoneNumber.replace(/\D/g, '');
+  const toE164 = cleaned.startsWith('1') ? `+${cleaned}` : `+1${cleaned}`;
   apiPost('/api/receipts/outbound-call-started', {
     event: 'outbound_call_started',
-    phone: phoneNumber,
+    phone: toE164,
     receipt_id: clientId,
   }).catch(() => {
     // receipt endpoint is best-effort; caller UX proceeds regardless
   });
-  // Navigate to call room — this is the primary action
-  router.push({ pathname: '/session/calls', params: { to: phoneNumber } });
+  router.push({
+    pathname: '/call-room',
+    params: { phone: toE164, ...(opts?.officeId ? { officeId: opts.officeId } : {}) },
+  } as never);
   return { ok: true, receipt_id: clientId };
 }
 
@@ -221,26 +243,54 @@ export async function sendSms(threadId: string, body: string): Promise<ActionRes
 }
 
 /**
- * Send a new SMS to a fresh recipient.
+ * Normalize a raw phone string to E.164 (+1XXXXXXXXXX for US/CA).
+ * Returns null if normalization is not possible.
  *
- * NOTE: The backend /v1/sms/send requires a thread_memory_id to resolve the
- * to-number — it has no ad-hoc to_phone path. This function is a UI stub until
- * a POST /v1/sms/send-new endpoint is built in the backend (tracked as
- * Pass I follow-up). For now it returns a client-side receipt explaining
- * the gap so callers can surface a clear "unavailable" message instead of a
- * silent 422.
+ * Accepts:
+ *   - 10-digit US number: '9175550200' → '+19175550200'
+ *   - 11-digit (1+10):   '19175550200' → '+19175550200'
+ *   - Already E.164:     '+19175550200' → '+19175550200' (pass-through)
+ *
+ * Rejects anything else (returns null — caller surfaces an error, never guesses).
+ * Law #3: fail closed on ambiguous inputs.
+ */
+function normalizeToE164(raw: string): string | null {
+  const stripped = raw.replace(/[^\d+]/g, '').trim();
+  if (stripped.startsWith('+')) {
+    const digits = stripped.slice(1);
+    return /^\d{7,15}$/.test(digits) ? stripped : null;
+  }
+  const digits = stripped.replace(/\D/g, '');
+  if (/^\d{10}$/.test(digits)) return `+1${digits}`;
+  if (/^1\d{10}$/.test(digits)) return `+${digits}`;
+  return null;
+}
+
+/**
+ * Send a new SMS to a fresh recipient (no existing thread required).
+ *
+ * Calls POST /api/v1/sms/send-new. The backend creates a new memory_objects
+ * thread row and delegates to send_sms so all receipt/Law #2 invariants hold.
+ * Returns ActionResult — never throws.
  */
 export async function sendNewSms(toPhone: string, body: string): Promise<ActionResult> {
-  const receiptId = crypto.randomUUID();
-  console.warn(
-    '[frontDeskActions] sendNewSms: POST /v1/sms/send-new not yet implemented. ' +
-    'Backend requires a thread_memory_id. Track as Pass I backend follow-up.'
-  );
-  return {
-    ok: false,
-    error: 'SMS to new recipients is not yet available. Use an existing thread.',
-    receipt_id: receiptId,
-  };
+  const e164 = normalizeToE164(toPhone);
+  if (!e164) {
+    console.warn(
+      '[frontDeskActions] sendNewSms: could not normalize to E.164.',
+      'Input (truncated):', toPhone.slice(0, 20),
+    );
+    return {
+      ok: false,
+      error: 'Invalid phone number. Provide a 10-digit US number or full E.164 (+1...).',
+      receipt_id: crypto.randomUUID(),
+    };
+  }
+  return apiPost('/api/v1/sms/send-new', {
+    to_phone: e164,
+    body,
+    idempotency_key: crypto.randomUUID(),
+  }, 8_000);
 }
 
 /**

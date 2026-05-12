@@ -8229,6 +8229,14 @@ router.post('/api/elevenlabs/agent-session', async (req: Request, res: Response)
             business_name: profile.business_name || '',
             industry: profile.industry || '',
             office_id: profile.office_id || '',
+            // Tiffany Front Desk + receptionist agents declare `called_number`
+            // as a required dynamic variable on their twilio_* tool configs.
+            // Internal owner-facing sessions don't have a callee — pass an
+            // empty string so EL doesn't 400 with "Missing required dynamic
+            // variables in tools: {'called_number'}". Tiffany will only emit
+            // outbound calls via approval flow, where the destination is
+            // bound on the tool call itself, not this session variable.
+            called_number: '',
           };
         }
       }
@@ -9057,6 +9065,19 @@ router.post('/api/v1/sms/send', async (req: Request, res: Response) => {
     scope: 'telephony:sms_send',
     logTag: 'SmsSend',
     timeoutMs: 10_000,
+    req,
+    res,
+  });
+});
+
+router.post('/api/v1/sms/send-new', async (req: Request, res: Response) => {
+  await proxyForward({
+    orchestratorPath: '/v1/sms/send-new',
+    method: 'POST',
+    body: typeof req.body === 'object' && req.body !== null ? (req.body as Record<string, unknown>) : {},
+    scope: 'telephony:sms_send',
+    logTag: 'SmsSendNew',
+    timeoutMs: 8_000,
     req,
     res,
   });
