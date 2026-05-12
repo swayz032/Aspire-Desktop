@@ -210,9 +210,7 @@ export function DialPadArtwork() {
         disabled={!callable}
         style={{
           ...callBtn,
-          opacity: callable ? 1 : 0.4,
           cursor: callable ? 'pointer' : 'not-allowed',
-          filter: callable ? 'none' : 'saturate(0.5)',
         }}
         onMouseEnter={(e) => {
           if (!callable) return;
