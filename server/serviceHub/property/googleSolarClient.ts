@@ -185,3 +185,130 @@ export async function fetchSolarInsights(
     return { status: 'api_failure' };
   }
 }
+
+// ─── Solar dataLayers:get — 4K aerial roof imagery ───────────────────────────
+
+export type SolarRoofAerial = {
+  status: 'ok' | 'missing' | 'api_failure';
+  /** Signed Google URL for the RGB GeoTIFF. Short-lived (~1h). */
+  rgbUrl?: string;
+  /** Bounding box of the imagery (computed from request coords + radius). */
+  boundingBox?: {
+    sw: { lat: number; lng: number };
+    ne: { lat: number; lng: number };
+  };
+};
+
+export interface FetchSolarRoofAerialOptions {
+  /** Radius in metres around coords to request imagery for. Default: 50. */
+  radiusMeters?: number;
+  timeoutMs?: number;
+}
+
+/**
+ * Fetch the RGB GeoTIFF URL for Google Solar's high-resolution aerial roof
+ * imagery (~10cm/pixel). Caller is responsible for downloading + cropping.
+ *
+ * Solar API rejects pixelSizeMeters < 0.1 with INVALID_ARGUMENT — we send
+ * the floor value to maximise resolution.
+ *
+ * Spec: https://developers.google.com/maps/documentation/solar/reference/rest/v1/dataLayers/get
+ */
+export async function fetchSolarRoofAerial(
+  coords: { lat: number; lng: number },
+  opts: FetchSolarRoofAerialOptions = {},
+): Promise<SolarRoofAerial> {
+  if (!sanitizeCoords(coords)) {
+    return { status: 'api_failure' };
+  }
+  const apiKey = resolveGooglePlacesApiKey();
+  if (!apiKey) {
+    logger.warn('[Solar] aerial: GOOGLE_MAPS_API_KEY not configured');
+    return { status: 'api_failure' };
+  }
+
+  const radiusMeters = opts.radiusMeters ?? 50;
+  const params = new URLSearchParams();
+  params.set('location.latitude', String(coords.lat));
+  params.set('location.longitude', String(coords.lng));
+  params.set('radiusMeters', String(radiusMeters));
+  params.set('view', 'IMAGERY_AND_ANNUAL_FLUX_LAYERS');
+  params.set('requiredQuality', 'HIGH');
+  params.set('pixelSizeMeters', '0.1');
+  params.set('key', apiKey);
+
+  const realUrl = `https://solar.googleapis.com/v1/dataLayers:get?${params.toString()}`;
+  const safeUrl = 'https://solar.googleapis.com/v1/dataLayers:get?<params>&key=<REDACTED>';
+
+  const timeoutMs = opts.timeoutMs ?? 8_000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  const _fetch = getFetch();
+  try {
+    const upstream = await _fetch(realUrl, { method: 'GET', signal: controller.signal });
+    clearTimeout(timer);
+    if (upstream.status === 404) return { status: 'missing' };
+    if (!upstream.ok) {
+      logger.warn('[Solar] aerial upstream non-2xx', {
+        status: upstream.status, url: safeUrl,
+      });
+      return { status: 'api_failure' };
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = await upstream.json() as any;
+    const rgbUrl = typeof data?.rgbUrl === 'string' ? data.rgbUrl : undefined;
+    if (!rgbUrl) return { status: 'missing' };
+
+    // Bounding box computed from request — Solar doesn't echo it back.
+    const dLat = radiusMeters / 111320;
+    const dLng = radiusMeters / (111320 * Math.cos((coords.lat * Math.PI) / 180));
+    return {
+      status: 'ok',
+      rgbUrl,
+      boundingBox: {
+        sw: { lat: coords.lat - dLat, lng: coords.lng - dLng },
+        ne: { lat: coords.lat + dLat, lng: coords.lng + dLng },
+      },
+    };
+  } catch (err: unknown) {
+    clearTimeout(timer);
+    const isTimeout = err instanceof Error && err.name === 'AbortError';
+    logger.warn('[Solar] aerial proxy error', {
+      isTimeout,
+      reason: err instanceof Error ? err.message.slice(0, 120) : 'unknown',
+      url: safeUrl,
+    });
+    return { status: 'api_failure' };
+  }
+}
+
+/**
+ * Download the bytes behind a Solar signed URL. The URL Solar returns is
+ * SHORT-LIVED and does NOT include the API key — we must append it server-side
+ * before fetching. Returns the raw GeoTIFF bytes for caller to process via sharp.
+ */
+export async function fetchSolarSignedUrlBytes(
+  signedUrl: string,
+  opts: { timeoutMs?: number } = {},
+): Promise<{ status: 'ok'; bytes: Uint8Array } | { status: 'api_failure' }> {
+  const apiKey = resolveGooglePlacesApiKey();
+  if (!apiKey) return { status: 'api_failure' };
+  // Append key — Solar signed URLs require it appended by the caller.
+  const url = signedUrl.includes('?')
+    ? `${signedUrl}&key=${apiKey}`
+    : `${signedUrl}?key=${apiKey}`;
+  const timeoutMs = opts.timeoutMs ?? 15_000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await getFetch()(url, { method: 'GET', signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) return { status: 'api_failure' };
+    const buf = new Uint8Array(await res.arrayBuffer());
+    return { status: 'ok', bytes: buf };
+  } catch {
+    clearTimeout(timer);
+    return { status: 'api_failure' };
+  }
+}

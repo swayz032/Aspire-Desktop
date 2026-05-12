@@ -165,6 +165,30 @@ function emptyLane(): PhotoLane {
   return { count: 0, photos: [] };
 }
 
+/**
+ * Override the roof lane's thumbnailUrl to point at the Google Solar 4K
+ * aerial endpoint instead of Adam's Zillow photo. The Zillow photo (if any)
+ * stays in `photos[]` as a fallback the UI can use if Solar 404s. Keeping
+ * the count > 0 ensures the card renders even when Adam returned no roof
+ * photos but Solar has aerial imagery (most addresses do).
+ *
+ * The endpoint is auth-bypassed (loaded via <img src>) and 24h-cached
+ * server-side, so the same address only hits Google Solar once a day.
+ */
+function decorateRoofWithSolarAerial(
+  lanes: PropertyData['photos'],
+  address: string,
+): PropertyData['photos'] {
+  const trimmed = (address || '').trim();
+  if (!trimmed) return lanes;
+  const url = `/api/property/roof-aerial?address=${encodeURIComponent(trimmed)}`;
+  lanes.roof.thumbnailUrl = url;
+  // Make sure count is at least 1 so the card doesn't render in the
+  // empty-icon state when Solar has imagery but Adam didn't.
+  if (lanes.roof.count === 0) lanes.roof.count = 1;
+  return lanes;
+}
+
 function emptyLanes(): PropertyData['photos'] {
   return {
     interior: emptyLane(),
@@ -520,7 +544,10 @@ export async function aggregatePropertyData(
       streetViewProxyUrl,
     },
     facts,
-    photos: buildPhotoLanesFromAdam(adamResult?.photos, streetViewProxyUrl),
+    photos: decorateRoofWithSolarAerial(
+      buildPhotoLanesFromAdam(adamResult?.photos, streetViewProxyUrl),
+      formattedAddress || cleanAddress,
+    ),
     signals: {
       materials,
       roofType: solarRoofType,

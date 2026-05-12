@@ -99,6 +99,10 @@ const PUBLIC_PATHS = [
                                       //  Supabase session cookies; the Anam JWT is what authorizes the
                                       //  SDK's WebRTC connect downstream, so HTML alone has no value
                                       //  without the matching token).
+  '/api/property/roof-aerial',       // Google Solar 4K aerial roof image — public for same reason as
+                                      //  streetview: <img src=> can't carry a Bearer token. Handler
+                                      //  validates address input, fetches Solar dataLayers GeoTIFF,
+                                      //  polygon-crops via sharp, returns processed WebP. No PII.
   '/api/places/streetview',          // Street View image proxy — must be public because <img src=> cannot
                                       //  carry a Bearer token. Protected by handler-level input validation:
                                       //  ASCII-only address whitelist, 200-char cap, numeric lat/lng regex,
@@ -794,6 +798,16 @@ try {
   logger.info('[INFO] Building footprint route registered (GET /api/property/building-footprint)');
 } catch (e) {
   logger.warn('Building footprint route not available, skipping', {
+    reason: e instanceof Error ? e.message.slice(0, 160) : 'unknown',
+  });
+}
+
+try {
+  const { handleRoofAerial } = require('./serviceHub/property/roofAerialRoute');
+  app.get('/api/property/roof-aerial', handleRoofAerial);
+  logger.info('[INFO] Roof Aerial route registered (GET /api/property/roof-aerial)');
+} catch (e) {
+  logger.warn('Roof Aerial route not available, skipping', {
     reason: e instanceof Error ? e.message.slice(0, 160) : 'unknown',
   });
 }
