@@ -108,6 +108,8 @@ export type PropertyData = {
       description?: string;
       value?: number;
       contractor?: string;
+      status?: string;
+      number?: string;
     }>;
     /** Mortgage + lender. */
     mortgageLender?: string;

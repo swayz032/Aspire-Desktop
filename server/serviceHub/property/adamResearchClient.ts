@@ -76,6 +76,8 @@ export type AdamPropertyResult = {
       description?: string;
       value?: number;
       contractor?: string;
+      status?: string;
+      number?: string;
     }>;
     /** Mortgage + lender info from attom.detail_mortgage_owner. */
     mortgageLender?: string;
@@ -559,13 +561,21 @@ function normalizePermits(raw: unknown): AdamPropertyResult['facts']['permits'] 
     const type = toTrimmedString(o.permit_type ?? o.type);
     const description = toTrimmedString(o.description ?? o.project_description);
     const value = toFiniteNumber(o.permit_value ?? o.job_value ?? o.value);
-    const contractor = toTrimmedString(o.contractor ?? o.contractor_name);
+    // Backend sends contractor in `business` field (semicolon-delimited
+    // list when multiple trades on one permit). Accept either key.
+    const contractor = toTrimmedString(
+      o.contractor ?? o.contractor_name ?? o.business,
+    );
+    const status = toTrimmedString(o.status ?? o.permit_status);
+    const number = toTrimmedString(o.number ?? o.permit_number);
     const entry: NonNullable<typeof out[number]> = {};
     if (date !== undefined) entry.date = date;
     if (type !== undefined) entry.type = type;
     if (description !== undefined) entry.description = description;
     if (value !== undefined) entry.value = value;
     if (contractor !== undefined) entry.contractor = contractor;
+    if (status !== undefined) entry.status = status;
+    if (number !== undefined) entry.number = number;
     if (Object.keys(entry).length > 0) out.push(entry);
   }
   return out.length > 0 ? out : undefined;

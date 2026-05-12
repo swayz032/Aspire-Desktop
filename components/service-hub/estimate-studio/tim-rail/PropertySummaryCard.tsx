@@ -480,24 +480,117 @@ export function PropertySummaryCard({ data, loading }: Props) {
           </Text>
         </View>
         {Array.isArray(f.permits) && f.permits.length > 0 ? (
-          <View style={styles.sectionBody}>
+          <View style={styles.permitList}>
             {f.permits.slice(0, 8).map((p, idx) => {
-              const headline = [p.type, p.description].filter(Boolean).join(' · ');
-              const meta = [
-                p.date,
-                typeof p.value === 'number' ? formatCurrency(p.value) : null,
-                p.contractor,
-              ]
-                .filter(Boolean)
-                .join(' · ');
+              // Headline prefers description (the specific scope), with
+              // type as a fallback. ATTOM's `type` field is often the
+              // legacy registry name ("Legacy permit records") — less
+              // useful as a headline. Description is the human-readable
+              // scope of work.
+              const headline =
+                (p.description && p.description.trim()) ||
+                (p.type && p.type.trim()) ||
+                `Permit ${idx + 1}`;
+              // Sub-headline = type when distinct from headline.
+              const subHeadline =
+                p.type && p.description && p.type !== p.description
+                  ? p.type
+                  : '';
+              // Contractor list — semicolon-delimited from ATTOM. Split
+              // into chips for readability.
+              const contractors = (p.contractor || '')
+                .split(/;|·/)
+                .map((s) => s.trim())
+                .filter(Boolean);
+              const status = (p.status || '').toLowerCase();
+              const statusVariant: 'positive' | 'warning' | 'neutral' =
+                status === 'final' || status === 'finalized' || status === 'finaled'
+                  ? 'positive'
+                  : status === 'expired' || status === 'cancelled' || status === 'canceled'
+                    ? 'warning'
+                    : 'neutral';
               return (
-                <View style={styles.factRow} key={`permit-${idx}`}>
-                  <Text style={styles.factLabel} numberOfLines={1}>
-                    {headline || `Permit ${idx + 1}`}
-                  </Text>
-                  <Text style={styles.factValue} numberOfLines={1}>
-                    {meta || '—'}
-                  </Text>
+                <View style={styles.permitCard} key={`permit-${idx}`}>
+                  <View style={styles.permitHeaderRow}>
+                    <Text style={styles.permitHeadline} numberOfLines={2}>
+                      {headline}
+                    </Text>
+                    {!!p.status && (
+                      <View
+                        style={[
+                          styles.chip,
+                          statusVariant === 'positive' && styles.chipPositive,
+                          statusVariant === 'warning' && styles.chipWarning,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.chipText,
+                            statusVariant === 'positive' && styles.chipTextPositive,
+                            statusVariant === 'warning' && styles.chipTextWarning,
+                          ]}
+                        >
+                          {p.status.toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {!!subHeadline && (
+                    <Text style={styles.permitSub} numberOfLines={1}>
+                      {subHeadline}
+                    </Text>
+                  )}
+
+                  <View style={styles.permitMetaRow}>
+                    {!!p.date && (
+                      <View style={styles.permitMetaItem}>
+                        <Ionicons
+                          name="calendar-outline"
+                          size={10}
+                          color="rgba(255,255,255,0.45)"
+                        />
+                        <Text style={styles.permitMetaText}>{p.date}</Text>
+                      </View>
+                    )}
+                    {typeof p.value === 'number' && p.value > 0 && (
+                      <View style={styles.permitMetaItem}>
+                        <Ionicons
+                          name="cash-outline"
+                          size={10}
+                          color="rgba(255,255,255,0.45)"
+                        />
+                        <Text style={[styles.permitMetaText, styles.permitMetaTextAccent]}>
+                          {formatCurrency(p.value)}
+                        </Text>
+                      </View>
+                    )}
+                    {!!p.number && (
+                      <View style={styles.permitMetaItem}>
+                        <Ionicons
+                          name="pricetag-outline"
+                          size={10}
+                          color="rgba(255,255,255,0.45)"
+                        />
+                        <Text style={styles.permitMetaText}>#{p.number}</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {contractors.length > 0 && (
+                    <View style={styles.permitContractorWrap}>
+                      <Text style={styles.permitContractorLabel}>Contractor</Text>
+                      <View style={styles.permitContractorChips}>
+                        {contractors.map((c, ci) => (
+                          <View style={styles.permitContractorChip} key={`c-${ci}`}>
+                            <Text style={styles.permitContractorText} numberOfLines={1}>
+                              {c}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
                 </View>
               );
             })}
@@ -508,8 +601,8 @@ export function PropertySummaryCard({ data, loading }: Props) {
         ) : (
           <View style={styles.surface}>
             <Text style={styles.muted}>
-              Adam queried ATTOM building_permits but the slim pipeline
-              didn't surface them. Verify directly with city/county records.
+              No permits returned by ATTOM for this address. Verify directly
+              with city/county records for renovation history.
             </Text>
           </View>
         )}
@@ -1035,6 +1128,94 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.50)',
     letterSpacing: -0.05,
     fontVariant: ['tabular-nums'],
+  },
+
+  // PERMIT CARDS (premium per-permit layout — escapes the narrow factRow)
+  permitList: {
+    gap: 10,
+  },
+  permitCard: {
+    backgroundColor: 'rgba(255,255,255,0.035)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 10,
+    padding: 12,
+    gap: 8,
+  },
+  permitHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  permitHeadline: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.96)',
+    letterSpacing: -0.2,
+    lineHeight: 17,
+  },
+  permitSub: {
+    fontSize: 10.5,
+    color: 'rgba(255,255,255,0.55)',
+    letterSpacing: 0,
+    lineHeight: 14,
+  },
+  permitMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    rowGap: 4,
+    alignItems: 'center',
+  },
+  permitMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  permitMetaText: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.70)',
+    fontVariant: ['tabular-nums'],
+    fontWeight: '500',
+  },
+  permitMetaTextAccent: {
+    color: '#fbbf24',
+    fontWeight: '700',
+  },
+  permitContractorWrap: {
+    paddingTop: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.06)',
+    gap: 5,
+  },
+  permitContractorLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.40)',
+    letterSpacing: 1.0,
+    textTransform: 'uppercase',
+  },
+  permitContractorChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  permitContractorChip: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 5,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+    maxWidth: '100%',
+  },
+  permitContractorText: {
+    fontSize: 10.5,
+    color: 'rgba(255,255,255,0.80)',
+    fontWeight: '500',
+    letterSpacing: -0.05,
   },
   pillRow: {
     flexDirection: 'row',
