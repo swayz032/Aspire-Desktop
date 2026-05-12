@@ -1540,21 +1540,62 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
   }
 
   if (!effectiveTask) {
+    // 2026-05-12 (W12.9): empty-body detection. Session 2fc0590e showed
+    // Anam sending a COMPLETELY EMPTY HTTP body for an invoke_quinn call
+    // (bodyKeys=[], rawBodyLen=0, contentType="(none)") even though the
+    // Anam Lab UI displayed args as {"task":"invoice","agent":"quinn",
+    // "customer_name":"Clark"}. Intermittent Anam SDK bug — same persona,
+    // same tool, Tony Carter at 13:16 worked perfectly. When body is
+    // truly empty we don't know which agent the user wanted, so the
+    // resolvedAgent="adam" default leads to the wrong error message.
+    // Treat empty-body as a transient transport failure with a generic
+    // "I missed that" retry prompt that's safe in any conversation context.
+    const bodyKeys = Object.keys(body || {});
+    // Filter out only context-injected keys (suite_id etc) to detect a
+    // truly-empty payload from Anam.
+    const meaningfulKeys = bodyKeys.filter(
+      (k) => !['suite_id', 'suiteId', 'office_id', 'officeId', 'user_id', 'userId'].includes(k),
+    );
+    const isEmptyBody = meaningfulKeys.length === 0;
+
     logger.warn('[AgentTool] invoke missing task/query/details after normalization', {
       agent: resolvedAgent,
       correlationId,
       rawBodyKeys: req.body && typeof req.body === 'object' ? Object.keys(req.body as Record<string, any>).slice(0, 20) : [],
-      normalizedKeys: Object.keys(body).slice(0, 20),
+      normalizedKeys: bodyKeys.slice(0, 20),
+      isEmptyBody,
     });
     // Round 7 C-1: receipt for MISSING_TASK denial — closes the silent-failure
     // gap surfaced in transcript 3ca28bc6 (3× MISSING_TASK with no receipts).
     await emitEarlyExitReceipt({
       receiptType: 'invoke_denial',
       status: 'DENIED',
-      reasonCode: 'MISSING_TASK',
+      reasonCode: isEmptyBody ? 'EMPTY_BODY' : 'MISSING_TASK',
       toolUsed: `invoke_${resolvedAgent}`,
     });
-    // 2026-05-12 (W12.8): agent-specific error message. Adam's "research"
+
+    // Empty-body case: don't pretend we know the user's intent. Return a
+    // generic retry prompt that's safe whether they wanted invoice, research,
+    // or anything else.
+    if (isEmptyBody) {
+      // Telemetry counter so we can quantify how often Anam sends empty
+      // bodies. If rate is non-trivial, escalate to Anam support.
+      logger.warn('ava.invoke.empty_body', {
+        correlationId,
+        agentInferred: resolvedAgent,
+        contentType: req.headers['content-type'] || '(none)',
+        contentLength: req.headers['content-length'] || '0',
+        rawBodyType: typeof req.body,
+      });
+      return res.status(200).json({
+        error: 'EMPTY_BODY',
+        status: 'retry',
+        message: "I missed that. Can you say that again?",
+      });
+    }
+
+    // 2026-05-12 (W12.8): agent-specific error message for non-empty
+    // bodies that happen to be missing the task field. Adam's "research"
     // language was wrong for Quinn — confused users on invoice errors.
     const agentErrorMessage =
       resolvedAgent === 'quinn'
