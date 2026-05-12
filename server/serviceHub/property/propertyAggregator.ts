@@ -182,14 +182,16 @@ function decorateRoofWithSolarAerial(
 ): PropertyData['photos'] {
   const trimmed = (address || '').trim();
   if (!trimmed) return lanes;
-  // Only inject the Solar aerial when Solar actually has coverage. When
-  // it doesn't, leave the roof lane alone — the frontend's HeroSwitcher
-  // sees roofImagery==='streetview' and renders the interactive Pano
-  // instead of a static-image gallery (which would be 640x640 max).
+  // When Solar lacks aerial coverage, point the SMALL Roof tile thumbnail
+  // at the Street View static proxy so the tile shows a real image of the
+  // property (not just an icon). The LARGE canvas is handled separately:
+  // HeroSwitcher sees roofImagery==='streetview' and renders the interactive
+  // Pano (LiveStreetViewHero) — same 4K experience as the Street View card.
+  // Static is fine for the 96-pixel thumbnail; we never serve static into
+  // the canvas.
   if (!hasSolarAerial) {
-    // Keep at least 1 count so the small Roof card tile still renders;
-    // the tile thumbnail falls through to its icon since no thumbnailUrl
-    // is set.
+    const svUrl = `/api/places/streetview?address=${encodeURIComponent(trimmed)}`;
+    lanes.roof.thumbnailUrl = svUrl;
     if (lanes.roof.count === 0) lanes.roof.count = 1;
     return lanes;
   }
