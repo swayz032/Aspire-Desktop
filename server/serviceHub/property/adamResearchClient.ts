@@ -220,50 +220,26 @@ function normalizePhotos(record: AdamRecordRaw): AdamPropertyResult['photos'] {
     return undefined;
   }
 
-  // ---- Heuristic lane classifier (overrides Adam when its lane is empty)
-  // Adam returns lane='uncategorized' for most Zillow listings because
-  // their captions are too generic ("Photo 4") for the python keyword
-  // classifier to fire. We re-classify on the local side using:
-  //   1. caption keyword scan (more aggressive than Adam's)
-  //   2. positional heuristic — Zillow's responsivePhotos[] are ordered
-  //      front-cover-first, with interior shots in the middle, and
-  //      sometimes a roof aerial near the end
-  // This stops every photo from landing in "Exterior" by default.
-  const KW_INTERIOR = /\b(kitchen|bath|bed|room|living|dining|family|laundry|closet|interior|hall|stair|foyer|office|den|loft)\b/i;
+  // ---- Caption-driven lane classifier (no positional guessing)
+  // Prior positional heuristic was forcing idx 0/1/N-1/N-2 into exterior/roof
+  // regardless of actual photo content. Real-world Zillow listings start with
+  // whatever the agent chose (often a kitchen or primary bedroom), so the
+  // "first 2 = exterior, last = roof" rule mis-classified ~80% of mid-listing
+  // and edge-position shots into the wrong lane.
+  //
+  // New rule: ONLY classify out of interior when the caption explicitly says
+  // so. Default to interior (most common content type). The Roof lane is
+  // owned by Google Solar 4K aerial now (propertyAggregator.decorateRoofWith-
+  // SolarAerial), so we no longer need positional roof guessing.
+  const KW_INTERIOR = /\b(kitchen|bath|bed|room|living|dining|family|laundry|closet|interior|hall|stair|foyer|office|den|loft|primary|master|guest)\b/i;
   const KW_ROOF      = /\b(roof|aerial|drone|overhead|chimney|gutter)\b/i;
-  const KW_EXTERIOR  = /\b(exterior|front|back|side|yard|deck|patio|porch|driveway|garage|fence|landscap)\b/i;
+  const KW_EXTERIOR  = /\b(exterior|front|back|side|yard|deck|patio|porch|driveway|garage|fence|landscap|view from|street view|curb)\b/i;
 
-  function classifyByCaption(caption: string | undefined): 'interior' | 'exterior' | 'roof' | null {
-    if (!caption) return null;
+  function classify(caption: string | undefined): 'interior' | 'exterior' | 'roof' {
+    if (!caption) return 'interior';
     if (KW_ROOF.test(caption)) return 'roof';
-    if (KW_INTERIOR.test(caption)) return 'interior';
     if (KW_EXTERIOR.test(caption)) return 'exterior';
-    return null;
-  }
-
-  // Positional heuristic for Zillow ordering when caption is missing.
-  // Zillow listings reliably order: cover (exterior), interior tour,
-  // bonus shots. Distribution scales with total count so we never dump
-  // every photo into one lane:
-  //   N=1   → [exterior]
-  //   N=2   → [exterior, interior]
-  //   N=3   → [exterior, interior, exterior]
-  //   N=4-6 → first = exterior, last = exterior, middle = interior
-  //   N≥7   → first 2 = exterior, last 1 = exterior (or roof if aerial-likely),
-  //           middle = interior
-  function classifyByPosition(idx: number, total: number): 'interior' | 'exterior' | 'roof' {
-    if (total <= 1) return 'exterior';
-    if (total === 2) return idx === 0 ? 'exterior' : 'interior';
-    if (total === 3) return idx === 1 ? 'interior' : 'exterior';
-    if (total <= 6) {
-      if (idx === 0 || idx === total - 1) return 'exterior';
-      return 'interior';
-    }
-    // N >= 7 — most Zillow listings. First 2 are cover shots (exterior),
-    // last is often an aerial/roof drone shot, second-to-last is exterior.
-    if (idx <= 1) return 'exterior';
-    if (idx === total - 1) return 'roof';
-    if (idx === total - 2) return 'exterior';
+    if (KW_INTERIOR.test(caption)) return 'interior';
     return 'interior';
   }
 
@@ -278,20 +254,24 @@ function normalizePhotos(record: AdamRecordRaw): AdamPropertyResult['photos'] {
     const caption = toTrimmedString(p.caption);
     const item: PhotoItem = caption ? { url, caption } : { url };
 
-    // Adam's lane wins ONLY if it explicitly classified the photo. Empty
-    // / 'uncategorized' / unknown values fall through to our heuristics.
+    // Adam's lane wins ONLY when it ran a real classifier (interior/exterior/
+    // roof). 'uncategorized' / empty / unknown values fall through to our
+    // caption-driven classifier, which defaults to interior when there's
+    // no signal — that's the safest assumption since interior photos are
+    // the majority of any Zillow listing.
     const adamLane = toTrimmedString(p.lane)?.toLowerCase() ?? '';
-    let lane: 'interior' | 'exterior' | 'roof' | null = null;
+    let lane: 'interior' | 'exterior' | 'roof';
     if (adamLane === 'interior' || adamLane === 'exterior' || adamLane === 'roof') {
       lane = adamLane;
+    } else {
+      lane = classify(caption);
     }
-    if (!lane) lane = classifyByCaption(caption);
-    if (!lane) lane = classifyByPosition(idx, raw.length);
 
     if (lane === 'interior') interior.push(item);
     else if (lane === 'exterior') exterior.push(item);
-    else if (lane === 'roof') roof.push(item);
-    else uncategorized.push(item);
+    else roof.push(item);
+    // unused but kept so the existing AdamPropertyResult shape stays stable
+    void idx; void uncategorized;
   });
 
   return {
