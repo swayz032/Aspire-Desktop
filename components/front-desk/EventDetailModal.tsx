@@ -1,6 +1,8 @@
 import React, { useEffect } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import type { FeedEventType, EventItemVM } from '@/components/front-desk/types';
+import { UnknownAvatar } from '@/components/front-desk/states/UnknownAvatar';
 
 /**
  * EventDetailModal — flat premium black glassy popup that opens when the user
@@ -9,26 +11,15 @@ import { Ionicons } from '@expo/vector-icons';
  * Frame is identical for every event type (backdrop blur + centered glassy
  * card + sticky header + scrollable body + sticky footer). The BODY swaps
  * per type: missed call / voicemail / SMS / callback / incoming call.
- * Mock content for the skeleton — wire-ups land later.
+ *
+ * Pass B: types come from @/components/front-desk/types. EventItem is now an
+ * alias of EventItemVM (which mirrors FeedItemVM structurally).
  */
 
-export type EventType =
-  | 'missed_call'
-  | 'voicemail'
-  | 'sms'
-  | 'callback'
-  | 'incoming_call';
-
-export type EventItem = {
-  id: string;
-  name: string;
-  initials: string;
-  avatarColor: string;
-  entity: 'Lead' | 'Client' | 'Vendor' | null;
-  type: EventType;
-  preview: string;
-  time: string;
-};
+// Re-export the canonical type aliases for backwards compatibility with
+// existing import sites (TodayFeed imports `type EventItem`).
+export type EventType = FeedEventType;
+export type EventItem = EventItemVM;
 
 const TYPE_META: Record<
   EventType,
@@ -41,7 +32,9 @@ const TYPE_META: Record<
   incoming_call: { label: 'Incoming call', icon: 'arrow-down-circle-outline', color: '#22C55E' },
 };
 
-const ENTITY_PILL: Record<NonNullable<EventItem['entity']>, { bg: string; fg: string }> = {
+// Only the three "real" entity types render a colored pill; "Unknown" callers
+// use UnknownAvatar instead of a pill and skip the entity badge entirely.
+const ENTITY_PILL: Record<'Lead' | 'Client' | 'Vendor', { bg: string; fg: string }> = {
   Lead: { bg: 'rgba(59,130,246,0.18)', fg: '#60A5FA' },
   Client: { bg: 'rgba(34,211,238,0.18)', fg: '#22D3EE' },
   Vendor: { bg: 'rgba(168,162,158,0.18)', fg: '#D6D3D1' },
@@ -103,16 +96,22 @@ export function EventDetailModal({
         {/* Header */}
         <div style={header}>
           <div style={headerLeft}>
-            <Avatar initials={item.initials} color={item.avatarColor} size={44} />
+            {item.kind === 'unknown' ? (
+              <UnknownAvatar size={44} />
+            ) : (
+              <Avatar initials={item.initials} color={item.avatarColor} size={44} />
+            )}
             <div style={headerText}>
               <div style={headerNameRow}>
-                <span style={headerName}>{item.name}</span>
-                {item.entity ? (
+                <span style={{ ...headerName, color: item.kind === 'unknown' ? 'rgba(255,255,255,0.75)' : '#fff' }}>
+                  {item.kind === 'unknown' ? 'Unknown caller' : item.name}
+                </span>
+                {item.entity && item.entity !== 'Unknown' ? (
                   <span
                     style={{
                       ...entityPill,
-                      background: ENTITY_PILL[item.entity].bg,
-                      color: ENTITY_PILL[item.entity].fg,
+                      background: ENTITY_PILL[item.entity as 'Lead' | 'Client' | 'Vendor'].bg,
+                      color: ENTITY_PILL[item.entity as 'Lead' | 'Client' | 'Vendor'].fg,
                     }}
                   >
                     {item.entity}
@@ -173,8 +172,8 @@ function Body({ item }: { item: EventItem }) {
         </Section>
         <Section title="Transcript">
           <p style={pText}>
-            Hi, this is {item.name.split(' ')[0]}. {item.preview} Please give me a call back
-            whenever you get a chance. Thanks!
+            Hi, this is {item.kind === 'unknown' ? 'an unknown caller' : item.name.split(' ')[0]}.{' '}
+            {item.preview} Please give me a call back whenever you get a chance. Thanks!
           </p>
         </Section>
         <Section title="Recent history">

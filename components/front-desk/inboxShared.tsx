@@ -29,13 +29,10 @@ export function ensureInvisibleScrollCss() {
   document.head.appendChild(style);
 }
 
-export type EventType =
-  | 'missed_call'
-  | 'voicemail'
-  | 'sms'
-  | 'callback'
-  | 'incoming_call'
-  | 'outgoing_call';
+// EventType is now defined canonically in @/components/front-desk/types.
+// Re-exported here to keep the import surface stable for existing call sites.
+export type { EventType } from '@/components/front-desk/types';
+import type { EventType } from '@/components/front-desk/types';
 
 export const TYPE_COLOR: Record<EventType, string> = {
   missed_call: '#EF4444',

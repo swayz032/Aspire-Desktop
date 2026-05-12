@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -10,115 +10,18 @@ import {
   styleTokens as t,
   TYPE_COLOR,
 } from '@/components/front-desk/inboxShared';
+import type { IncomingCallVM } from '@/components/front-desk/types';
+import { MOCK_INCOMING_CALLS } from '@/lib/frontDeskMock';
+import { useFrontDeskSection } from '@/hooks/useFrontDeskSection';
+import { LoadingSkeleton } from '@/components/front-desk/states/LoadingSkeleton';
+import { EmptyState } from '@/components/front-desk/states/EmptyState';
+import { ErrorState } from '@/components/front-desk/states/ErrorState';
+import { UnknownAvatar } from '@/components/front-desk/states/UnknownAvatar';
 
 /**
- * IncomingWorkspace — list of inbound answered calls. MOCK only.
+ * IncomingWorkspace — list of inbound answered calls.
+ * Pass B: VM types + mock fixtures from @/lib/frontDeskMock.
  */
-
-type Inbound = {
-  id: string;
-  name: string;
-  initials: string;
-  avatarColor: string;
-  phone: string;
-  duration: string;
-  time: string;
-  summary: string[];
-  transcript: { side: 'them' | 'you'; text: string }[];
-};
-
-const MOCK: Inbound[] = [
-  {
-    id: 'i1',
-    name: 'John Carter',
-    initials: 'JC',
-    avatarColor: '#3B82F6',
-    phone: '(617) 555-0721',
-    duration: '4:23',
-    time: '34m',
-    summary: [
-      'Caller is interested in a kitchen remodel quote for a 12x14 space.',
-      'Budget range mentioned: $35-45k. Timeline: late summer.',
-      'Asked to email project portfolio and a sample SOW.',
-    ],
-    transcript: [
-      { side: 'them', text: 'Hi, I got your number from a neighbor — saw the work you did on their kitchen.' },
-      { side: 'you', text: 'Thanks for reaching out! What kind of project are you thinking about?' },
-      { side: 'them', text: 'Kitchen remodel, about 12 by 14. Looking to update everything.' },
-      { side: 'you', text: 'Got it. Any sense of timeline or budget?' },
-      { side: 'them', text: 'Late summer, somewhere in the 35 to 45 range.' },
-    ],
-  },
-  {
-    id: 'i2',
-    name: 'Peter Hwang',
-    initials: 'PH',
-    avatarColor: '#F97316',
-    phone: '(617) 555-0299',
-    duration: '6:08',
-    time: '5h',
-    summary: [
-      'Existing client — calling about the deck project punch list.',
-      'Reported a loose railing on the upper landing.',
-      'Wants someone out by end of week.',
-    ],
-    transcript: [
-      { side: 'them', text: 'Hey, quick punch list issue on the deck.' },
-      { side: 'you', text: 'Sure, what is going on?' },
-      { side: 'them', text: 'The railing on the top landing is a little loose.' },
-    ],
-  },
-  {
-    id: 'i3',
-    name: 'Linda Park',
-    initials: 'LP',
-    avatarColor: '#10B981',
-    phone: '(617) 555-0517',
-    duration: '2:54',
-    time: 'Yesterday',
-    summary: [
-      'New lead from Yelp. Wants window replacement quote, 9 windows.',
-      'Asked about energy-efficient options.',
-      'Will text address for site visit.',
-    ],
-    transcript: [
-      { side: 'them', text: 'Hi, found you on Yelp. Need quotes on 9 windows.' },
-    ],
-  },
-  {
-    id: 'i4',
-    name: 'Roy Atkins',
-    initials: 'RA',
-    avatarColor: '#A855F7',
-    phone: '(617) 555-0388',
-    duration: '1:12',
-    time: 'Yesterday',
-    summary: [
-      'Asking about availability for a roof inspection.',
-      'Insurance claim related — needs report by next Friday.',
-    ],
-    transcript: [
-      { side: 'them', text: 'Need a roof inspection report for an insurance claim.' },
-    ],
-  },
-  {
-    id: 'i5',
-    name: 'Tara Singh',
-    initials: 'TS',
-    avatarColor: '#EC4899',
-    phone: '(617) 555-0203',
-    duration: '8:42',
-    time: '2 days',
-    summary: [
-      'Long-time client — bathroom remodel follow-up.',
-      'Approved the change order verbally; wants it emailed for signature.',
-      'Mentioned a future basement finish project for next year.',
-    ],
-    transcript: [
-      { side: 'them', text: 'About that change order — looks good, send it over to sign.' },
-    ],
-  },
-];
 
 type Mode = { kind: 'list' } | { kind: 'detail'; id: string };
 
@@ -128,53 +31,116 @@ export function IncomingWorkspace({ onBackToMenu }: { onBackToMenu?: () => void 
     ensureInvisibleScrollCss();
   }, []);
 
+  const fetcher = useCallback(() => Promise.resolve(MOCK_INCOMING_CALLS), []);
+  const { data, loading, error, refresh } = useFrontDeskSection<IncomingCallVM>(fetcher, {
+    mock: MOCK_INCOMING_CALLS,
+  });
+
   if (Platform.OS !== 'web') return <View style={styles.fill} />;
 
   if (mode.kind === 'list') {
-    return <InboundList onBackToMenu={onBackToMenu} onPick={(id) => setMode({ kind: 'detail', id })} />;
+    return (
+      <InboundList
+        data={data}
+        loading={loading}
+        error={error}
+        onRetry={refresh}
+        onBackToMenu={onBackToMenu}
+        onPick={(id) => setMode({ kind: 'detail', id })}
+      />
+    );
   }
-  const item = MOCK.find((m) => m.id === mode.id);
-  if (!item) return <InboundList onBackToMenu={onBackToMenu} onPick={(id) => setMode({ kind: 'detail', id })} />;
+  const item = (data ?? []).find((m) => m.id === mode.id);
+  if (!item)
+    return (
+      <InboundList
+        data={data}
+        loading={loading}
+        error={error}
+        onRetry={refresh}
+        onBackToMenu={onBackToMenu}
+        onPick={(id) => setMode({ kind: 'detail', id })}
+      />
+    );
   return <InboundDetail item={item} onBack={() => setMode({ kind: 'list' })} />;
 }
 
-function InboundList({ onBackToMenu, onPick }: { onBackToMenu?: () => void; onPick: (id: string) => void }) {
+function InboundList({
+  data,
+  loading,
+  error,
+  onRetry,
+  onBackToMenu,
+  onPick,
+}: {
+  data: IncomingCallVM[] | null;
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+  onBackToMenu?: () => void;
+  onPick: (id: string) => void;
+}) {
   return (
     <div style={t.listWrap}>
       <ListHeader icon="arrow-down-circle-outline" title="Incoming" onBackToMenu={onBackToMenu} />
       <div className="aspire-invisible-scroll" style={t.listScroll}>
-        {MOCK.map((m) => (
-          <button
-            key={m.id}
-            onClick={() => onPick(m.id)}
-            style={t.rowBtn}
-            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)')}
-            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
-          >
-            <Avatar initials={m.initials} color={m.avatarColor} />
-            <div style={t.rowText}>
-              <div style={t.rowTopLine}>
-                <span style={t.rowName}>{m.name}</span>
-                <span style={t.rowTime}>{m.time}</span>
+        {loading ? (
+          <LoadingSkeleton variant="list" count={6} />
+        ) : error ? (
+          <ErrorState message={error} onRetry={onRetry} />
+        ) : !data || data.length === 0 ? (
+          <EmptyState
+            icon="arrow-down-circle-outline"
+            headline="No incoming calls yet"
+            subtitle="Answered inbound calls will land here."
+          />
+        ) : (
+          data.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => onPick(m.id)}
+              style={t.rowBtn}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)')}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
+            >
+              {m.kind === 'unknown' ? (
+                <UnknownAvatar size={36} />
+              ) : (
+                <Avatar initials={m.initials} color={m.avatarColor} />
+              )}
+              <div style={t.rowText}>
+                <div style={t.rowTopLine}>
+                  <span style={{ ...t.rowName, color: m.kind === 'unknown' ? 'rgba(255,255,255,0.75)' : '#fff' }}>
+                    {m.kind === 'unknown' ? 'Unknown caller' : m.name}
+                  </span>
+                  <span style={t.rowTime}>{m.time}</span>
+                </div>
+                <div style={t.rowMidLine}>
+                  <span style={{ ...t.rowPreview, color: 'rgba(34,197,94,0.85)' }}>Inbound · {m.duration}</span>
+                </div>
               </div>
-              <div style={t.rowMidLine}>
-                <span style={{ ...t.rowPreview, color: 'rgba(34,197,94,0.85)' }}>Inbound · {m.duration}</span>
+              <div style={t.typeIconWrap}>
+                <Ionicons name="arrow-down-circle-outline" size={14} color={TYPE_COLOR.incoming_call} />
               </div>
-            </div>
-            <div style={t.typeIconWrap}>
-              <Ionicons name="arrow-down-circle-outline" size={14} color={TYPE_COLOR.incoming_call} />
-            </div>
-          </button>
-        ))}
+            </button>
+          ))
+        )}
       </div>
     </div>
   );
 }
 
-function InboundDetail({ item, onBack }: { item: Inbound; onBack: () => void }) {
+function InboundDetail({ item, onBack }: { item: IncomingCallVM; onBack: () => void }) {
+  const displayName = item.kind === 'unknown' ? 'Unknown caller' : item.name;
   return (
     <div style={t.detailWrap}>
-      <DetailHeader onBack={onBack} initials={item.initials} avatarColor={item.avatarColor} name={item.name} phone={item.phone} />
+      <DetailHeader
+        onBack={onBack}
+        initials={item.initials}
+        avatarColor={item.avatarColor}
+        name={displayName}
+        phone={item.phone}
+      />
       <div className="aspire-invisible-scroll" style={t.detailScroll}>
         <div style={t.detailCallerCard}>
           <div style={t.sectionLabel}>Inbound · {item.duration}</div>

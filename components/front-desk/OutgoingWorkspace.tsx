@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -10,78 +10,18 @@ import {
   styleTokens as t,
   TYPE_COLOR,
 } from '@/components/front-desk/inboxShared';
+import type { OutgoingCallVM } from '@/components/front-desk/types';
+import { MOCK_OUTGOING_CALLS } from '@/lib/frontDeskMock';
+import { useFrontDeskSection } from '@/hooks/useFrontDeskSection';
+import { LoadingSkeleton } from '@/components/front-desk/states/LoadingSkeleton';
+import { EmptyState } from '@/components/front-desk/states/EmptyState';
+import { ErrorState } from '@/components/front-desk/states/ErrorState';
+import { UnknownAvatar } from '@/components/front-desk/states/UnknownAvatar';
 
 /**
  * OutgoingWorkspace — list of outbound calls placed from the dial pad
- * or contact card. MOCK only.
+ * or contact card. Pass B: VM types + mock fixtures from @/lib/frontDeskMock.
  */
-
-type Outbound = {
-  id: string;
-  name: string;
-  initials: string;
-  avatarColor: string;
-  phone: string;
-  duration: string;
-  time: string;
-  transcript: { side: 'them' | 'you'; text: string }[];
-};
-
-const MOCK: Outbound[] = [
-  {
-    id: 'o1',
-    name: 'Coastal Roofing Supply',
-    initials: 'CS',
-    avatarColor: '#06B6D4',
-    phone: '(617) 555-0455',
-    duration: '2:11',
-    time: '1h',
-    transcript: [
-      { side: 'you', text: 'Hey, checking on the asphalt shingle order — PO #4421.' },
-      { side: 'them', text: 'Yep, ready for pickup tomorrow after 10.' },
-      { side: 'you', text: 'Perfect, we will swing by around 11.' },
-    ],
-  },
-  {
-    id: 'o2',
-    name: 'Lisa Moreno',
-    initials: 'LM',
-    avatarColor: '#8B5CF6',
-    phone: '(617) 555-0822',
-    duration: '0:48',
-    time: 'Yesterday',
-    transcript: [
-      { side: 'you', text: 'Hi Lisa, just confirming the walkthrough for tomorrow at 9.' },
-      { side: 'them', text: 'Yes, see you then.' },
-    ],
-  },
-  {
-    id: 'o3',
-    name: 'Brighton Office Build',
-    initials: 'BO',
-    avatarColor: '#22C55E',
-    phone: '(617) 555-0188',
-    duration: '5:36',
-    time: '2 days',
-    transcript: [
-      { side: 'you', text: 'Following up on the punch list — got a few questions on item 7.' },
-      { side: 'them', text: 'Sure, what is up?' },
-    ],
-  },
-  {
-    id: 'o4',
-    name: 'Greg Patel',
-    initials: 'GP',
-    avatarColor: '#0EA5E9',
-    phone: '(617) 555-0671',
-    duration: '1:24',
-    time: '3 days',
-    transcript: [
-      { side: 'you', text: 'Returning your call from earlier — what is the best time to come by?' },
-      { side: 'them', text: 'Tomorrow morning works.' },
-    ],
-  },
-];
 
 type Mode = { kind: 'list' } | { kind: 'detail'; id: string };
 
@@ -91,53 +31,116 @@ export function OutgoingWorkspace({ onBackToMenu }: { onBackToMenu?: () => void 
     ensureInvisibleScrollCss();
   }, []);
 
+  const fetcher = useCallback(() => Promise.resolve(MOCK_OUTGOING_CALLS), []);
+  const { data, loading, error, refresh } = useFrontDeskSection<OutgoingCallVM>(fetcher, {
+    mock: MOCK_OUTGOING_CALLS,
+  });
+
   if (Platform.OS !== 'web') return <View style={styles.fill} />;
 
   if (mode.kind === 'list') {
-    return <OutboundList onBackToMenu={onBackToMenu} onPick={(id) => setMode({ kind: 'detail', id })} />;
+    return (
+      <OutboundList
+        data={data}
+        loading={loading}
+        error={error}
+        onRetry={refresh}
+        onBackToMenu={onBackToMenu}
+        onPick={(id) => setMode({ kind: 'detail', id })}
+      />
+    );
   }
-  const item = MOCK.find((m) => m.id === mode.id);
-  if (!item) return <OutboundList onBackToMenu={onBackToMenu} onPick={(id) => setMode({ kind: 'detail', id })} />;
+  const item = (data ?? []).find((m) => m.id === mode.id);
+  if (!item)
+    return (
+      <OutboundList
+        data={data}
+        loading={loading}
+        error={error}
+        onRetry={refresh}
+        onBackToMenu={onBackToMenu}
+        onPick={(id) => setMode({ kind: 'detail', id })}
+      />
+    );
   return <OutboundDetail item={item} onBack={() => setMode({ kind: 'list' })} />;
 }
 
-function OutboundList({ onBackToMenu, onPick }: { onBackToMenu?: () => void; onPick: (id: string) => void }) {
+function OutboundList({
+  data,
+  loading,
+  error,
+  onRetry,
+  onBackToMenu,
+  onPick,
+}: {
+  data: OutgoingCallVM[] | null;
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+  onBackToMenu?: () => void;
+  onPick: (id: string) => void;
+}) {
   return (
     <div style={t.listWrap}>
       <ListHeader icon="arrow-up-circle-outline" title="Outgoing" onBackToMenu={onBackToMenu} />
       <div className="aspire-invisible-scroll" style={t.listScroll}>
-        {MOCK.map((m) => (
-          <button
-            key={m.id}
-            onClick={() => onPick(m.id)}
-            style={t.rowBtn}
-            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)')}
-            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
-          >
-            <Avatar initials={m.initials} color={m.avatarColor} />
-            <div style={t.rowText}>
-              <div style={t.rowTopLine}>
-                <span style={t.rowName}>{m.name}</span>
-                <span style={t.rowTime}>{m.time}</span>
+        {loading ? (
+          <LoadingSkeleton variant="list" count={6} />
+        ) : error ? (
+          <ErrorState message={error} onRetry={onRetry} />
+        ) : !data || data.length === 0 ? (
+          <EmptyState
+            icon="arrow-up-circle-outline"
+            headline="No outgoing calls yet"
+            subtitle="Calls you place from the dial pad will appear here."
+          />
+        ) : (
+          data.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => onPick(m.id)}
+              style={t.rowBtn}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)')}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
+            >
+              {m.kind === 'unknown' ? (
+                <UnknownAvatar size={36} />
+              ) : (
+                <Avatar initials={m.initials} color={m.avatarColor} />
+              )}
+              <div style={t.rowText}>
+                <div style={t.rowTopLine}>
+                  <span style={{ ...t.rowName, color: m.kind === 'unknown' ? 'rgba(255,255,255,0.75)' : '#fff' }}>
+                    {m.kind === 'unknown' ? 'Unknown caller' : m.name}
+                  </span>
+                  <span style={t.rowTime}>{m.time}</span>
+                </div>
+                <div style={t.rowMidLine}>
+                  <span style={{ ...t.rowPreview, color: 'rgba(6,182,212,0.85)' }}>Outbound · {m.duration}</span>
+                </div>
               </div>
-              <div style={t.rowMidLine}>
-                <span style={{ ...t.rowPreview, color: 'rgba(6,182,212,0.85)' }}>Outbound · {m.duration}</span>
+              <div style={t.typeIconWrap}>
+                <Ionicons name="arrow-up-circle-outline" size={14} color={TYPE_COLOR.outgoing_call} />
               </div>
-            </div>
-            <div style={t.typeIconWrap}>
-              <Ionicons name="arrow-up-circle-outline" size={14} color={TYPE_COLOR.outgoing_call} />
-            </div>
-          </button>
-        ))}
+            </button>
+          ))
+        )}
       </div>
     </div>
   );
 }
 
-function OutboundDetail({ item, onBack }: { item: Outbound; onBack: () => void }) {
+function OutboundDetail({ item, onBack }: { item: OutgoingCallVM; onBack: () => void }) {
+  const displayName = item.kind === 'unknown' ? 'Unknown caller' : item.name;
   return (
     <div style={t.detailWrap}>
-      <DetailHeader onBack={onBack} initials={item.initials} avatarColor={item.avatarColor} name={item.name} phone={item.phone} />
+      <DetailHeader
+        onBack={onBack}
+        initials={item.initials}
+        avatarColor={item.avatarColor}
+        name={displayName}
+        phone={item.phone}
+      />
       <div className="aspire-invisible-scroll" style={t.detailScroll}>
         <div style={t.detailCallerCard}>
           <div style={t.sectionLabel}>Outbound · {item.duration}</div>

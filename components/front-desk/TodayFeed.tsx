@@ -1,7 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { EventDetailModal, type EventItem } from '@/components/front-desk/EventDetailModal';
+import type { FeedItemVM, FeedEventType } from '@/components/front-desk/types';
+import { MOCK_FEED_ITEMS } from '@/lib/frontDeskMock';
+import { useFrontDeskSection } from '@/hooks/useFrontDeskSection';
+import { LoadingSkeleton } from '@/components/front-desk/states/LoadingSkeleton';
+import { EmptyState } from '@/components/front-desk/states/EmptyState';
+import { ErrorState } from '@/components/front-desk/states/ErrorState';
+import { UnknownAvatar } from '@/components/front-desk/states/UnknownAvatar';
 
 const GLASSY_SCROLL_STYLE_ID = 'aspire-glassy-hscroll-css';
 
@@ -43,18 +50,9 @@ function ensureGlassyHorizontalScrollCss() {
   document.head.appendChild(style);
 }
 
-type EventType = 'missed_call' | 'voicemail' | 'sms' | 'callback' | 'incoming_call';
-
-type FeedItem = {
-  id: string;
-  name: string;
-  initials: string;
-  avatarColor: string;
-  entity: 'Lead' | 'Client' | 'Vendor' | null;
-  type: EventType;
-  preview: string;
-  time: string;
-};
+// Local aliases — types live in @/components/front-desk/types
+type EventType = FeedEventType;
+type FeedItem = FeedItemVM;
 
 const TYPE_META: Record<
   EventType,
@@ -67,97 +65,15 @@ const TYPE_META: Record<
   incoming_call: { label: 'Incoming call', icon: 'arrow-down-circle-outline', color: '#22C55E' },
 };
 
-const ENTITY_PILL: Record<
-  NonNullable<FeedItem['entity']>,
-  { bg: string; fg: string }
-> = {
+// Only the three "real" entity types render a colored pill; "Unknown" callers
+// use UnknownAvatar instead and skip the entity badge entirely.
+const ENTITY_PILL: Record<'Lead' | 'Client' | 'Vendor', { bg: string; fg: string }> = {
   Lead: { bg: 'rgba(59,130,246,0.18)', fg: '#60A5FA' },
   Client: { bg: 'rgba(34,211,238,0.18)', fg: '#22D3EE' },
   Vendor: { bg: 'rgba(168,162,158,0.18)', fg: '#D6D3D1' },
 };
 
-const MOCK_TODAY: FeedItem[] = [
-  {
-    id: '1',
-    name: 'John Carter',
-    initials: 'JC',
-    avatarColor: '#3B82F6',
-    entity: 'Lead',
-    type: 'missed_call',
-    preview: 'Needs exterior quote',
-    time: '10 min ago',
-  },
-  {
-    id: '2',
-    name: 'Maria Lewis',
-    initials: 'ML',
-    avatarColor: '#F59E0B',
-    entity: 'Client',
-    type: 'voicemail',
-    preview: 'Hi, I’d like to get an estimate for interior painting.',
-    time: '15 min ago',
-  },
-  {
-    id: '3',
-    name: 'Brighton Office Build',
-    initials: 'BO',
-    avatarColor: '#22C55E',
-    entity: 'Client',
-    type: 'sms',
-    preview: 'Thanks! We’ll be there at 10am.',
-    time: '2 min ago',
-  },
-  {
-    id: '4',
-    name: 'David Reed',
-    initials: 'DR',
-    avatarColor: '#8B5CF6',
-    entity: null,
-    type: 'callback',
-    preview: 'Promised by 2:00 PM',
-    time: 'Due today',
-  },
-  {
-    id: '5',
-    name: 'Amanda Hill',
-    initials: 'AH',
-    avatarColor: '#EC4899',
-    entity: 'Client',
-    type: 'incoming_call',
-    preview: 'Spoke for 4:23',
-    time: '45 min ago',
-  },
-  {
-    id: '6',
-    name: 'Michael Tan',
-    initials: 'MT',
-    avatarColor: '#EF4444',
-    entity: 'Vendor',
-    type: 'sms',
-    preview: 'Invoice received, thank you.',
-    time: '1 hr ago',
-  },
-  {
-    id: '7',
-    name: 'Coastal Roofing',
-    initials: 'CR',
-    avatarColor: '#06B6D4',
-    entity: 'Vendor',
-    type: 'voicemail',
-    preview: 'Materials ready for pickup Friday morning.',
-    time: '2 hr ago',
-  },
-  {
-    id: '8',
-    name: 'Sarah Mitchell',
-    initials: 'SM',
-    avatarColor: '#10B981',
-    entity: 'Lead',
-    type: 'missed_call',
-    preview: 'Kitchen remodel inquiry',
-    time: '3 hr ago',
-  },
-];
+// Mock fixtures live in @/lib/frontDeskMock (MOCK_FEED_ITEMS).
 
 export function TodayFeed() {
   const [openItem, setOpenItem] = useState<FeedItem | null>(null);
@@ -165,9 +81,16 @@ export function TodayFeed() {
     ensureGlassyHorizontalScrollCss();
   }, []);
 
+  const fetcher = useCallback(() => Promise.resolve(MOCK_FEED_ITEMS), []);
+  const { data, loading, error, refresh } = useFrontDeskSection<FeedItem>(fetcher, {
+    mock: MOCK_FEED_ITEMS,
+  });
+
   if (Platform.OS !== 'web') {
     return <View style={styles.cardNative} />;
   }
+
+  const count = data?.length ?? 0;
 
   return (
     <View style={styles.fill}>
@@ -175,19 +98,34 @@ export function TodayFeed() {
       <div style={header}>
         <div style={titleRow}>
           <span style={title}>Today</span>
-          <span style={countPill}>{MOCK_TODAY.length}</span>
+          <span style={countPill}>{count}</span>
         </div>
         <span style={subtitle}>Live activity across all channels</span>
       </div>
 
-      {/* Horizontal scroller */}
-      <div className="aspire-glassy-hscroll" style={scroller}>
-        <div aria-hidden style={edgeSpacer} />
-        {MOCK_TODAY.map((item) => (
-          <FeedTile key={item.id} item={item} onOpen={setOpenItem} />
-        ))}
-        <div aria-hidden style={edgeSpacer} />
-      </div>
+      {/* Horizontal scroller / states */}
+      {loading ? (
+        <div style={scroller}>
+          <div aria-hidden style={edgeSpacer} />
+          <LoadingSkeleton variant="list" count={4} />
+        </div>
+      ) : error ? (
+        <ErrorState message={error} onRetry={refresh} />
+      ) : !data || data.length === 0 ? (
+        <EmptyState
+          icon="hourglass-outline"
+          headline="Nothing's happened today yet"
+          subtitle="Call activity from across all channels will surface here."
+        />
+      ) : (
+        <div className="aspire-glassy-hscroll" style={scroller}>
+          <div aria-hidden style={edgeSpacer} />
+          {data.map((item) => (
+            <FeedTile key={item.id} item={item} onOpen={setOpenItem} />
+          ))}
+          <div aria-hidden style={edgeSpacer} />
+        </div>
+      )}
 
       <EventDetailModal item={openItem as EventItem | null} onClose={() => setOpenItem(null)} />
     </View>
@@ -212,18 +150,24 @@ function FeedTile({ item, onOpen }: { item: FeedItem; onOpen: (i: FeedItem) => v
       }}
     >
       <div style={tileTop}>
-        <div style={tileAvatar(item.avatarColor)}>
-          <span style={tileAvatarText}>{item.initials}</span>
-        </div>
+        {item.kind === 'unknown' ? (
+          <UnknownAvatar size={32} />
+        ) : (
+          <div style={tileAvatar(item.avatarColor)}>
+            <span style={tileAvatarText}>{item.initials}</span>
+          </div>
+        )}
         <div style={tileNameCol}>
-          <div style={tileName}>{item.name}</div>
+          <div style={{ ...tileName, color: item.kind === 'unknown' ? 'rgba(255,255,255,0.75)' : '#ffffff' }}>
+            {item.kind === 'unknown' ? 'Unknown caller' : item.name}
+          </div>
           <div style={tileMetaRow}>
-            {item.entity ? (
+            {item.entity && item.entity !== 'Unknown' ? (
               <span
                 style={{
                   ...tilePill,
-                  background: ENTITY_PILL[item.entity].bg,
-                  color: ENTITY_PILL[item.entity].fg,
+                  background: ENTITY_PILL[item.entity as 'Lead' | 'Client' | 'Vendor'].bg,
+                  color: ENTITY_PILL[item.entity as 'Lead' | 'Client' | 'Vendor'].fg,
                 }}
               >
                 {item.entity}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -8,71 +8,22 @@ import {
   styleTokens as t,
   headerBtn,
 } from '@/components/front-desk/inboxShared';
+import type { ContactVM, EntityType } from '@/components/front-desk/types';
+import { MOCK_CONTACTS } from '@/lib/frontDeskMock';
+import { useFrontDeskSection } from '@/hooks/useFrontDeskSection';
+import { LoadingSkeleton } from '@/components/front-desk/states/LoadingSkeleton';
+import { EmptyState } from '@/components/front-desk/states/EmptyState';
+import { ErrorState } from '@/components/front-desk/states/ErrorState';
+import { UnknownAvatar } from '@/components/front-desk/states/UnknownAvatar';
 
 /**
  * ContactsWorkspace — searchable list of people grouped by entity type.
- * MOCK only.
+ * Pass B: VM types + mock fixtures from @/lib/frontDeskMock.
  */
 
-type Entity = 'Lead' | 'Client' | 'Vendor' | 'Unknown';
-const FILTERS: ('All' | Entity)[] = ['All', 'Lead', 'Client', 'Vendor', 'Unknown'];
+const FILTERS: ('All' | EntityType)[] = ['All', 'Lead', 'Client', 'Vendor', 'Unknown'];
 
-type Interaction = { type: 'call' | 'sms' | 'voicemail'; preview: string; time: string };
-
-type Contact = {
-  id: string;
-  name: string;
-  initials: string;
-  avatarColor: string;
-  entity: Entity;
-  phone: string;
-  email?: string;
-  address?: string;
-  lastInteractionSnippet: string;
-  history: Interaction[];
-};
-
-const MOCK: Contact[] = [
-  { id: 'c1', name: 'Brighton Office Build', initials: 'BO', avatarColor: '#22C55E', entity: 'Client', phone: '(617) 555-0188', email: 'pm@brightonoffice.com', address: '120 Federal St, Boston, MA', lastInteractionSnippet: 'SMS · "Thanks! We will be there at 10am."', history: [
-    { type: 'sms', preview: 'Thanks! We will be there at 10am.', time: '2m' },
-    { type: 'call', preview: 'Outbound · 5:36', time: '2d' },
-  ]},
-  { id: 'c2', name: 'Maria Lewis', initials: 'ML', avatarColor: '#F59E0B', entity: 'Lead', phone: '(617) 555-0142', email: 'maria.lewis@email.com', lastInteractionSnippet: 'Missed call · rang 28s', history: [
-    { type: 'call', preview: 'Missed · rang 28s', time: '8m' },
-  ]},
-  { id: 'c3', name: 'David Reed', initials: 'DR', avatarColor: '#A855F7', entity: 'Client', phone: '(617) 555-0319', email: 'd.reed@email.com', address: '88 Oak Ave, Cambridge, MA', lastInteractionSnippet: 'Voicemail · 0:46', history: [
-    { type: 'voicemail', preview: 'Calling about the porch...', time: '21m' },
-  ]},
-  { id: 'c4', name: 'John Carter', initials: 'JC', avatarColor: '#3B82F6', entity: 'Lead', phone: '(617) 555-0721', lastInteractionSnippet: 'Inbound · 4:23', history: [
-    { type: 'call', preview: 'Inbound · 4:23', time: '34m' },
-  ]},
-  { id: 'c5', name: 'Amanda Hill', initials: 'AH', avatarColor: '#EC4899', entity: 'Client', phone: '(617) 555-0892', email: 'amanda@hillco.com', address: '14 Beacon St, Boston, MA', lastInteractionSnippet: 'SMS · "Thanks again!"', history: [
-    { type: 'sms', preview: 'Thanks again!', time: '2d' },
-  ]},
-  { id: 'c6', name: 'Coastal Roofing Supply', initials: 'CS', avatarColor: '#06B6D4', entity: 'Vendor', phone: '(617) 555-0455', email: 'orders@coastalroofing.com', lastInteractionSnippet: 'Outbound · 2:11', history: [
-    { type: 'call', preview: 'Outbound · 2:11', time: '1h' },
-  ]},
-  { id: 'c7', name: 'Michael Tan', initials: 'MT', avatarColor: '#EF4444', entity: 'Lead', phone: '(617) 555-0608', email: 'mtan@email.com', lastInteractionSnippet: 'SMS · "Invoice received, thank you."', history: [
-    { type: 'sms', preview: 'Invoice received, thank you.', time: '1h' },
-  ]},
-  { id: 'c8', name: 'Unknown', initials: '??', avatarColor: '#6B7280', entity: 'Unknown', phone: '(978) 555-0023', lastInteractionSnippet: 'Missed call · rang 12s', history: [
-    { type: 'call', preview: 'Missed · rang 12s', time: '2h' },
-  ]},
-  { id: 'c9', name: 'Steel Bros Supply', initials: 'SB', avatarColor: '#0EA5E9', entity: 'Vendor', phone: '(617) 555-0901', email: 'sales@steelbros.com', lastInteractionSnippet: 'Missed call · rang 22s', history: [
-    { type: 'call', preview: 'Missed · rang 22s', time: '1d' },
-  ]},
-  { id: 'c10', name: 'Lisa Moreno', initials: 'LM', avatarColor: '#8B5CF6', entity: 'Client', phone: '(617) 555-0822', email: 'lisa.m@email.com', address: '32 Maple Dr, Somerville, MA', lastInteractionSnippet: 'Outbound · 0:48', history: [
-    { type: 'call', preview: 'Outbound · 0:48', time: '1d' },
-  ]},
-  { id: 'c11', name: 'Greg Patel', initials: 'GP', avatarColor: '#10B981', entity: 'Lead', phone: '(617) 555-0671', lastInteractionSnippet: 'Callback scheduled', history: [
-    { type: 'call', preview: 'Outbound · 1:24', time: '3d' },
-  ]},
-  { id: 'c12', name: 'Westwood Lumber Co', initials: 'WL', avatarColor: '#F97316', entity: 'Vendor', phone: '(617) 555-0510', email: 'pickup@westwoodlumber.com', lastInteractionSnippet: 'SMS · "Order ready for pickup."', history: [
-    { type: 'sms', preview: 'Order ready for pickup.', time: '5d' },
-  ]},
-];
-
-const ENTITY_COLOR: Record<Entity, string> = {
+const ENTITY_COLOR: Record<EntityType, string> = {
   Lead: '#F59E0B',
   Client: '#22C55E',
   Vendor: '#06B6D4',
@@ -87,31 +38,75 @@ export function ContactsWorkspace({ onBackToMenu }: { onBackToMenu?: () => void 
     ensureInvisibleScrollCss();
   }, []);
 
+  const fetcher = useCallback(() => Promise.resolve(MOCK_CONTACTS), []);
+  const { data, loading, error, refresh } = useFrontDeskSection<ContactVM>(fetcher, {
+    mock: MOCK_CONTACTS,
+  });
+
   if (Platform.OS !== 'web') return <View style={styles.fill} />;
 
   if (mode.kind === 'list') {
-    return <ContactList onBackToMenu={onBackToMenu} onPick={(id) => setMode({ kind: 'detail', id })} />;
+    return (
+      <ContactList
+        data={data}
+        loading={loading}
+        error={error}
+        onRetry={refresh}
+        onBackToMenu={onBackToMenu}
+        onPick={(id) => setMode({ kind: 'detail', id })}
+      />
+    );
   }
-  const item = MOCK.find((c) => c.id === mode.id);
-  if (!item) return <ContactList onBackToMenu={onBackToMenu} onPick={(id) => setMode({ kind: 'detail', id })} />;
+  const item = (data ?? []).find((c) => c.id === mode.id);
+  if (!item)
+    return (
+      <ContactList
+        data={data}
+        loading={loading}
+        error={error}
+        onRetry={refresh}
+        onBackToMenu={onBackToMenu}
+        onPick={(id) => setMode({ kind: 'detail', id })}
+      />
+    );
   return <ContactDetail item={item} onBack={() => setMode({ kind: 'list' })} />;
 }
 
-function ContactList({ onBackToMenu, onPick }: { onBackToMenu?: () => void; onPick: (id: string) => void }) {
+function ContactList({
+  data,
+  loading,
+  error,
+  onRetry,
+  onBackToMenu,
+  onPick,
+}: {
+  data: ContactVM[] | null;
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+  onBackToMenu?: () => void;
+  onPick: (id: string) => void;
+}) {
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<'All' | Entity>('All');
+  const [filter, setFilter] = useState<'All' | EntityType>('All');
 
   const filtered = useMemo(() => {
-    return MOCK.filter((c) => {
+    const all = data ?? [];
+    return all.filter((c) => {
       if (filter !== 'All' && c.entity !== filter) return false;
       if (query.trim() && !c.name.toLowerCase().includes(query.trim().toLowerCase())) return false;
       return true;
     });
-  }, [query, filter]);
+  }, [data, query, filter]);
 
   return (
     <div style={t.listWrap}>
-      <ListHeader icon="people-outline" title="Contacts" onBackToMenu={onBackToMenu} rightIcons={[{ name: 'person-add-outline', label: 'Add contact' }]} />
+      <ListHeader
+        icon="people-outline"
+        title="Contacts"
+        onBackToMenu={onBackToMenu}
+        rightIcons={[{ name: 'person-add-outline', label: 'Add contact' }]}
+      />
 
       {/* Search */}
       <div style={searchWrap}>
@@ -146,50 +141,71 @@ function ContactList({ onBackToMenu, onPick }: { onBackToMenu?: () => void; onPi
       </div>
 
       <div className="aspire-invisible-scroll" style={{ ...t.listScroll, paddingTop: 8 }}>
-        {filtered.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => onPick(c.id)}
-            style={t.rowBtn}
-            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)')}
-            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
-          >
-            <Avatar initials={c.initials} color={c.avatarColor} />
-            <div style={t.rowText}>
-              <div style={t.rowTopLine}>
-                <span style={t.rowName}>{c.name}</span>
-              </div>
-              <div style={t.rowMidLine}>
-                <span
-                  style={{
-                    ...t.entityPill,
-                    color: ENTITY_COLOR[c.entity],
-                    background: `${ENTITY_COLOR[c.entity]}1A`,
-                    border: `1px solid ${ENTITY_COLOR[c.entity]}44`,
-                  }}
-                >
-                  {c.entity}
-                </span>
-                <span style={t.rowPreview}>{c.lastInteractionSnippet}</span>
-              </div>
-            </div>
-            <div style={t.typeIconWrap}>
-              <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.35)" />
-            </div>
-          </button>
-        ))}
-        {filtered.length === 0 ? (
+        {loading ? (
+          <LoadingSkeleton variant="list" count={8} />
+        ) : error ? (
+          <ErrorState message={error} onRetry={onRetry} />
+        ) : !data || data.length === 0 ? (
+          <EmptyState
+            icon="people-outline"
+            headline="No contacts yet"
+            subtitle="People you talk to will collect here automatically."
+          />
+        ) : filtered.length === 0 ? (
           <div style={emptyState}>
             <Ionicons name="search-outline" size={20} color="rgba(255,255,255,0.35)" />
             <span style={emptyText}>No contacts match</span>
           </div>
-        ) : null}
+        ) : (
+          filtered.map((c) => {
+            const isUnknown = c.entity === 'Unknown';
+            return (
+              <button
+                key={c.id}
+                onClick={() => onPick(c.id)}
+                style={t.rowBtn}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)')}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
+              >
+                {isUnknown ? (
+                  <UnknownAvatar size={36} />
+                ) : (
+                  <Avatar initials={c.initials} color={c.avatarColor} />
+                )}
+                <div style={t.rowText}>
+                  <div style={t.rowTopLine}>
+                    <span style={{ ...t.rowName, color: isUnknown ? 'rgba(255,255,255,0.75)' : '#fff' }}>
+                      {isUnknown ? 'Unknown caller' : c.name}
+                    </span>
+                  </div>
+                  <div style={t.rowMidLine}>
+                    <span
+                      style={{
+                        ...t.entityPill,
+                        color: ENTITY_COLOR[c.entity],
+                        background: `${ENTITY_COLOR[c.entity]}1A`,
+                        border: `1px solid ${ENTITY_COLOR[c.entity]}44`,
+                      }}
+                    >
+                      {c.entity}
+                    </span>
+                    <span style={t.rowPreview}>{c.lastInteractionSnippet}</span>
+                  </div>
+                </div>
+                <div style={t.typeIconWrap}>
+                  <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.35)" />
+                </div>
+              </button>
+            );
+          })
+        )}
       </div>
     </div>
   );
 }
 
-function ContactDetail({ item, onBack }: { item: Contact; onBack: () => void }) {
+function ContactDetail({ item, onBack }: { item: ContactVM; onBack: () => void }) {
+  const isUnknown = item.entity === 'Unknown';
   return (
     <div style={t.detailWrap}>
       <div style={contactDetailHeader}>
@@ -205,8 +221,14 @@ function ContactDetail({ item, onBack }: { item: Contact; onBack: () => void }) 
       <div className="aspire-invisible-scroll" style={t.detailScroll}>
         {/* Big avatar header */}
         <div style={bigHeader}>
-          <Avatar initials={item.initials} color={item.avatarColor} size={64} />
-          <div style={bigName}>{item.name}</div>
+          {isUnknown ? (
+            <UnknownAvatar size={64} />
+          ) : (
+            <Avatar initials={item.initials} color={item.avatarColor} size={64} />
+          )}
+          <div style={{ ...bigName, color: isUnknown ? 'rgba(255,255,255,0.75)' : '#fff' }}>
+            {isUnknown ? 'Unknown caller' : item.name}
+          </div>
           <span
             style={{
               ...t.entityPill,

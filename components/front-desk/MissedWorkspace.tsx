@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -10,30 +10,21 @@ import {
   styleTokens as t,
   TYPE_COLOR,
 } from '@/components/front-desk/inboxShared';
+import type { MissedCallVM } from '@/components/front-desk/types';
+import { MOCK_MISSED_CALLS } from '@/lib/frontDeskMock';
+import { useFrontDeskSection } from '@/hooks/useFrontDeskSection';
+import { LoadingSkeleton } from '@/components/front-desk/states/LoadingSkeleton';
+import { EmptyState } from '@/components/front-desk/states/EmptyState';
+import { ErrorState } from '@/components/front-desk/states/ErrorState';
+import { UnknownAvatar } from '@/components/front-desk/states/UnknownAvatar';
 
 /**
- * MissedWorkspace — list of missed calls. MOCK only.
+ * MissedWorkspace — list of missed calls.
+ *
+ * Pass B: VM types + mock fixtures lifted to @/lib/frontDeskMock. Data flows
+ * through useFrontDeskSection with a mock fetcher so the loading/empty/error
+ * scaffolding is exercised even before a real backend lands in Pass F.
  */
-
-type Missed = {
-  id: string;
-  name: string;
-  initials: string;
-  avatarColor: string;
-  phone: string;
-  attempted: string; // "rang 28s"
-  time: string;
-  transcript?: string; // AI capture if voicemail attempted
-};
-
-const MOCK: Missed[] = [
-  { id: 'm1', name: 'Maria Lewis', initials: 'ML', avatarColor: '#F59E0B', phone: '(617) 555-0142', attempted: 'rang 28s', time: '8m', transcript: 'No voicemail left. Caller may try again later.' },
-  { id: 'm2', name: 'Unknown', initials: '??', avatarColor: '#6B7280', phone: '(978) 555-0023', attempted: 'rang 12s', time: '2h' },
-  { id: 'm3', name: 'Carlos Rivera', initials: 'CR', avatarColor: '#EF4444', phone: '(617) 555-0334', attempted: 'rang 18s', time: '4h', transcript: 'Hi, calling about the bathroom remodel quote — please call back.' },
-  { id: 'm4', name: 'Jennifer Boyd', initials: 'JB', avatarColor: '#8B5CF6', phone: '(617) 555-0728', attempted: 'rang 32s', time: 'Yesterday' },
-  { id: 'm5', name: 'Steel Bros Supply', initials: 'SB', avatarColor: '#06B6D4', phone: '(617) 555-0901', attempted: 'rang 22s', time: 'Yesterday', transcript: 'Quick question about your purchase order #4421.' },
-  { id: 'm6', name: 'Diane Foster', initials: 'DF', avatarColor: '#EC4899', phone: '(617) 555-0612', attempted: 'rang 9s', time: '2 days' },
-];
 
 type Mode = { kind: 'list' } | { kind: 'detail'; id: string };
 
@@ -43,53 +34,121 @@ export function MissedWorkspace({ onBackToMenu }: { onBackToMenu?: () => void })
     ensureInvisibleScrollCss();
   }, []);
 
+  // Stable fetcher reference — returns the mock fixture in lieu of a real backend.
+  // useFrontDeskSection short-circuits to opts.mock when ?mock=1, but we still
+  // need a fetcher to satisfy the signature for the non-mock path.
+  const fetcher = useCallback(() => Promise.resolve(MOCK_MISSED_CALLS), []);
+  const { data, loading, error, refresh } = useFrontDeskSection<MissedCallVM>(fetcher, {
+    mock: MOCK_MISSED_CALLS,
+  });
+
   if (Platform.OS !== 'web') return <View style={styles.fill} />;
 
   if (mode.kind === 'list') {
-    return <MissedList onBackToMenu={onBackToMenu} onPick={(id) => setMode({ kind: 'detail', id })} />;
+    return (
+      <MissedList
+        data={data}
+        loading={loading}
+        error={error}
+        onRetry={refresh}
+        onBackToMenu={onBackToMenu}
+        onPick={(id) => setMode({ kind: 'detail', id })}
+      />
+    );
   }
-  const item = MOCK.find((m) => m.id === mode.id);
-  if (!item) return <MissedList onBackToMenu={onBackToMenu} onPick={(id) => setMode({ kind: 'detail', id })} />;
+  const item = (data ?? []).find((m) => m.id === mode.id);
+  if (!item)
+    return (
+      <MissedList
+        data={data}
+        loading={loading}
+        error={error}
+        onRetry={refresh}
+        onBackToMenu={onBackToMenu}
+        onPick={(id) => setMode({ kind: 'detail', id })}
+      />
+    );
   return <MissedDetail item={item} onBack={() => setMode({ kind: 'list' })} />;
 }
 
-function MissedList({ onBackToMenu, onPick }: { onBackToMenu?: () => void; onPick: (id: string) => void }) {
+function MissedList({
+  data,
+  loading,
+  error,
+  onRetry,
+  onBackToMenu,
+  onPick,
+}: {
+  data: MissedCallVM[] | null;
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+  onBackToMenu?: () => void;
+  onPick: (id: string) => void;
+}) {
   return (
     <div style={t.listWrap}>
       <ListHeader icon="call-outline" title="Missed" onBackToMenu={onBackToMenu} />
       <div className="aspire-invisible-scroll" style={t.listScroll}>
-        {MOCK.map((m) => (
-          <button
-            key={m.id}
-            onClick={() => onPick(m.id)}
-            style={t.rowBtn}
-            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)')}
-            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
-          >
-            <Avatar initials={m.initials} color={m.avatarColor} />
-            <div style={t.rowText}>
-              <div style={t.rowTopLine}>
-                <span style={t.rowName}>{m.name}</span>
-                <span style={t.rowTime}>{m.time}</span>
+        {loading ? (
+          <LoadingSkeleton variant="list" count={6} />
+        ) : error ? (
+          <ErrorState message={error} onRetry={onRetry} />
+        ) : !data || data.length === 0 ? (
+          <EmptyState
+            icon="checkmark-circle-outline"
+            headline="You're all caught up"
+            subtitle="No missed calls to follow up on."
+          />
+        ) : (
+          data.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => onPick(m.id)}
+              style={t.rowBtn}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)')}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
+            >
+              {m.kind === 'unknown' ? (
+                <UnknownAvatar size={36} />
+              ) : (
+                <Avatar initials={m.initials} color={m.avatarColor} />
+              )}
+              <div style={t.rowText}>
+                <div style={t.rowTopLine}>
+                  <span style={{ ...t.rowName, color: m.kind === 'unknown' ? 'rgba(255,255,255,0.75)' : '#fff' }}>
+                    {m.kind === 'unknown' ? `Unknown caller` : m.name}
+                  </span>
+                  <span style={t.rowTime}>{m.time}</span>
+                </div>
+                <div style={t.rowMidLine}>
+                  <span style={{ ...t.rowPreview, color: 'rgba(239,68,68,0.85)' }}>
+                    Missed call · {m.attempted}
+                  </span>
+                </div>
               </div>
-              <div style={t.rowMidLine}>
-                <span style={{ ...t.rowPreview, color: 'rgba(239,68,68,0.85)' }}>Missed call · {m.attempted}</span>
+              <div style={t.typeIconWrap}>
+                <Ionicons name="call-outline" size={14} color={TYPE_COLOR.missed_call} />
               </div>
-            </div>
-            <div style={t.typeIconWrap}>
-              <Ionicons name="call-outline" size={14} color={TYPE_COLOR.missed_call} />
-            </div>
-          </button>
-        ))}
+            </button>
+          ))
+        )}
       </div>
     </div>
   );
 }
 
-function MissedDetail({ item, onBack }: { item: Missed; onBack: () => void }) {
+function MissedDetail({ item, onBack }: { item: MissedCallVM; onBack: () => void }) {
+  const displayName = item.kind === 'unknown' ? 'Unknown caller' : item.name;
   return (
     <div style={t.detailWrap}>
-      <DetailHeader onBack={onBack} initials={item.initials} avatarColor={item.avatarColor} name={item.name} phone={item.phone} />
+      <DetailHeader
+        onBack={onBack}
+        initials={item.initials}
+        avatarColor={item.avatarColor}
+        name={displayName}
+        phone={item.phone}
+      />
       <div className="aspire-invisible-scroll" style={t.detailScroll}>
         <div style={t.detailCallerCard}>
           <div style={t.sectionLabel}>Missed</div>

@@ -1,27 +1,14 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-
-const INVISIBLE_SCROLL_STYLE_ID = 'aspire-invisible-scroll-css';
-
-function ensureInvisibleScrollCss() {
-  if (Platform.OS !== 'web' || typeof document === 'undefined') return;
-  if (document.getElementById(INVISIBLE_SCROLL_STYLE_ID)) return;
-  const style = document.createElement('style');
-  style.id = INVISIBLE_SCROLL_STYLE_ID;
-  style.textContent = `
-    .aspire-invisible-scroll {
-      scrollbar-width: none;
-      -ms-overflow-style: none;
-    }
-    .aspire-invisible-scroll::-webkit-scrollbar {
-      width: 0;
-      height: 0;
-      display: none;
-    }
-  `;
-  document.head.appendChild(style);
-}
+import { ensureInvisibleScrollCss, Avatar } from '@/components/front-desk/inboxShared';
+import type { SmsThreadVM } from '@/components/front-desk/types';
+import { MOCK_SMS_THREADS } from '@/lib/frontDeskMock';
+import { useFrontDeskSection } from '@/hooks/useFrontDeskSection';
+import { LoadingSkeleton } from '@/components/front-desk/states/LoadingSkeleton';
+import { EmptyState } from '@/components/front-desk/states/EmptyState';
+import { ErrorState } from '@/components/front-desk/states/ErrorState';
+import { UnknownAvatar } from '@/components/front-desk/states/UnknownAvatar';
 
 /**
  * SmsWorkspace — SMS section content for the Inbox Rail.
@@ -31,8 +18,9 @@ function ensureInvisibleScrollCss() {
  *   - DETAIL  — open thread with bubble history + composer
  *   - NEW     — recipient field + composer for a fresh message
  *
- * Visual-design pass: everything is MOCK. No backend wiring. Send / Delete
- * don't persist. Tap-states + scroll + composer focus all work.
+ * Pass B: VM types + mock fixtures lifted to shared modules. Data flows
+ * through useFrontDeskSection so loading/empty/error scaffolding is
+ * exercised before a real backend lands in Pass F.
  */
 
 type Mode =
@@ -40,124 +28,7 @@ type Mode =
   | { kind: 'detail'; threadId: string }
   | { kind: 'new' };
 
-type Bubble = {
-  id: string;
-  side: 'them' | 'you';
-  text: string;
-  time: string;
-  read?: boolean;
-};
-
-type Thread = {
-  id: string;
-  name: string;
-  initials: string;
-  avatarColor: string;
-  phone: string;
-  preview: string;
-  time: string;
-  unread: boolean;
-  bubbles: Bubble[];
-};
-
-const MOCK_THREADS: Thread[] = [
-  {
-    id: 't1',
-    name: 'Brighton Office Build',
-    initials: 'BO',
-    avatarColor: '#22C55E',
-    phone: '(617) 555-0188',
-    preview: "Thanks! We'll be there at 10am.",
-    time: '2 min',
-    unread: true,
-    bubbles: [
-      { id: 'b1', side: 'them', text: "Hi, can you confirm what time you'll be onsite tomorrow?", time: 'Yesterday 9:15 AM' },
-      { id: 'b2', side: 'you', text: 'Hi! Yes, our team will arrive around 10am.', time: '9:16 AM', read: true },
-      { id: 'b3', side: 'them', text: 'Perfect, thanks!', time: '9:17 AM' },
-      { id: 'b4', side: 'them', text: 'Also, can you send over the final invoice when you have a moment?', time: 'Today 9:24 AM' },
-      { id: 'b5', side: 'you', text: "Absolutely. I'll send that over right after we wrap up.", time: '9:27 AM', read: true },
-      { id: 'b6', side: 'them', text: "Thanks! We'll be there at 10am.", time: '9:28 AM' },
-    ],
-  },
-  {
-    id: 't2',
-    name: 'Maria Lewis',
-    initials: 'ML',
-    avatarColor: '#F59E0B',
-    phone: '(617) 555-0142',
-    preview: 'Can you send over the access code for tomorrow morning?',
-    time: '15 min',
-    unread: true,
-    bubbles: [
-      { id: 'b1', side: 'them', text: 'Can you send over the access code for tomorrow morning?', time: '15 min ago' },
-    ],
-  },
-  {
-    id: 't3',
-    name: 'David Reed',
-    initials: 'DR',
-    avatarColor: '#8B5CF6',
-    phone: '(617) 555-0319',
-    preview: "We'll need to reschedule tomorrow's appointment.",
-    time: '1 hr',
-    unread: false,
-    bubbles: [
-      { id: 'b1', side: 'them', text: "We'll need to reschedule tomorrow's appointment.", time: '1 hr ago' },
-    ],
-  },
-  {
-    id: 't4',
-    name: 'John Carter',
-    initials: 'JC',
-    avatarColor: '#3B82F6',
-    phone: '(617) 555-0721',
-    preview: 'Perfect, thank you!',
-    time: '1 hr',
-    unread: false,
-    bubbles: [
-      { id: 'b1', side: 'them', text: 'Perfect, thank you!', time: '1 hr ago' },
-    ],
-  },
-  {
-    id: 't5',
-    name: 'Coastal Roofing Supply',
-    initials: 'CS',
-    avatarColor: '#06B6D4',
-    phone: '(617) 555-0455',
-    preview: 'When will the materials be ready for pickup?',
-    time: 'Yesterday',
-    unread: false,
-    bubbles: [
-      { id: 'b1', side: 'them', text: 'When will the materials be ready for pickup?', time: 'Yesterday' },
-    ],
-  },
-  {
-    id: 't6',
-    name: 'Amanda Hill',
-    initials: 'AH',
-    avatarColor: '#EC4899',
-    phone: '(617) 555-0892',
-    preview: 'Thanks again!',
-    time: '2 days',
-    unread: false,
-    bubbles: [
-      { id: 'b1', side: 'them', text: 'Thanks again!', time: '2 days ago' },
-    ],
-  },
-  {
-    id: 't7',
-    name: 'Michael Tan',
-    initials: 'MT',
-    avatarColor: '#EF4444',
-    phone: '(617) 555-0608',
-    preview: 'Invoice received, thank you.',
-    time: '2 days',
-    unread: false,
-    bubbles: [
-      { id: 'b1', side: 'them', text: 'Invoice received, thank you.', time: '2 days ago' },
-    ],
-  },
-];
+type Thread = SmsThreadVM;
 
 export function SmsWorkspace({
   onBackToMenu,
@@ -170,6 +41,11 @@ export function SmsWorkspace({
     ensureInvisibleScrollCss();
   }, []);
 
+  const fetcher = useCallback(() => Promise.resolve(MOCK_SMS_THREADS), []);
+  const { data, loading, error, refresh } = useFrontDeskSection<Thread>(fetcher, {
+    mock: MOCK_SMS_THREADS,
+  });
+
   if (Platform.OS !== 'web') {
     return <View style={styles.fill} />;
   }
@@ -177,6 +53,10 @@ export function SmsWorkspace({
   if (mode.kind === 'list') {
     return (
       <ThreadList
+        data={data}
+        loading={loading}
+        error={error}
+        onRetry={refresh}
         onBackToMenu={onBackToMenu}
         onPick={(id) => setMode({ kind: 'detail', threadId: id })}
         onNew={() => setMode({ kind: 'new' })}
@@ -184,18 +64,37 @@ export function SmsWorkspace({
     );
   }
   if (mode.kind === 'detail') {
-    const thread = MOCK_THREADS.find((t) => t.id === mode.threadId);
-    if (!thread) return <ThreadList onBackToMenu={onBackToMenu} onPick={(id) => setMode({ kind: 'detail', threadId: id })} onNew={() => setMode({ kind: 'new' })} />;
+    const thread = (data ?? []).find((t) => t.id === mode.threadId);
+    if (!thread)
+      return (
+        <ThreadList
+          data={data}
+          loading={loading}
+          error={error}
+          onRetry={refresh}
+          onBackToMenu={onBackToMenu}
+          onPick={(id) => setMode({ kind: 'detail', threadId: id })}
+          onNew={() => setMode({ kind: 'new' })}
+        />
+      );
     return <ThreadDetail thread={thread} onBack={() => setMode({ kind: 'list' })} />;
   }
   return <NewMessage onBack={() => setMode({ kind: 'list' })} />;
 }
 
 function ThreadList({
+  data,
+  loading,
+  error,
+  onRetry,
   onBackToMenu,
   onPick,
   onNew,
 }: {
+  data: Thread[] | null;
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
   onBackToMenu?: () => void;
   onPick: (id: string) => void;
   onNew: () => void;
@@ -226,25 +125,48 @@ function ThreadList({
       <div style={listDivider} />
 
       <div className="aspire-invisible-scroll" style={listScroll}>
-        {MOCK_THREADS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => onPick(t.id)}
-            style={threadRow}
-            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)')}
-            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
-          >
-            <Avatar initials={t.initials} color={t.avatarColor} />
-            <div style={threadRowText}>
-              <div style={threadRowTopLine}>
-                <span style={threadName(t.unread)}>{t.name}</span>
-                <span style={threadTime}>{t.time}</span>
+        {loading ? (
+          <LoadingSkeleton variant="list" count={7} />
+        ) : error ? (
+          <ErrorState message={error} onRetry={onRetry} />
+        ) : !data || data.length === 0 ? (
+          <EmptyState
+            icon="chatbubble-ellipses-outline"
+            headline="No conversations yet"
+            subtitle="Threads will appear here when customers text in."
+          />
+        ) : (
+          data.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => onPick(t.id)}
+              style={threadRow}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)')}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
+            >
+              {t.kind === 'unknown' ? (
+                <UnknownAvatar size={36} />
+              ) : (
+                <Avatar initials={t.initials} color={t.avatarColor} />
+              )}
+              <div style={threadRowText}>
+                <div style={threadRowTopLine}>
+                  <span
+                    style={{
+                      ...threadName(t.unread),
+                      color: t.kind === 'unknown' ? 'rgba(255,255,255,0.75)' : '#ffffff',
+                    }}
+                  >
+                    {t.kind === 'unknown' ? 'Unknown caller' : t.name}
+                  </span>
+                  <span style={threadTime}>{t.time}</span>
+                </div>
+                <div style={threadPreview(t.unread)}>{t.preview}</div>
               </div>
-              <div style={threadPreview(t.unread)}>{t.preview}</div>
-            </div>
-            {t.unread ? <div style={unreadDot} /> : null}
-          </button>
-        ))}
+              {t.unread ? <div style={unreadDot} /> : null}
+            </button>
+          ))
+        )}
       </div>
       <button
         aria-label="New message"
@@ -266,6 +188,7 @@ function ThreadList({
 function ThreadDetail({ thread, onBack }: { thread: Thread; onBack: () => void }) {
   const [draft, setDraft] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
+  const displayName = thread.kind === 'unknown' ? 'Unknown caller' : thread.name;
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -279,9 +202,15 @@ function ThreadDetail({ thread, onBack }: { thread: Thread; onBack: () => void }
         <button aria-label="Back to threads" onClick={onBack} style={detailBackBtn}>
           <Ionicons name="chevron-back" size={18} color="rgba(255,255,255,0.85)" />
         </button>
-        <Avatar initials={thread.initials} color={thread.avatarColor} size={32} />
+        {thread.kind === 'unknown' ? (
+          <UnknownAvatar size={32} />
+        ) : (
+          <Avatar initials={thread.initials} color={thread.avatarColor} size={32} />
+        )}
         <div style={detailHeaderText}>
-          <div style={detailHeaderName}>{thread.name}</div>
+          <div style={{ ...detailHeaderName, color: thread.kind === 'unknown' ? 'rgba(255,255,255,0.75)' : '#fff' }}>
+            {displayName}
+          </div>
           <div style={detailHeaderPhone}>{thread.phone}</div>
         </div>
         <button aria-label="Call" style={detailIconBtn}>
@@ -396,36 +325,6 @@ function NewMessage({ onBack }: { onBack: () => void }) {
           <Ionicons name="arrow-up" size={16} color="#fff" />
         </button>
       </div>
-    </div>
-  );
-}
-
-function Avatar({ initials, color, size = 36 }: { initials: string; color: string; size?: number }) {
-  return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        background: color,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -1px 0 rgba(0,0,0,0.18)',
-      }}
-    >
-      <span
-        style={{
-          color: '#ffffff',
-          fontFamily: 'Inter, system-ui, sans-serif',
-          fontSize: size * 0.38,
-          fontWeight: 600,
-          letterSpacing: 0.2,
-        }}
-      >
-        {initials}
-      </span>
     </div>
   );
 }

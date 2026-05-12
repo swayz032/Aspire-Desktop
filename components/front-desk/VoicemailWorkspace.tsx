@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -10,91 +10,18 @@ import {
   styleTokens as t,
   TYPE_COLOR,
 } from '@/components/front-desk/inboxShared';
+import type { VoicemailVM } from '@/components/front-desk/types';
+import { MOCK_VOICEMAILS } from '@/lib/frontDeskMock';
+import { useFrontDeskSection } from '@/hooks/useFrontDeskSection';
+import { LoadingSkeleton } from '@/components/front-desk/states/LoadingSkeleton';
+import { EmptyState } from '@/components/front-desk/states/EmptyState';
+import { ErrorState } from '@/components/front-desk/states/ErrorState';
+import { UnknownAvatar } from '@/components/front-desk/states/UnknownAvatar';
 
 /**
  * VoicemailWorkspace — list of voicemails with a mocked audio player.
- * MOCK only.
+ * Pass B: VM types + mock fixtures from @/lib/frontDeskMock.
  */
-
-type Voicemail = {
-  id: string;
-  name: string;
-  initials: string;
-  avatarColor: string;
-  phone: string;
-  duration: string;
-  time: string;
-  preview: string; // first line
-  transcript: string;
-  unread: boolean;
-};
-
-const MOCK: Voicemail[] = [
-  {
-    id: 'v1',
-    name: 'David Reed',
-    initials: 'DR',
-    avatarColor: '#A855F7',
-    phone: '(617) 555-0319',
-    duration: '0:46',
-    time: '21m',
-    preview: 'Hi this is David, calling about the porch...',
-    transcript:
-      'Hi this is David, calling about the porch we discussed last week. I had a quick question about the railing height — the city inspector wants 42 inches but I thought we spoke about 36. Can you give me a ring back when you get a chance? Thanks.',
-    unread: true,
-  },
-  {
-    id: 'v2',
-    name: 'Sarah Klein',
-    initials: 'SK',
-    avatarColor: '#10B981',
-    phone: '(617) 555-0411',
-    duration: '1:12',
-    time: '3h',
-    preview: 'Following up on the estimate you sent...',
-    transcript:
-      'Hey, following up on the estimate you sent over Friday. Everything looks great — we are ready to move forward. Can you send over the contract and let me know what kind of deposit you need? Talk soon.',
-    unread: true,
-  },
-  {
-    id: 'v3',
-    name: 'Carlos Rivera',
-    initials: 'CR',
-    avatarColor: '#EF4444',
-    phone: '(617) 555-0334',
-    duration: '0:33',
-    time: 'Yesterday',
-    preview: 'Hi, calling about the bathroom remodel quote...',
-    transcript:
-      'Hi, calling about the bathroom remodel quote — please call me back when you can. Thanks.',
-    unread: false,
-  },
-  {
-    id: 'v4',
-    name: 'Margaret Wu',
-    initials: 'MW',
-    avatarColor: '#F59E0B',
-    phone: '(617) 555-0744',
-    duration: '2:08',
-    time: '2 days',
-    preview: 'Wanted to ask about scheduling for next month...',
-    transcript:
-      'Wanted to ask about scheduling for next month. We are looking to start the kitchen project the week of the 18th if possible. Also a question about the cabinet finish samples you mentioned. Give me a call when you get a chance.',
-    unread: false,
-  },
-  {
-    id: 'v5',
-    name: 'Unknown',
-    initials: '??',
-    avatarColor: '#6B7280',
-    phone: '(978) 555-0501',
-    duration: '0:18',
-    time: '3 days',
-    preview: 'Hi, I got your number from...',
-    transcript: 'Hi, I got your number from a friend. Looking for a deck contractor. Please call me back.',
-    unread: false,
-  },
-];
 
 // Pre-computed waveform bar heights (24 bars, 18-36px)
 const WAVE_HEIGHTS = [22, 28, 18, 30, 24, 34, 20, 26, 32, 22, 28, 36, 24, 18, 30, 26, 32, 20, 28, 24, 34, 22, 26, 18];
@@ -107,65 +34,128 @@ export function VoicemailWorkspace({ onBackToMenu }: { onBackToMenu?: () => void
     ensureInvisibleScrollCss();
   }, []);
 
+  const fetcher = useCallback(() => Promise.resolve(MOCK_VOICEMAILS), []);
+  const { data, loading, error, refresh } = useFrontDeskSection<VoicemailVM>(fetcher, {
+    mock: MOCK_VOICEMAILS,
+  });
+
   if (Platform.OS !== 'web') return <View style={styles.fill} />;
 
   if (mode.kind === 'list') {
-    return <VmList onBackToMenu={onBackToMenu} onPick={(id) => setMode({ kind: 'detail', id })} />;
+    return (
+      <VmList
+        data={data}
+        loading={loading}
+        error={error}
+        onRetry={refresh}
+        onBackToMenu={onBackToMenu}
+        onPick={(id) => setMode({ kind: 'detail', id })}
+      />
+    );
   }
-  const item = MOCK.find((m) => m.id === mode.id);
-  if (!item) return <VmList onBackToMenu={onBackToMenu} onPick={(id) => setMode({ kind: 'detail', id })} />;
+  const item = (data ?? []).find((m) => m.id === mode.id);
+  if (!item)
+    return (
+      <VmList
+        data={data}
+        loading={loading}
+        error={error}
+        onRetry={refresh}
+        onBackToMenu={onBackToMenu}
+        onPick={(id) => setMode({ kind: 'detail', id })}
+      />
+    );
   return <VmDetail item={item} onBack={() => setMode({ kind: 'list' })} />;
 }
 
-function VmList({ onBackToMenu, onPick }: { onBackToMenu?: () => void; onPick: (id: string) => void }) {
+function VmList({
+  data,
+  loading,
+  error,
+  onRetry,
+  onBackToMenu,
+  onPick,
+}: {
+  data: VoicemailVM[] | null;
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+  onBackToMenu?: () => void;
+  onPick: (id: string) => void;
+}) {
   return (
     <div style={t.listWrap}>
       <ListHeader icon="mic-outline" title="Voicemail" onBackToMenu={onBackToMenu} />
       <div className="aspire-invisible-scroll" style={t.listScroll}>
-        {MOCK.map((m) => (
-          <button
-            key={m.id}
-            onClick={() => onPick(m.id)}
-            style={t.rowBtn}
-            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)')}
-            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
-          >
-            <Avatar initials={m.initials} color={m.avatarColor} />
-            <div style={t.rowText}>
-              <div style={t.rowTopLine}>
-                <span style={{ ...t.rowName, fontWeight: m.unread ? 600 : 500 }}>{m.name}</span>
-                <span style={t.rowTime}>{m.time}</span>
+        {loading ? (
+          <LoadingSkeleton variant="list" count={5} />
+        ) : error ? (
+          <ErrorState message={error} onRetry={onRetry} />
+        ) : !data || data.length === 0 ? (
+          <EmptyState
+            icon="mic-off-outline"
+            headline="No voicemails today"
+            subtitle="When callers leave a message, you'll see it here."
+          />
+        ) : (
+          data.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => onPick(m.id)}
+              style={t.rowBtn}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)')}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
+            >
+              {m.kind === 'unknown' ? (
+                <UnknownAvatar size={36} />
+              ) : (
+                <Avatar initials={m.initials} color={m.avatarColor} />
+              )}
+              <div style={t.rowText}>
+                <div style={t.rowTopLine}>
+                  <span
+                    style={{
+                      ...t.rowName,
+                      fontWeight: m.unread ? 600 : 500,
+                      color: m.kind === 'unknown' ? 'rgba(255,255,255,0.75)' : '#fff',
+                    }}
+                  >
+                    {m.kind === 'unknown' ? 'Unknown caller' : m.name}
+                  </span>
+                  <span style={t.rowTime}>{m.time}</span>
+                </div>
+                <div style={t.rowMidLine}>
+                  <span
+                    style={{
+                      ...t.entityPill,
+                      color: TYPE_COLOR.voicemail,
+                      background: 'rgba(168,85,247,0.10)',
+                      border: '1px solid rgba(168,85,247,0.28)',
+                    }}
+                  >
+                    {m.duration}
+                  </span>
+                  <span style={{ ...t.rowPreview, color: m.unread ? 'rgba(255,255,255,0.78)' : 'rgba(255,255,255,0.45)' }}>
+                    {m.preview}
+                  </span>
+                </div>
               </div>
-              <div style={t.rowMidLine}>
-                <span
-                  style={{
-                    ...t.entityPill,
-                    color: TYPE_COLOR.voicemail,
-                    background: 'rgba(168,85,247,0.10)',
-                    border: '1px solid rgba(168,85,247,0.28)',
-                  }}
-                >
-                  {m.duration}
-                </span>
-                <span style={{ ...t.rowPreview, color: m.unread ? 'rgba(255,255,255,0.78)' : 'rgba(255,255,255,0.45)' }}>
-                  {m.preview}
-                </span>
+              <div style={t.typeIconWrap}>
+                <Ionicons name="mic-outline" size={14} color={TYPE_COLOR.voicemail} />
               </div>
-            </div>
-            <div style={t.typeIconWrap}>
-              <Ionicons name="mic-outline" size={14} color={TYPE_COLOR.voicemail} />
-            </div>
-            {m.unread ? <div style={t.unreadDot} /> : null}
-          </button>
-        ))}
+              {m.unread ? <div style={t.unreadDot} /> : null}
+            </button>
+          ))
+        )}
       </div>
     </div>
   );
 }
 
-function VmDetail({ item, onBack }: { item: Voicemail; onBack: () => void }) {
+function VmDetail({ item, onBack }: { item: VoicemailVM; onBack: () => void }) {
   const [playing, setPlaying] = useState(false);
   const [activeBar, setActiveBar] = useState(0);
+  const displayName = item.kind === 'unknown' ? 'Unknown caller' : item.name;
 
   useEffect(() => {
     if (!playing) return;
@@ -177,7 +167,13 @@ function VmDetail({ item, onBack }: { item: Voicemail; onBack: () => void }) {
 
   return (
     <div style={t.detailWrap}>
-      <DetailHeader onBack={onBack} initials={item.initials} avatarColor={item.avatarColor} name={item.name} phone={item.phone} />
+      <DetailHeader
+        onBack={onBack}
+        initials={item.initials}
+        avatarColor={item.avatarColor}
+        name={displayName}
+        phone={item.phone}
+      />
       <div className="aspire-invisible-scroll" style={t.detailScroll}>
         <div style={t.detailCallerCard}>
           <div style={t.sectionLabel}>Voicemail · {item.duration} · {item.time} ago</div>
