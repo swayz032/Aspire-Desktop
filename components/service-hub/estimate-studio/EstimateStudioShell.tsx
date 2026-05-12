@@ -53,12 +53,13 @@ export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
   const isWide = width >= WORKSPACE_BREAKPOINT;
   const isTablet = width < WORKSPACE_BREAKPOINT && width >= TABLET_BREAKPOINT;
   const isMobile = width < TABLET_BREAKPOINT;
-  const pathname = usePathname();
-  // Materials tab owns its own search bar (the materials warehouse search).
-  // Hiding the project address bar there avoids two stacked search inputs.
-  // Per user spec: to set/change the project address, the user goes back to
-  // the Visuals tab. The address persists across tabs via the shared store.
-  const isMaterialsTab = pathname?.includes('/estimate-studio/materials') ?? false;
+  const pathname = usePathname() ?? '';
+  // Materials tab owns its own search bar (the materials warehouse search)
+  // and route-hero canvas-swap. Detect the route via path-segment endsWith
+  // (route groups can strip the URL prefix — see issue with `includes`
+  // not matching reliably under expo-router groups).
+  const isMaterialsTab =
+    pathname.endsWith('/materials') || pathname.endsWith('/materials/');
   const { address: projectAddress } = useProjectAddress();
 
   const body = (
@@ -101,14 +102,16 @@ export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
     </View>
   );
 
-  if (isMaterialsTab) {
-    return (
-      <MaterialsSearchProvider projectAddress={projectAddress}>
-        {body}
-      </MaterialsSearchProvider>
-    );
-  }
-  return body;
+  // Always mount the MaterialsSearchProvider — hooks are cheap + idempotent
+  // and consumers (MaterialsSlotBar, MaterialsTab, MaterialsRouteHero,
+  // MaterialsRouteContextCard) need a valid context every render. The
+  // pathname-based gating used previously was unreliable under expo-router
+  // route groups and produced "must be used inside provider" throws.
+  return (
+    <MaterialsSearchProvider projectAddress={projectAddress}>
+      {body}
+    </MaterialsSearchProvider>
+  );
 }
 
 const styles = StyleSheet.create({

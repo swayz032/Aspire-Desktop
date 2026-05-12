@@ -24,6 +24,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Platform, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { usePathname } from 'expo-router';
 import { useMaterialsSearchContextOptional } from '../materials/MaterialsSearchContext';
 
 const WEB_TRANSITION: ViewStyle =
@@ -67,6 +68,9 @@ function trafficChip(inTraffic: boolean): {
 }
 
 export function MaterialsRouteContextCard() {
+  const pathname = usePathname() ?? '';
+  const isMaterialsTab =
+    pathname.endsWith('/materials') || pathname.endsWith('/materials/');
   const ctx = useMaterialsSearchContextOptional();
 
   // Tick the ETA every 30s so "Arrive by HH:MM" stays honest.
@@ -83,7 +87,10 @@ export function MaterialsRouteContextCard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx?.search.closestStore?.driveMinutes, nowTick]);
 
+  // Provider is always mounted in EstimateStudio shell, so ctx is rarely
+  // null — but stay defensive. Only render on the Materials tab.
   if (!ctx) return null;
+  if (!isMaterialsTab) return null;
 
   const closest = ctx.search.closestStore;
 
