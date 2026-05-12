@@ -8,7 +8,7 @@
  *   - tabular-nums on drive-time
  *   - 200ms hover/focus transition on web
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -19,9 +19,15 @@ import {
   Animated,
   Easing,
   type ViewStyle,
+  type TextStyle,
+  type StyleProp,
+  type PressableStateCallbackType,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { ClosestStore } from '@/hooks/useMaterialsSearch';
+
+// React Native Web extends PressableStateCallbackType with `hovered`.
+type WebPressableState = PressableStateCallbackType & { hovered?: boolean };
 
 interface Props {
   value: string;
@@ -34,10 +40,19 @@ interface Props {
   placeholder?: string;
 }
 
-const WEB_TRANSITION: ViewStyle =
-  Platform.OS === 'web'
-    ? (({ transition: 'all 200ms ease' } as unknown) as ViewStyle)
-    : {};
+// CSS properties not present in React Native's ViewStyle/TextStyle types but
+// accepted by React Native Web at runtime. Typing them explicitly avoids
+// `as any` casts while keeping the values type-checked.
+interface WebViewStyle extends ViewStyle {
+  transition?: string;
+  boxShadow?: string;
+}
+interface WebTextStyle {
+  outlineWidth?: number;
+  outlineStyle?: 'none' | 'solid';
+}
+const WEB_TRANSITION: WebViewStyle =
+  Platform.OS === 'web' ? { transition: 'all 200ms ease' } : {};
 
 export function MaterialsSearchBar({
   value,
@@ -88,7 +103,7 @@ export function MaterialsSearchBar({
   });
 
   // Animated gold flash on submit — interpolated border color
-  const flashBorderColor = flash.interpolate({
+  const flashBorderColor: Animated.AnimatedInterpolation<string> = flash.interpolate({
     inputRange: [0, 1],
     outputRange: [
       focused ? 'rgba(251,191,36,0.50)' : 'rgba(255,255,255,0.10)',
@@ -103,7 +118,7 @@ export function MaterialsSearchBar({
           styles.fieldRow,
           focused && styles.fieldRowFocused,
           WEB_TRANSITION,
-          { transform: [{ translateX }], borderColor: flashBorderColor as any },
+          { transform: [{ translateX }], borderColor: flashBorderColor },
         ]}
         testID="materials-search-bar"
       >
@@ -116,7 +131,7 @@ export function MaterialsSearchBar({
           onBlur={() => setFocused(false)}
           placeholder={placeholder}
           placeholderTextColor="rgba(255,255,255,0.35)"
-          style={styles.input}
+          style={styles.input as StyleProp<TextStyle>}
           returnKeyType="search"
           autoCorrect={false}
           accessibilityLabel="Search materials"
@@ -126,7 +141,7 @@ export function MaterialsSearchBar({
         {value.length > 0 && (
           <Pressable
             onPress={onClear}
-            style={({ pressed }: any) => [styles.iconBtn, pressed && styles.iconBtnPressed]}
+            style={({ pressed }: WebPressableState) => [styles.iconBtn, pressed && styles.iconBtnPressed]}
             accessibilityRole="button"
             accessibilityLabel="Clear search"
             testID="materials-search-clear"
@@ -137,7 +152,7 @@ export function MaterialsSearchBar({
 
         {/* Voice slot — Pass H reservation. Render disabled with tooltip. */}
         <Pressable
-          style={({ hovered }: any) => [
+          style={({ hovered }: WebPressableState) => [
             styles.iconBtn,
             styles.iconBtnDisabled,
             hovered && styles.iconBtnHovered,
@@ -146,7 +161,9 @@ export function MaterialsSearchBar({
           accessibilityLabel="Voice search (coming in Pass H)"
           accessibilityHint="Voice search will be available in a future update"
           disabled
-          {...(Platform.OS === 'web' ? ({ title: 'Voice search coming in Pass H' } as any) : {})}
+          {...(Platform.OS === 'web'
+            ? ({ title: 'Voice search coming in Pass H' } as { title: string })
+            : {})}
           testID="materials-voice-button"
         >
           <Ionicons name="mic-outline" size={15} color="rgba(255,255,255,0.30)" />
@@ -155,7 +172,7 @@ export function MaterialsSearchBar({
         <Pressable
           onPress={handleSubmit}
           disabled={value.trim().length === 0 || isLoading}
-          style={({ hovered, pressed }: any) => [
+          style={({ hovered, pressed }: WebPressableState) => [
             styles.submitBtn,
             (value.trim().length === 0 || isLoading) && styles.submitBtnDisabled,
             hovered && styles.submitBtnHovered,
@@ -173,7 +190,7 @@ export function MaterialsSearchBar({
       {closestStore && (
         <Pressable
           onPress={onClosestStorePress}
-          style={({ hovered, pressed }: any) => [
+          style={({ hovered, pressed }: WebPressableState) => [
             styles.storeChip,
             hovered && styles.storeChipHovered,
             pressed && styles.storeChipPressed,
@@ -217,19 +234,19 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.10)',
     borderRadius: 10,
     ...(Platform.OS === 'web'
-      ? (({
+      ? ({
           boxShadow: '0 1px 0 rgba(255,255,255,0.04) inset, 0 1px 2px rgba(0,0,0,0.25)',
-        } as unknown) as ViewStyle)
+        } as WebViewStyle)
       : {}),
   },
   fieldRowFocused: {
     borderColor: 'rgba(251,191,36,0.55)',
     backgroundColor: 'rgba(251,191,36,0.045)',
     ...(Platform.OS === 'web'
-      ? (({
+      ? ({
           boxShadow:
             '0 0 0 3px rgba(251,191,36,0.14), 0 1px 0 rgba(255,255,255,0.04) inset',
-        } as unknown) as ViewStyle)
+        } as WebViewStyle)
       : {}),
   },
   input: {
@@ -239,9 +256,9 @@ const styles = StyleSheet.create({
     letterSpacing: -0.1,
     paddingVertical: 0,
     ...(Platform.OS === 'web'
-      ? ({ outlineWidth: 0, outlineStyle: 'none' } as any)
+      ? ({ outlineWidth: 0, outlineStyle: 'none' } as WebTextStyle)
       : {}),
-  } as any,
+  },
   iconBtn: {
     width: 26,
     height: 26,
