@@ -10,6 +10,7 @@
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { usePathname } from 'expo-router';
 import { PropertySummaryCard } from './PropertySummaryCard';
 import { MaterialsRouteContextCard } from './MaterialsRouteContextCard';
 import type { PropertyData } from '@/services/serviceHub/propertyDataApi';
@@ -39,6 +40,10 @@ interface Props {
 }
 
 export function TimRailContextTab({ data, loading, error, onRetry }: Props) {
+  const pathname = usePathname() ?? '';
+  const isMaterialsTab =
+    pathname.endsWith('/materials') || pathname.endsWith('/materials/');
+
   return (
     <ScrollView
       style={styles.container}
@@ -80,7 +85,10 @@ export function TimRailContextTab({ data, loading, error, onRetry }: Props) {
       {/* Materials-tab-only — renders null off-route via context check. */}
       <MaterialsRouteContextCard />
 
-      <PropertySummaryCard data={data} loading={loading} />
+      {/* Property facts hidden on Materials tab — that tab's context
+          is the route + bundle, not the property valuation card. The
+          property data is one click away (Visuals / Plans / Scope tabs). */}
+      {!isMaterialsTab && <PropertySummaryCard data={data} loading={loading} />}
     </ScrollView>
   );
 }

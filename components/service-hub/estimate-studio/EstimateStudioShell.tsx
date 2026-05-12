@@ -110,6 +110,11 @@ export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
         {/* TIM ZONE — divider via border-left in TimRailContainer.cardZone */}
         <TimRailContainer />
       </View>
+      {/* Amber ambient overlay — painted ON TOP of all canvas children
+          so opaque content (route map, hero photos, Cesium 3D) does
+          not cover the inset glow. pointerEvents:none keeps it
+          interactive-transparent. */}
+      <View pointerEvents="none" style={styles.glowOverlay} />
     </View>
   );
 
@@ -146,25 +151,27 @@ const styles = StyleSheet.create({
     // page background. Goal: light at the edge, dark everywhere else.
     ...(Platform.OS === 'web'
       ? (({
-          // Canvas height accounts for: TopNav 52 + content paddingTop
-          // 24 + paddingBottom 16 + small safety = ~98. Subtract 118
-          // to preserve a small page-bg gutter at the bottom AND keep
-          // the canvas itself the same effective size after the nav
-          // gap was widened.
           height: 'calc(100vh - 118px)',
           maxHeight: 'calc(100vh - 118px)',
-          // Amber lives ENTIRELY inside the canvas — no outer bloom,
-          // no outer rim. Page background stays pristine dark.
+        } as unknown) as ViewStyle)
+      : {}),
+  },
+  glowOverlay: {
+    // Absolutely positioned over the entire outer canvas, ON TOP of
+    // children, so opaque canvas content (route map, Aerial 3D, photo
+    // hero) doesn't cover the inset amber glow the way it would if
+    // the shadow lived on outerCanvas itself.
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 14,
+    ...(Platform.OS === 'web'
+      ? (({
           boxShadow: [
             'inset 0 0 110px rgba(251,191,36,0.12)',
             'inset 0 0 28px rgba(251,191,36,0.08)',
             'inset 0 0 0 1px rgba(251,191,36,0.28)',
           ].join(', '),
         } as unknown) as ViewStyle)
-      : {
-          // Native — no shadow, ambient is web-only via inset boxShadow
-          // (RN ShadowStyle does not support inset on iOS/Android).
-        }),
+      : {}),
   },
   outerCanvasTablet: {
     borderRadius: 12,
@@ -191,8 +198,11 @@ const styles = StyleSheet.create({
   },
   contextualSlot: {
     paddingHorizontal: 18,
-    paddingTop: 0,
-    paddingBottom: 0,
+    paddingTop: 6,
+    // 8 px between the contextual-slot content (search bar / address
+    // bar) and the tab pills row directly below it — was 0, the two
+    // were touching.
+    paddingBottom: 8,
   },
   tabBarSlot: {
     paddingHorizontal: 18,
