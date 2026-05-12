@@ -2,22 +2,41 @@ import React, { useEffect } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-const INVISIBLE_SCROLL_STYLE_ID = 'aspire-invisible-scroll-css';
+const GLASSY_SCROLL_STYLE_ID = 'aspire-glassy-hscroll-css';
 
-function ensureInvisibleScrollCss() {
+function ensureGlassyHorizontalScrollCss() {
   if (Platform.OS !== 'web' || typeof document === 'undefined') return;
-  if (document.getElementById(INVISIBLE_SCROLL_STYLE_ID)) return;
+  if (document.getElementById(GLASSY_SCROLL_STYLE_ID)) return;
   const style = document.createElement('style');
-  style.id = INVISIBLE_SCROLL_STYLE_ID;
+  style.id = GLASSY_SCROLL_STYLE_ID;
   style.textContent = `
-    .aspire-invisible-scroll {
-      scrollbar-width: none;
-      -ms-overflow-style: none;
+    .aspire-glassy-hscroll {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,0.18) transparent;
     }
-    .aspire-invisible-scroll::-webkit-scrollbar {
-      width: 0;
-      height: 0;
-      display: none;
+    .aspire-glassy-hscroll::-webkit-scrollbar {
+      height: 6px;
+      background: transparent;
+    }
+    .aspire-glassy-hscroll::-webkit-scrollbar-track {
+      background: rgba(255,255,255,0.03);
+      border-radius: 999px;
+      margin-left: 16px;
+      margin-right: 16px;
+    }
+    .aspire-glassy-hscroll::-webkit-scrollbar-thumb {
+      background: linear-gradient(90deg,
+        rgba(255,255,255,0.10) 0%,
+        rgba(255,255,255,0.22) 50%,
+        rgba(255,255,255,0.10) 100%);
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.04);
+    }
+    .aspire-glassy-hscroll::-webkit-scrollbar-thumb:hover {
+      background: linear-gradient(90deg,
+        rgba(255,255,255,0.15) 0%,
+        rgba(255,255,255,0.32) 50%,
+        rgba(255,255,255,0.15) 100%);
     }
   `;
   document.head.appendChild(style);
@@ -141,7 +160,7 @@ const MOCK_TODAY: FeedItem[] = [
 
 export function TodayFeed() {
   useEffect(() => {
-    ensureInvisibleScrollCss();
+    ensureGlassyHorizontalScrollCss();
   }, []);
 
   if (Platform.OS !== 'web') {
@@ -160,14 +179,14 @@ export function TodayFeed() {
       </div>
 
       {/* Horizontal invisible scroller */}
-      <div className="aspire-invisible-scroll" style={scroller}>
+      <div className="aspire-glassy-hscroll" style={scroller}>
+        {/* Leading + trailing spacers act as inline padding the scrollbar
+            won't strip — guarantees symmetric 16px insets on both edges. */}
+        <div aria-hidden style={edgeSpacer} />
         {MOCK_TODAY.map((item) => (
           <FeedTile key={item.id} item={item} />
         ))}
-        {/* Trailing spacer — flex-overflow drops right-padding in scrollers, so we
-            render a phantom 1px spacer that holds the gap from the last tile to
-            the card edge, matching the left inset. */}
-        <div aria-hidden style={trailingSpacer} />
+        <div aria-hidden style={edgeSpacer} />
       </div>
     </View>
   );
@@ -280,15 +299,15 @@ const scroller: React.CSSProperties = {
   gap: 10,
   overflowX: 'auto',
   overflowY: 'hidden',
-  paddingLeft: 16,
-  // No paddingRight here — flex scrollers drop right-padding when content
-  // overflows. The trailingSpacer below holds the right gap instead.
-  paddingBottom: 14,
+  // No horizontal padding — leading/trailing edge spacers handle the
+  // 16px insets symmetrically, so the scrollbar can't strip them.
+  paddingTop: 4,    // breathing room so hover-lift isn't clipped at top
+  paddingBottom: 8, // small — premium glassy scrollbar lives in this gap
 };
 
-const trailingSpacer: React.CSSProperties = {
+const edgeSpacer: React.CSSProperties = {
   flex: '0 0 auto',
-  width: 6, // gap (10) + spacer (6) = 16 right inset, matches paddingLeft
+  width: 6,  // gap (10) + spacer (6) = 16 inset, matches the header's 16
   height: 1,
 };
 
@@ -303,6 +322,10 @@ const tile: React.CSSProperties = {
   padding: 12,
   cursor: 'pointer',
   outline: 'none',
+  // Suppress browser focus ring/box — getting clipped by the section
+  // card's overflow:hidden when a tile is clicked. We already paint our
+  // own hover state.
+  WebkitTapHighlightColor: 'transparent',
   textAlign: 'left',
   display: 'flex',
   flexDirection: 'column',
