@@ -66,6 +66,47 @@ export type AdamPropertyResult = {
     lastSaleAmount?: number;
     annualTax?: number;
     taxYear?: number;
+    // ─── Pass A: Estimator-essential extensions ──────────────────────
+    /** ATTOM-classified roof cover material (composition / metal / tile). */
+    roofCover?: string;
+    /** Past building permits for the property (date / type / value / contractor). */
+    permits?: Array<{
+      date?: string;
+      type?: string;
+      description?: string;
+      value?: number;
+      contractor?: string;
+    }>;
+    /** Mortgage + lender info from attom.detail_mortgage_owner. */
+    mortgageLender?: string;
+    mortgageAmount?: number;
+    mortgageDate?: string;
+    mortgageLoanType?: string;
+    /** Equity / loan position from attom.home_equity. */
+    ltvRatio?: number;
+    availableEquity?: number;
+    currentLoanBalance?: number;
+    estimatedMonthlyPayment?: number;
+    /** Sale-history detail beyond just last-sale price/date. */
+    lastSalePricePerSqft?: number;
+    lastSaleType?: string;
+    lastSaleArmsLength?: boolean;
+    appreciationPct?: number;
+    /** AVM precision: 0–100 score + Forecast Std Dev %. */
+    avmConfidenceScore?: number;
+    avmFsd?: number;
+    avmPricePerSqft?: number;
+    avmDate?: string;
+    /** Rental valuation (for landlord / investor properties). */
+    estimatedRent?: number;
+    estimatedRentLow?: number;
+    estimatedRentHigh?: number;
+    /** Tax assessment breakdown — split land vs improvement. */
+    taxAssessedTotal?: number;
+    taxAssessedLand?: number;
+    taxAssessedImprovement?: number;
+    taxMarketValue?: number;
+    taxPerSqft?: number;
     address?: {
       formatted: string;
       street?: string;
@@ -382,6 +423,37 @@ function normalizeRecord(
   const zoningResolved =
     zoning ?? toTrimmedString(r.zoning_type) ?? toTrimmedString(r.zoning_code);
 
+  // ─── Pass A: estimator-essential ATTOM fields ──────────────────────
+  const roofCover = toTrimmedString(r.roof_cover);
+  const permits = normalizePermits(r.permit_signals);
+  const mortgageLender = toTrimmedString(r.mortgage_lender);
+  const mortgageAmount = toFiniteNumber(r.mortgage_amount);
+  const mortgageDate = toTrimmedString(r.mortgage_date);
+  const mortgageLoanType = toTrimmedString(r.mortgage_loan_type);
+  const ltvRatio = toFiniteNumber(r.ltv_ratio);
+  const availableEquity = toFiniteNumber(r.available_equity);
+  const currentLoanBalance = toFiniteNumber(r.current_loan_balance);
+  const estimatedMonthlyPayment = toFiniteNumber(r.estimated_monthly_payment);
+  const lastSalePricePerSqft = toFiniteNumber(r.last_sale_price_per_sqft);
+  const lastSaleType = toTrimmedString(r.last_sale_type);
+  const lastSaleArmsLength =
+    typeof r.last_sale_arms_length === 'boolean'
+      ? (r.last_sale_arms_length as boolean)
+      : undefined;
+  const appreciationPct = toFiniteNumber(r.appreciation_pct);
+  const avmConfidenceScore = toFiniteNumber(r.avm_confidence_score);
+  const avmFsd = toFiniteNumber(r.avm_fsd);
+  const avmPricePerSqft = toFiniteNumber(r.avm_price_per_sqft);
+  const avmDate = toTrimmedString(r.avm_date);
+  const estimatedRent = toFiniteNumber(r.estimated_rent);
+  const estimatedRentLow = toFiniteNumber(r.estimated_rent_low);
+  const estimatedRentHigh = toFiniteNumber(r.estimated_rent_high);
+  const taxAssessedTotal = toFiniteNumber(r.tax_assessed_total);
+  const taxAssessedLand = toFiniteNumber(r.tax_assessed_land);
+  const taxAssessedImprovement = toFiniteNumber(r.tax_assessed_improvement);
+  const taxMarketValue = toFiniteNumber(r.tax_market_value);
+  const taxPerSqft = toFiniteNumber(r.tax_per_sqft);
+
   const facts: AdamPropertyResult['facts'] = {
     ...(sqft !== undefined ? { sqft } : {}),
     ...(yearBuilt !== undefined ? { yearBuilt } : {}),
@@ -402,11 +474,75 @@ function normalizeRecord(
     ...(lastSaleAmount !== undefined ? { lastSaleAmount } : {}),
     ...(annualTax !== undefined ? { annualTax } : {}),
     ...(taxYear !== undefined ? { taxYear } : {}),
+    // Pass A
+    ...(roofCover !== undefined ? { roofCover } : {}),
+    ...(permits !== undefined ? { permits } : {}),
+    ...(mortgageLender !== undefined ? { mortgageLender } : {}),
+    ...(mortgageAmount !== undefined ? { mortgageAmount } : {}),
+    ...(mortgageDate !== undefined ? { mortgageDate } : {}),
+    ...(mortgageLoanType !== undefined ? { mortgageLoanType } : {}),
+    ...(ltvRatio !== undefined ? { ltvRatio } : {}),
+    ...(availableEquity !== undefined ? { availableEquity } : {}),
+    ...(currentLoanBalance !== undefined ? { currentLoanBalance } : {}),
+    ...(estimatedMonthlyPayment !== undefined ? { estimatedMonthlyPayment } : {}),
+    ...(lastSalePricePerSqft !== undefined ? { lastSalePricePerSqft } : {}),
+    ...(lastSaleType !== undefined ? { lastSaleType } : {}),
+    ...(lastSaleArmsLength !== undefined ? { lastSaleArmsLength } : {}),
+    ...(appreciationPct !== undefined ? { appreciationPct } : {}),
+    ...(avmConfidenceScore !== undefined ? { avmConfidenceScore } : {}),
+    ...(avmFsd !== undefined ? { avmFsd } : {}),
+    ...(avmPricePerSqft !== undefined ? { avmPricePerSqft } : {}),
+    ...(avmDate !== undefined ? { avmDate } : {}),
+    ...(estimatedRent !== undefined ? { estimatedRent } : {}),
+    ...(estimatedRentLow !== undefined ? { estimatedRentLow } : {}),
+    ...(estimatedRentHigh !== undefined ? { estimatedRentHigh } : {}),
+    ...(taxAssessedTotal !== undefined ? { taxAssessedTotal } : {}),
+    ...(taxAssessedLand !== undefined ? { taxAssessedLand } : {}),
+    ...(taxAssessedImprovement !== undefined ? { taxAssessedImprovement } : {}),
+    ...(taxMarketValue !== undefined ? { taxMarketValue } : {}),
+    ...(taxPerSqft !== undefined ? { taxPerSqft } : {}),
     ...(address !== undefined ? { address } : {}),
     ...(coords !== undefined ? { coords } : {}),
   };
 
   return { facts, photos };
+}
+
+/**
+ * Normalize Adam's permit_signals payload. Adam returns either:
+ *   - a list of dicts with keys like { effective_date, type, value, contractor }
+ *   - a list of strings (legacy summary form)
+ *   - empty/missing
+ * We coerce to a uniform { date, type, description, value, contractor } shape
+ * so the UI doesn't have to branch. Drops entries with no usable signal.
+ */
+function normalizePermits(raw: unknown): AdamPropertyResult['facts']['permits'] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const out: NonNullable<AdamPropertyResult['facts']['permits']> = [];
+  for (const item of raw) {
+    if (typeof item === 'string') {
+      const t = item.trim();
+      if (t) out.push({ description: t });
+      continue;
+    }
+    if (!item || typeof item !== 'object') continue;
+    const o = item as Record<string, unknown>;
+    const date = toTrimmedString(
+      o.effective_date ?? o.permit_date ?? o.date ?? o.recordedDate,
+    );
+    const type = toTrimmedString(o.permit_type ?? o.type);
+    const description = toTrimmedString(o.description ?? o.project_description);
+    const value = toFiniteNumber(o.permit_value ?? o.job_value ?? o.value);
+    const contractor = toTrimmedString(o.contractor ?? o.contractor_name);
+    const entry: NonNullable<typeof out[number]> = {};
+    if (date !== undefined) entry.date = date;
+    if (type !== undefined) entry.type = type;
+    if (description !== undefined) entry.description = description;
+    if (value !== undefined) entry.value = value;
+    if (contractor !== undefined) entry.contractor = contractor;
+    if (Object.keys(entry).length > 0) out.push(entry);
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 // ─── Result constructors ──────────────────────────────────────────────────────

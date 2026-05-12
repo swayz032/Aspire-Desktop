@@ -98,6 +98,47 @@ export type PropertyData = {
     lastSaleAmount?: number;
     annualTax?: number;
     taxYear?: number;
+    // ─── Pass A: estimator-essential ATTOM data ───────────────────────
+    /** ATTOM-classified roof cover material. */
+    roofCover?: string;
+    /** Past building permits — informs roof age / panel upgrades / scope history. */
+    permits?: Array<{
+      date?: string;
+      type?: string;
+      description?: string;
+      value?: number;
+      contractor?: string;
+    }>;
+    /** Mortgage + lender. */
+    mortgageLender?: string;
+    mortgageAmount?: number;
+    mortgageDate?: string;
+    mortgageLoanType?: string;
+    /** Equity / loan position. */
+    ltvRatio?: number;
+    availableEquity?: number;
+    currentLoanBalance?: number;
+    estimatedMonthlyPayment?: number;
+    /** Sale-history detail. */
+    lastSalePricePerSqft?: number;
+    lastSaleType?: string;
+    lastSaleArmsLength?: boolean;
+    appreciationPct?: number;
+    /** AVM precision. */
+    avmConfidenceScore?: number;
+    avmFsd?: number;
+    avmPricePerSqft?: number;
+    avmDate?: string;
+    /** Rental valuation. */
+    estimatedRent?: number;
+    estimatedRentLow?: number;
+    estimatedRentHigh?: number;
+    /** Tax assessment breakdown. */
+    taxAssessedTotal?: number;
+    taxAssessedLand?: number;
+    taxAssessedImprovement?: number;
+    taxMarketValue?: number;
+    taxPerSqft?: number;
   };
   photos: {
     interior: PhotoLane;

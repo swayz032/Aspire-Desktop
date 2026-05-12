@@ -115,21 +115,7 @@ export function PropertySummaryCard({ data, loading }: Props) {
   }
 
   // -- Derived view models --------------------------------------------------
-  const f = data.facts as PropertyData['facts'] & {
-    bedrooms?: number;
-    bathrooms?: number;
-    constructionFrame?: string;
-    quality?: string;
-    ownerName?: string;
-    ownerOccupied?: boolean;
-    estimatedValue?: number;
-    estimatedValueLow?: number;
-    estimatedValueHigh?: number;
-    lastSaleDate?: string;
-    lastSaleAmount?: number;
-    annualTax?: number;
-    taxYear?: number;
-  };
+  const f = data.facts;
   const facts: { label: string; value: string }[] = [
     { label: 'Type', value: f.propertyType ?? '—' },
     { label: 'Year', value: f.yearBuilt ? String(f.yearBuilt) : '—' },
@@ -294,18 +280,238 @@ export function PropertySummaryCard({ data, loading }: Props) {
                 </Text>
               </View>
             )}
+            {typeof f.avmConfidenceScore === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>AVM confidence</Text>
+                <Text style={styles.factValue} numberOfLines={1}>
+                  {f.avmConfidenceScore}/100
+                  {typeof f.avmFsd === 'number' ? ` · ±${f.avmFsd.toFixed(1)}%` : ''}
+                </Text>
+              </View>
+            )}
+            {typeof f.avmPricePerSqft === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>AVM $/sqft</Text>
+                <Text style={styles.factValue} numberOfLines={1}>
+                  {formatCurrency(f.avmPricePerSqft)}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* SALE HISTORY DETAIL (last sale ppsf, type, arms-length, appreciation) */}
+      {(typeof f.lastSalePricePerSqft === 'number' ||
+        !!f.lastSaleType ||
+        typeof f.lastSaleArmsLength === 'boolean' ||
+        typeof f.appreciationPct === 'number') && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="trending-up-outline" size={11} color="rgba(255,255,255,0.45)" />
+            <Text style={styles.sectionLabel}>Sale Detail</Text>
+          </View>
+          <View style={styles.sectionBody}>
+            {typeof f.lastSalePricePerSqft === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Last sale $/sqft</Text>
+                <Text style={styles.factValue}>{formatCurrency(f.lastSalePricePerSqft)}</Text>
+              </View>
+            )}
+            {!!f.lastSaleType && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Sale type</Text>
+                <Text style={styles.factValue}>{f.lastSaleType}</Text>
+              </View>
+            )}
+            {typeof f.lastSaleArmsLength === 'boolean' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Arm's length</Text>
+                <Text style={styles.factValue}>{f.lastSaleArmsLength ? 'Yes' : 'No'}</Text>
+              </View>
+            )}
+            {typeof f.appreciationPct === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Appreciation</Text>
+                <Text style={styles.factValue}>{f.appreciationPct.toFixed(1)}%</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* MORTGAGE & EQUITY (informs the financing conversation) */}
+      {(!!f.mortgageLender ||
+        typeof f.mortgageAmount === 'number' ||
+        typeof f.ltvRatio === 'number' ||
+        typeof f.availableEquity === 'number') && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="cash-outline" size={11} color="rgba(255,255,255,0.45)" />
+            <Text style={styles.sectionLabel}>Mortgage &amp; Equity</Text>
+          </View>
+          <View style={styles.sectionBody}>
+            {!!f.mortgageLender && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Lender</Text>
+                <Text style={styles.factValue} numberOfLines={1}>
+                  {f.mortgageLender}
+                  {f.mortgageLoanType ? ` · ${f.mortgageLoanType}` : ''}
+                </Text>
+              </View>
+            )}
+            {typeof f.mortgageAmount === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Mortgage</Text>
+                <Text style={styles.factValue} numberOfLines={1}>
+                  {formatCurrency(f.mortgageAmount)}
+                  {f.mortgageDate ? ` · ${f.mortgageDate}` : ''}
+                </Text>
+              </View>
+            )}
+            {typeof f.currentLoanBalance === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Loan balance</Text>
+                <Text style={styles.factValue}>{formatCurrency(f.currentLoanBalance)}</Text>
+              </View>
+            )}
+            {typeof f.estimatedMonthlyPayment === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Est. monthly</Text>
+                <Text style={styles.factValue}>{formatCurrency(f.estimatedMonthlyPayment)}</Text>
+              </View>
+            )}
+            {typeof f.ltvRatio === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>LTV</Text>
+                <Text style={styles.factValue}>{f.ltvRatio}%</Text>
+              </View>
+            )}
+            {typeof f.availableEquity === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Available equity</Text>
+                <Text style={styles.factValue}>{formatCurrency(f.availableEquity)}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* PERMITS — building permits pulled from attom.building_permits */}
+      {Array.isArray(f.permits) && f.permits.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="document-text-outline" size={11} color="rgba(255,255,255,0.45)" />
+            <Text style={styles.sectionLabel}>Permits ({f.permits.length})</Text>
+          </View>
+          <View style={styles.sectionBody}>
+            {f.permits.slice(0, 8).map((p, idx) => {
+              const headline = [p.type, p.description].filter(Boolean).join(' · ');
+              const meta = [
+                p.date,
+                typeof p.value === 'number' ? formatCurrency(p.value) : null,
+                p.contractor,
+              ]
+                .filter(Boolean)
+                .join(' · ');
+              return (
+                <View style={styles.factRow} key={`permit-${idx}`}>
+                  <Text style={styles.factLabel} numberOfLines={1}>
+                    {headline || `Permit ${idx + 1}`}
+                  </Text>
+                  <Text style={styles.factValue} numberOfLines={1}>
+                    {meta || '—'}
+                  </Text>
+                </View>
+              );
+            })}
+            {f.permits.length > 8 && (
+              <Text style={styles.muted}>+{f.permits.length - 8} more permits</Text>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* RENTAL ESTIMATE (only for properties with ATTOM rental AVM) */}
+      {typeof f.estimatedRent === 'number' && f.estimatedRent > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="business-outline" size={11} color="rgba(255,255,255,0.45)" />
+            <Text style={styles.sectionLabel}>Rental Estimate</Text>
+          </View>
+          <View style={styles.sectionBody}>
+            <View style={styles.factRow}>
+              <Text style={styles.factLabel}>Est. rent</Text>
+              <Text style={styles.factValue} numberOfLines={1}>
+                {formatCurrency(f.estimatedRent)}/mo
+                {typeof f.estimatedRentLow === 'number' &&
+                typeof f.estimatedRentHigh === 'number'
+                  ? ` (${formatCurrency(f.estimatedRentLow)}–${formatCurrency(f.estimatedRentHigh)})`
+                  : ''}
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* TAX BREAKDOWN (assessed land vs improvement — tracks structure value) */}
+      {(typeof f.taxAssessedTotal === 'number' ||
+        typeof f.taxMarketValue === 'number' ||
+        typeof f.taxPerSqft === 'number') && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="receipt-outline" size={11} color="rgba(255,255,255,0.45)" />
+            <Text style={styles.sectionLabel}>Tax Assessment</Text>
+          </View>
+          <View style={styles.sectionBody}>
+            {typeof f.taxAssessedTotal === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Assessed total</Text>
+                <Text style={styles.factValue}>{formatCurrency(f.taxAssessedTotal)}</Text>
+              </View>
+            )}
+            {typeof f.taxAssessedLand === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Land</Text>
+                <Text style={styles.factValue}>{formatCurrency(f.taxAssessedLand)}</Text>
+              </View>
+            )}
+            {typeof f.taxAssessedImprovement === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Improvement</Text>
+                <Text style={styles.factValue}>{formatCurrency(f.taxAssessedImprovement)}</Text>
+              </View>
+            )}
+            {typeof f.taxMarketValue === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Market value</Text>
+                <Text style={styles.factValue}>{formatCurrency(f.taxMarketValue)}</Text>
+              </View>
+            )}
+            {typeof f.taxPerSqft === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Tax $/sqft</Text>
+                <Text style={styles.factValue}>{formatCurrency(f.taxPerSqft)}</Text>
+              </View>
+            )}
           </View>
         </View>
       )}
 
       {/* ROOF + ACCESS */}
-      {(data.signals.roofType || data.signals.accessRisk) && (
+      {(data.signals.roofType || data.signals.accessRisk || f.roofCover) && (
         <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
             <Ionicons name="construct-outline" size={11} color="rgba(255,255,255,0.45)" />
             <Text style={styles.sectionLabel}>Roof &amp; Access</Text>
           </View>
           <View style={styles.sectionBody}>
+            {!!f.roofCover && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Roof cover</Text>
+                <Text style={styles.factValue}>{f.roofCover}</Text>
+              </View>
+            )}
             {data.signals.roofType && (
               <View style={styles.factRow}>
                 <Text style={styles.factLabel}>Roof type</Text>
