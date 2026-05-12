@@ -11,7 +11,7 @@
  * `grid-template-columns` (not RN) while staying clean.
  */
 import React from 'react';
-import { View, StyleSheet, useWindowDimensions } from 'react-native';
+import { View, StyleSheet, useWindowDimensions, Platform, type DimensionValue } from 'react-native';
 import { ProductCard } from './ProductCard';
 import type { Product } from '@/hooks/useMaterialsSearch';
 
@@ -33,18 +33,25 @@ function colsForWidth(w: number): number {
 export function ProductGrid({ products, bundleIds, onAdd, onCompare }: Props) {
   const { width } = useWindowDimensions();
   const cols = colsForWidth(width);
-  // Subtract (cols-1) gaps from 100%, distribute remaining width into cols.
-  // flexBasis = `calc((100% - (cols-1)*GAP) / cols)`. RN flex-wrap respects px-based flexBasis
-  // when expressed as a percentage; we approximate by leaving small margin.
-  const basisPct = `${(100 / cols).toFixed(4)}%`;
+
+  // We want each cell to take EXACTLY 1/cols of the available row width
+  // minus the gutters between cells. On web we can use `calc()` directly
+  // (RN-Web maps flexBasis through to CSS). On native, we approximate via
+  // a percentage that is slightly under-sized so the gaps fit without wrap.
+  const totalGap = (cols - 1) * GAP;
+  let basis: DimensionValue;
+  if (Platform.OS === 'web') {
+    basis = `calc((100% - ${totalGap}px) / ${cols})` as unknown as DimensionValue;
+  } else {
+    // Native fallback — slight under-sizing to leave room for the 12px gap.
+    const approxPct = (100 - (totalGap / 4)) / cols; // gentle reduction
+    basis = `${approxPct.toFixed(4)}%` as `${number}%`;
+  }
 
   return (
     <View style={styles.grid} testID="materials-product-grid">
       {products.map((p) => (
-        <View
-          key={p.id}
-          style={[styles.cell, { flexBasis: basisPct as `${number}%` }]}
-        >
+        <View key={p.id} style={[styles.cell, { flexBasis: basis }]}>
           <ProductCard
             product={p}
             onAdd={() => onAdd(p)}
@@ -61,13 +68,9 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    // Use negative margin trick to simulate uniform gap inside flex-wrap.
-    marginHorizontal: -GAP / 2,
-    marginVertical: -GAP / 2,
+    gap: GAP,
   },
   cell: {
-    paddingHorizontal: GAP / 2,
-    paddingVertical: GAP / 2,
     minWidth: 0,
   },
 });
