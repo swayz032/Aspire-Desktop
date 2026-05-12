@@ -33,8 +33,11 @@ jest.mock('@/lib/googleMapsLoader', () => ({
 }));
 
 import { MaterialsTab } from '@/components/service-hub/estimate-studio/materials/MaterialsTab';
-import { __resetMaterialsBundleForTests } from '@/hooks/useMaterialsBundle';
-import { __resetProjectAddressForTests } from '@/hooks/useProjectAddress';
+import { __resetMaterialsBundleForTests, getBundle } from '@/hooks/useMaterialsBundle';
+import {
+  __resetProjectAddressForTests,
+  setProjectAddress,
+} from '@/hooks/useProjectAddress';
 
 // Jest configures jsdom by default via jest-expo. The mock hook uses
 // setTimeout 250ms — fake timers keep tests fast and deterministic.
@@ -172,5 +175,69 @@ describe('Materials Tab — Pass B shell', () => {
     const btn = getByTestId('materials-voice-button');
     expect(btn).toBeTruthy();
     expect(btn.props.accessibilityState?.disabled ?? btn.props.disabled).toBeTruthy();
+  });
+
+  // ---- Regression coverage for Pass B output-critic fixes ----
+
+  it('clicking a suggestion chip populates the product grid (Fix 1)', () => {
+    const { getByTestId, queryByTestId } = render(<MaterialsTab />);
+
+    // Empty state present; product grid is not.
+    expect(getByTestId('materials-empty-state')).toBeTruthy();
+    expect(queryByTestId('materials-product-grid')).toBeNull();
+
+    // Click the "paint" suggestion chip — this is the path that previously
+    // failed (stale-closure submitSearch read pre-update query).
+    fireEvent.press(getByTestId('materials-suggestion-paint'));
+    act(() => jest.advanceTimersByTime(300));
+
+    expect(getByTestId('materials-product-grid')).toBeTruthy();
+    expect(getByTestId('materials-product-card-hd-pp-marquee-5gal')).toBeTruthy();
+  });
+
+  it('switching projectAddress resets the in-memory bundle (Fix 2)', () => {
+    const { getByTestId, unmount } = render(<MaterialsTab />);
+
+    fireEvent.changeText(getByTestId('materials-search-input'), 'paint');
+    fireEvent.press(getByTestId('materials-search-submit'));
+    act(() => jest.advanceTimersByTime(300));
+
+    fireEvent.press(getByTestId('materials-add-btn-hd-pp-marquee-5gal'));
+    expect(getBundle().length).toBe(1);
+
+    // Switch project address — bundle should auto-clear.
+    act(() => {
+      setProjectAddress('123 New Project Lane, Austin TX');
+    });
+
+    expect(getBundle().length).toBe(0);
+
+    // Unmount the tab — clearBundle() in the unmount effect keeps state empty.
+    unmount();
+    expect(getBundle().length).toBe(0);
+  });
+
+  it('clicking a filter chip filters the product grid (Fix 4)', () => {
+    const { getByTestId, queryByTestId } = render(<MaterialsTab />);
+
+    fireEvent.changeText(getByTestId('materials-search-input'), 'paint');
+    fireEvent.press(getByTestId('materials-search-submit'));
+    act(() => jest.advanceTimersByTime(300));
+
+    // Pre-filter: Behr Marquee + Sherwin-Williams ProMar both present.
+    expect(getByTestId('materials-product-card-hd-pp-marquee-5gal')).toBeTruthy();
+    expect(getByTestId('materials-product-card-hd-pp-promar-1gal')).toBeTruthy();
+
+    // Toggle the "Behr" brand chip.
+    const behrChip = getByTestId('materials-filter-chip-brand-Behr');
+    fireEvent.press(behrChip);
+
+    // Behr card remains; non-Behr cards are filtered out.
+    expect(getByTestId('materials-product-card-hd-pp-marquee-5gal')).toBeTruthy();
+    expect(queryByTestId('materials-product-card-hd-pp-promar-1gal')).toBeNull();
+
+    // Toggle off — both cards return.
+    fireEvent.press(behrChip);
+    expect(getByTestId('materials-product-card-hd-pp-promar-1gal')).toBeTruthy();
   });
 });
