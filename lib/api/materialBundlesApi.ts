@@ -51,6 +51,13 @@ export interface WireBundleItem {
   pushed_to_estimate: boolean;
   estimate_draft_id: string | null;
   created_at: string | null;
+  /**
+   * Pass E: bundle line kind. `'product'` (default) is the existing
+   * retail-product line. `'supplier_line'` is a B2B supplier RFQ stub.
+   * Backend ships this column from Pass E (mcp-toolsmith owns the column).
+   * Optional on the wire for backward compatibility during migration.
+   */
+  kind?: 'product' | 'supplier_line';
 }
 
 export interface BundleListResponse {
@@ -88,6 +95,13 @@ export interface BundleItem {
   pushedToEstimate: boolean;
   estimateDraftId: string | null;
   createdAt: string | null;
+  /**
+   * Pass E: bundle line kind. Defaults to `'product'` in the mapper for
+   * existing rows missing the column. `'supplier_line'` indicates a B2B
+   * supplier RFQ stub — drives BundleSummaryBar to show "Draft RFQs" CTA
+   * instead of "Push to Estimate".
+   */
+  kind: 'product' | 'supplier_line';
 }
 
 export interface BundleResult {
@@ -139,6 +153,8 @@ function _mapWireItem(w: WireBundleItem): BundleItem {
     pushedToEstimate: w.pushed_to_estimate,
     estimateDraftId: w.estimate_draft_id,
     createdAt: w.created_at,
+    // Pass E: default to 'product' for legacy rows missing the column.
+    kind: w.kind === 'supplier_line' ? 'supplier_line' : 'product',
   };
 }
 

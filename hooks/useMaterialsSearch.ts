@@ -89,6 +89,38 @@ export interface SpecialtySupplier {
   hours?: string;
 }
 
+/**
+ * Supplier — Pass E B2B specialty-supplier shape returned when the materials
+ * search runs in `mode='supplier'`. Richer than SpecialtySupplier (which is the
+ * inline-rail variant). Backend ships this from `mode=supplier` query in Pass E.
+ *
+ * Backward compat: SpecialtySupplier is retained for the existing
+ * SupplierMatchesRail (rendered inline in tool-mode results).
+ */
+export interface Supplier {
+  id: string;
+  name: string;
+  /** Primary category chip (e.g. "BUILDING SUPPLIES") */
+  category: string;
+  /** Secondary tags (e.g. ["LUMBER", "PRECAST"]) */
+  tags?: string[];
+  /** Display address (single line) */
+  address: string;
+  city?: string;
+  state?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  distanceMiles: number;
+  driveMinutes: number;
+  /** 0-5 rating */
+  rating?: number;
+  reviewCount?: number;
+  hours?: string;
+  /** Ionicon hint for the left tile (default 'storefront-outline') */
+  iconHint?: string;
+}
+
 export interface MaterialsFilter {
   key: string;
   label: string;
@@ -113,6 +145,12 @@ export interface UseMaterialsSearchResult {
   results: Product[] | null;
   closestStore: ClosestStore | null;
   specialtySuppliers: SpecialtySupplier[];
+  /**
+   * Pass E: primary result set when `mode === 'supplier'`. Backend wires this
+   * via `mode=supplier` query param. Hook returns `null` until a supplier-mode
+   * search has been submitted; `[]` means search returned zero hits.
+   */
+  suppliers: Supplier[] | null;
   filters: MaterialsFilter[];
   isLoading: boolean;
   isCachedOnlyMode: boolean;
@@ -297,6 +335,10 @@ export function useMaterialsSearch(): UseMaterialsSearchResult {
     results,
     closestStore: MOCK_STORE,
     specialtySuppliers,
+    // Pass E: backend wiring (mode=supplier) is owned by the parallel
+    // mcp-toolsmith agent. Until that ships, expose `null` so the UI knows
+    // no supplier-mode search has been submitted yet.
+    suppliers: null,
     filters,
     isLoading,
     isCachedOnlyMode,

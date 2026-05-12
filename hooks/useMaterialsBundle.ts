@@ -176,6 +176,9 @@ export function useMaterialsBundle(projectAddress: string = ''): UseMaterialsBun
           pushedToEstimate: false,
           estimateDraftId: null,
           createdAt: new Date().toISOString(),
+          // Pass E: default optimistic adds to 'product'. Supplier-mode adds
+          // (Pass F) will pass kind='supplier_line' explicitly.
+          kind: 'product',
         };
         return [...prev, optimisticItem];
       });

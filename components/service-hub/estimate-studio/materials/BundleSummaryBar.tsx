@@ -13,6 +13,12 @@ interface Props {
   onPushToEstimate: () => void;
   onDraftRfq: () => void;
   onClear?: () => void;
+  /**
+   * Pass E: when true, the bundle contains supplier_line items. The primary
+   * CTA swaps from "Push to Estimate" to "Draft RFQs", and the secondary
+   * Draft-RFQ button is suppressed (it would be redundant).
+   */
+  hasSupplierLines?: boolean;
 }
 
 const WEB_TRANSITION: ViewStyle =
@@ -31,8 +37,19 @@ export function BundleSummaryBar({
   onPushToEstimate,
   onDraftRfq,
   onClear,
+  hasSupplierLines = false,
 }: Props) {
   if (itemCount === 0) return null;
+
+  // Pass E: primary CTA adapts to bundle contents.
+  const primaryLabel = hasSupplierLines ? 'DRAFT RFQS' : 'PUSH TO ESTIMATE';
+  const primaryA11y = hasSupplierLines
+    ? 'Draft RFQs from supplier bundle'
+    : 'Push bundle to estimate';
+  const primaryHandler = hasSupplierLines ? onDraftRfq : onPushToEstimate;
+  const primaryTestID = hasSupplierLines
+    ? 'bundle-draft-rfqs-btn'
+    : 'bundle-push-to-estimate-btn';
 
   return (
     <View style={styles.bar} testID="materials-bundle-summary-bar">
@@ -58,23 +75,27 @@ export function BundleSummaryBar({
             <Text style={styles.ghostBtnText}>CLEAR</Text>
           </Pressable>
         )}
+        {/* Secondary Draft-RFQ button only shows in tool mode; when the
+            bundle is supplier-led, primary CTA already drafts RFQs. */}
+        {!hasSupplierLines && (
+          <Pressable
+            onPress={onDraftRfq}
+            style={({ hovered, pressed }: any) => [
+              styles.secondaryBtn,
+              hovered && styles.secondaryBtnHovered,
+              pressed && styles.secondaryBtnPressed,
+              WEB_TRANSITION,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Draft RFQ packet from bundle"
+            testID="bundle-draft-rfq-btn"
+          >
+            <Ionicons name="document-text-outline" size={13} color="#60a5fa" />
+            <Text style={styles.secondaryBtnText}>DRAFT RFQ</Text>
+          </Pressable>
+        )}
         <Pressable
-          onPress={onDraftRfq}
-          style={({ hovered, pressed }: any) => [
-            styles.secondaryBtn,
-            hovered && styles.secondaryBtnHovered,
-            pressed && styles.secondaryBtnPressed,
-            WEB_TRANSITION,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Draft RFQ packet from bundle"
-          testID="bundle-draft-rfq-btn"
-        >
-          <Ionicons name="document-text-outline" size={13} color="#60a5fa" />
-          <Text style={styles.secondaryBtnText}>DRAFT RFQ</Text>
-        </Pressable>
-        <Pressable
-          onPress={onPushToEstimate}
+          onPress={primaryHandler}
           style={({ hovered, pressed }: any) => [
             styles.primaryBtn,
             hovered && styles.primaryBtnHovered,
@@ -82,11 +103,15 @@ export function BundleSummaryBar({
             WEB_TRANSITION,
           ]}
           accessibilityRole="button"
-          accessibilityLabel="Push bundle to estimate"
-          testID="bundle-push-to-estimate-btn"
+          accessibilityLabel={primaryA11y}
+          testID={primaryTestID}
         >
-          <Ionicons name="arrow-forward" size={13} color="#0a0a0f" />
-          <Text style={styles.primaryBtnText}>PUSH TO ESTIMATE</Text>
+          <Ionicons
+            name={hasSupplierLines ? 'document-text-outline' : 'arrow-forward'}
+            size={13}
+            color="#0a0a0f"
+          />
+          <Text style={styles.primaryBtnText}>{primaryLabel}</Text>
         </Pressable>
       </View>
     </View>

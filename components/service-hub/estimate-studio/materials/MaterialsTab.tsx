@@ -32,6 +32,7 @@ import { MaterialsEmptyState } from './MaterialsEmptyState';
 import { ProductGrid } from './ProductGrid';
 import { ProductCompareDrawer } from './ProductCompareDrawer';
 import { SupplierMatchesRail } from './SupplierMatchesRail';
+import { SupplierGrid } from './SupplierGrid';
 import { PredictiveAddons } from './PredictiveAddons';
 import { BundleSummaryBar } from './BundleSummaryBar';
 import { MaterialsRouteHero } from './MaterialsRouteHero';
@@ -48,11 +49,12 @@ export function MaterialsTab() {
 }
 
 function MaterialsTabResults() {
-  const { search, bundle: bundleApi } = useMaterialsSearchContext();
+  const { search, bundle: bundleApi, mode } = useMaterialsSearchContext();
   const {
     submitSearch,
     results,
     specialtySuppliers,
+    suppliers,
     filters,
     isLoading,
     isCachedOnlyMode,
@@ -81,6 +83,13 @@ function MaterialsTabResults() {
 
   // Pass D: BundleItem.product.id replaces Pass B BundleItem.productId
   const bundleIds = useMemo(() => new Set(bundle.map((b) => b.product.id)), [bundle]);
+
+  // Pass E: bundle contains supplier-line items → BundleSummaryBar shows
+  // "Draft RFQs" as the primary CTA.
+  const hasSupplierLines = useMemo(
+    () => bundle.some((b) => b.kind === 'supplier_line'),
+    [bundle],
+  );
 
   const handleSuggestionPick = useCallback(
     (q: string) => {
@@ -179,9 +188,14 @@ function MaterialsTabResults() {
 
   const hasResults = Array.isArray(filteredResults) && filteredResults.length > 0;
   const hasSpecialty = specialtySuppliers.length > 0;
+  // Pass E: in supplier mode the primary result set is `suppliers`. We treat
+  // a non-null value as a submitted-search marker (same convention as
+  // `results` in tool mode).
+  const hasSubmittedSupplier = Array.isArray(suppliers);
   // Empty state: no search submitted yet. If a search ran and filters hid
   // everything, fall through to the inline no-results card.
-  const hasSubmittedSearch = Array.isArray(results);
+  const hasSubmittedSearch =
+    mode === 'supplier' ? hasSubmittedSupplier : Array.isArray(results);
   const showEmptyState = !hasSubmittedSearch && !hasSpecialty && !isLoading;
 
   return (
@@ -204,7 +218,20 @@ function MaterialsTabResults() {
           <MaterialsEmptyState suggestions={suggestedQueries} onPick={handleSuggestionPick} />
         )}
 
-        {!showEmptyState && (
+        {!showEmptyState && mode === 'supplier' && (
+          <SupplierGrid
+            suppliers={suppliers}
+            isLoading={isLoading && suppliers === null}
+            onDraftRfq={(s) => {
+              if (__DEV__) {
+                // eslint-disable-next-line no-console
+                console.info('[materials] draft RFQ for supplier', s.id);
+              }
+            }}
+          />
+        )}
+
+        {!showEmptyState && mode === 'tool' && (
           <>
             {filters.length > 0 && (
               <View style={styles.filtersBar} testID="materials-filters-bar">
@@ -301,6 +328,7 @@ function MaterialsTabResults() {
         onPushToEstimate={handlePushToEstimate}
         onDraftRfq={handleDraftRfq}
         onClear={clearBundle}
+        hasSupplierLines={hasSupplierLines}
       />
 
       <ProductCompareDrawer
