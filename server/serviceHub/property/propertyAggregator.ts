@@ -182,10 +182,18 @@ function decorateRoofWithSolarAerial(
   const trimmed = (address || '').trim();
   if (!trimmed) return lanes;
   const url = `/api/property/roof-aerial?address=${encodeURIComponent(trimmed)}`;
+  // Thumbnail for the small lane card.
   lanes.roof.thumbnailUrl = url;
-  // Make sure count is at least 1 so the card doesn't render in the
-  // empty-icon state when Solar has imagery but Adam didn't.
-  if (lanes.roof.count === 0) lanes.roof.count = 1;
+  // Inject the Solar aerial as the FIRST photo so the canvas hero
+  // (PhotoGalleryHero, which renders `photos[]`) has something to display
+  // when the user clicks the Roof card. Without this, the hero shows
+  // blank because Adam's Zillow scrape rarely returns roof-captioned
+  // photos and our new classifier never routes uncaptioned shots there.
+  lanes.roof.photos = [
+    { id: 'solar_aerial_0', url, source: 'streetview' as const },
+    ...lanes.roof.photos,
+  ];
+  lanes.roof.count = lanes.roof.photos.length;
   return lanes;
 }
 
