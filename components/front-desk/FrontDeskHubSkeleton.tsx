@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FrontDeskHeaderStrip } from '@/components/front-desk/FrontDeskHeaderStrip';
 import { DialPadArtwork } from '@/components/front-desk/DialPadArtwork';
 import { InboxRail } from '@/components/front-desk/InboxRail';
+import { TodayFeed } from '@/components/front-desk/TodayFeed';
 import { fetchFrontDeskConfig } from '@/lib/api/frontDesk';
 
 const CARD_BG = '#1C1C1E';
@@ -251,7 +252,9 @@ export function FrontDeskHubSkeleton() {
               <VoiceTapButton />
             </View>
           </View>
-          <View style={[styles.glassCard, { flex: 3 }]} />
+          <View style={[styles.glassCard, { flex: 3 }]}>
+            <TodayFeed />
+          </View>
         </View>
         <View style={twoCol ? styles.railCol : styles.railColStacked}>
           <InboxRail />
