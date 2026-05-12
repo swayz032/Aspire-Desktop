@@ -124,16 +124,36 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.02)',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    // Soft amber-tinted rim — picks up the ambient glow without screaming.
+    borderColor: 'rgba(251,191,36,0.14)',
     overflow: 'hidden',
     // Web-only: cap the canvas at the viewport so the rail can scroll
-    // internally rather than stretching the whole page.
+    // internally rather than stretching the whole page. Also layers the
+    // soft amber ambient glow around the OUTER canvas edges (not the
+    // inner canvasArea):
+    //   1) inset hairline rim — warms the edge from within
+    //   2) close halo — 24px amber bloom for premium presence
+    //   3) ambient halo — 80px wide warmth, very subtle
+    //   4) grounding shadow — keeps the card seated on the dark bg
     ...(Platform.OS === 'web'
       ? (({
           height: 'calc(100vh - 90px)',
           maxHeight: 'calc(100vh - 90px)',
+          boxShadow: [
+            'inset 0 0 0 1px rgba(251,191,36,0.06)',
+            '0 0 24px rgba(251,191,36,0.12)',
+            '0 0 80px rgba(251,191,36,0.06)',
+            '0 30px 90px rgba(0,0,0,0.45)',
+          ].join(', '),
         } as unknown) as ViewStyle)
-      : {}),
+      : {
+          // Native fallback — single-color amber drop shadow.
+          shadowColor: '#fbbf24',
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0.18,
+          shadowRadius: 24,
+          elevation: 12,
+        }),
   },
   outerCanvasTablet: {
     borderRadius: 12,
