@@ -115,6 +115,13 @@ function SectionMode({
   section: Section;
   onBack: () => void;
 }) {
+  // SMS owns its whole content area — header swaps per inner mode
+  // (list / thread detail / new message), so the rail's generic
+  // section header is hidden for SMS.
+  if (section === 'sms') {
+    return <SmsWorkspace onBackToMenu={onBack} />;
+  }
+
   const meta = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
   return (
     <>
@@ -137,9 +144,7 @@ function SectionMode({
       <div style={divider} />
 
       {/* Section workspace */}
-      <div style={sectionSlot}>
-        {section === 'sms' ? <SmsWorkspace /> : null}
-      </div>
+      <div style={sectionSlot} />
     </>
   );
 }

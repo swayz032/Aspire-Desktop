@@ -160,37 +160,71 @@ const MOCK_THREADS: Thread[] = [
 ];
 
 export function SmsWorkspace({
-  onRequestNew,
+  onBackToMenu,
 }: {
-  /** Hook for the rail header ✎ icon to push us into NEW mode externally. */
-  onRequestNew?: () => void;
+  /** Called when the list-mode back arrow is tapped — returns to the inbox menu. */
+  onBackToMenu?: () => void;
 }) {
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
   useEffect(() => {
     ensureInvisibleScrollCss();
   }, []);
-  useEffect(() => {
-    void onRequestNew;
-  }, [onRequestNew]);
 
   if (Platform.OS !== 'web') {
     return <View style={styles.fill} />;
   }
 
   if (mode.kind === 'list') {
-    return <ThreadList onPick={(id) => setMode({ kind: 'detail', threadId: id })} onNew={() => setMode({ kind: 'new' })} />;
+    return (
+      <ThreadList
+        onBackToMenu={onBackToMenu}
+        onPick={(id) => setMode({ kind: 'detail', threadId: id })}
+        onNew={() => setMode({ kind: 'new' })}
+      />
+    );
   }
   if (mode.kind === 'detail') {
     const thread = MOCK_THREADS.find((t) => t.id === mode.threadId);
-    if (!thread) return <ThreadList onPick={(id) => setMode({ kind: 'detail', threadId: id })} onNew={() => setMode({ kind: 'new' })} />;
+    if (!thread) return <ThreadList onBackToMenu={onBackToMenu} onPick={(id) => setMode({ kind: 'detail', threadId: id })} onNew={() => setMode({ kind: 'new' })} />;
     return <ThreadDetail thread={thread} onBack={() => setMode({ kind: 'list' })} />;
   }
   return <NewMessage onBack={() => setMode({ kind: 'list' })} />;
 }
 
-function ThreadList({ onPick, onNew }: { onPick: (id: string) => void; onNew: () => void }) {
+function ThreadList({
+  onBackToMenu,
+  onPick,
+  onNew,
+}: {
+  onBackToMenu?: () => void;
+  onPick: (id: string) => void;
+  onNew: () => void;
+}) {
   return (
     <div style={listWrap}>
+      {/* SMS section header — only rendered in list mode */}
+      <div style={listHeader}>
+        <div style={listHeaderTitleRow}>
+          {onBackToMenu ? (
+            <button aria-label="Back to inbox menu" onClick={onBackToMenu} style={listHeaderBackBtn}>
+              <Ionicons name="chevron-back" size={18} color="rgba(255,255,255,0.85)" />
+            </button>
+          ) : null}
+          <Ionicons name="chatbubble-ellipses-outline" size={15} color="rgba(255,255,255,0.85)" />
+          <span style={listHeaderTitle}>SMS</span>
+        </div>
+        <div style={listHeaderIcons}>
+          <button aria-label="Search" style={listHeaderIconBtn}>
+            <Ionicons name="search-outline" size={16} color="rgba(255,255,255,0.55)" />
+          </button>
+          <button aria-label="New message" onClick={onNew} style={listHeaderIconBtn}>
+            <Ionicons name="create-outline" size={16} color="rgba(255,255,255,0.55)" />
+          </button>
+        </div>
+      </div>
+
+      <div style={listDivider} />
+
       <div className="aspire-invisible-scroll" style={listScroll}>
         {MOCK_THREADS.map((t) => (
           <button
@@ -406,6 +440,74 @@ const listWrap: React.CSSProperties = {
   height: '100%',
   display: 'flex',
   flexDirection: 'column',
+};
+
+const listHeader: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+  paddingBottom: 10,
+  flexShrink: 0,
+};
+
+const listHeaderTitleRow: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  minWidth: 0,
+  flex: 1,
+};
+
+const listHeaderBackBtn: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  outline: 'none',
+  cursor: 'pointer',
+  width: 28,
+  height: 28,
+  borderRadius: 8,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginLeft: -6,
+  flexShrink: 0,
+};
+
+const listHeaderTitle: React.CSSProperties = {
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 15,
+  fontWeight: 600,
+  color: '#ffffff',
+  letterSpacing: -0.1,
+};
+
+const listHeaderIcons: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 2,
+  flexShrink: 0,
+};
+
+const listHeaderIconBtn: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  outline: 'none',
+  cursor: 'pointer',
+  width: 28,
+  height: 28,
+  borderRadius: 8,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
+
+const listDivider: React.CSSProperties = {
+  width: '100%',
+  height: 1,
+  flexShrink: 0,
+  background:
+    'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.10) 20%, rgba(255,255,255,0.10) 80%, rgba(255,255,255,0) 100%)',
 };
 
 const listScroll: React.CSSProperties = {
