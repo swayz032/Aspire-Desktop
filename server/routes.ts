@@ -9481,6 +9481,114 @@ for (const subpath of SARAH_TOOL_PATHS) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Pass C: GET /api/v1/materials/search
+// ---------------------------------------------------------------------------
+// GREEN tier — read-only search. Mints a capability token (scope =
+// materials:search), injects Gateway-trusted scope headers, and forwards to
+// the Python orchestrator with an overall 12s timeout (orchestrator itself
+// budgets 11s so it can return a clean error before this timer fires).
+//
+// Query parameters forwarded verbatim: q, zip_code, store_id,
+// include_shopping, idempotency_key. All scope/auth headers injected
+// server-side (Law #5 — client never holds the signing key).
+// ---------------------------------------------------------------------------
+
+router.get('/api/v1/materials/search', async (req: Request, res: Response) => {
+  const suiteId = requireAuth(req, res);
+  if (!suiteId) return;
+
+  const orchestratorUrl = resolveOrchestratorUrl();
+  if (!orchestratorUrl) {
+    res.status(503).json({ error: 'ORCHESTRATOR_UNAVAILABLE', message: 'Backend service is not configured' });
+    return;
+  }
+
+  const officeIdRaw = (req.headers['x-office-id'] as string) || '';
+  const officeId = typeof officeIdRaw === 'string' && officeIdRaw.trim() ? officeIdRaw.trim() : suiteId;
+  const tenantId = suiteId;
+  const actorId = ((req as any).authenticatedUserId as string) || suiteId;
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr_${crypto.randomUUID()}`;
+  const traceId = (req.headers['x-trace-id'] as string) || correlationId;
+
+  if (!resolveSigningKey()) {
+    res.status(503).json({ error: 'SIGNING_KEY_UNAVAILABLE', message: 'Capability token signing key not configured' });
+    return;
+  }
+  const minted = mintCapabilityToken({
+    scope: 'materials:search',
+    tenant_id: tenantId,
+    suite_id: suiteId,
+    office_id: officeId,
+    correlation_id: correlationId,
+  });
+  if (!minted) {
+    res.status(503).json({ error: 'SIGNING_KEY_UNAVAILABLE', message: 'Capability token signing key not configured' });
+    return;
+  }
+
+  // Build orchestrator URL: forward allowed query params + inject cap token
+  const allowedParams = ['q', 'zip_code', 'store_id', 'include_shopping', 'idempotency_key'];
+  const qs = new URLSearchParams();
+  for (const param of allowedParams) {
+    const val = req.query[param];
+    if (val !== undefined && typeof val === 'string') qs.set(param, val);
+  }
+  // Inject capability token as query param (GET request — no body)
+  qs.set('capability_token', JSON.stringify(minted.token));
+
+  const url = `${orchestratorUrl}/v1/materials/search?${qs.toString()}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12_000);
+
+  logger.info('[MaterialsSearch] proxy', {
+    suite_id: suiteId,
+    office_id: officeId,
+    trace_id: traceId,
+    correlation_id: correlationId,
+  });
+
+  try {
+    const orchResp = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Tenant-Id': tenantId,
+        'X-Suite-Id': suiteId,
+        'X-Office-Id': officeId,
+        'X-Actor-Id': actorId,
+        'X-Correlation-Id': correlationId,
+        'X-Trace-Id': traceId,
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    const text = await orchResp.text();
+    let data: unknown = null;
+    if (text) {
+      try { data = JSON.parse(text); } catch { data = { error: 'UPSTREAM_NON_JSON', message: text.slice(0, 200) }; }
+    }
+    if (!orchResp.ok) {
+      logger.warn('[MaterialsSearch] Orchestrator returned error', { suite_id: suiteId, status: orchResp.status });
+    }
+    res.status(orchResp.status).json(data ?? {});
+  } catch (err: unknown) {
+    clearTimeout(timer);
+    const isTimeout = err instanceof Error && err.name === 'AbortError';
+    logger.error('[MaterialsSearch] Proxy fetch failed', {
+      suite_id: suiteId,
+      reason: err instanceof Error ? err.name + ': ' + err.message.slice(0, 120) : 'unknown',
+      is_timeout: isTimeout,
+    });
+    res.status(isTimeout ? 504 : 502).json({
+      error: isTimeout ? 'ORCHESTRATOR_TIMEOUT' : 'ORCHESTRATOR_UNREACHABLE',
+      message: isTimeout ? 'Backend did not respond in time' : 'Could not reach backend service',
+      correlation_id: correlationId,
+    });
+  }
+});
+
 export default router;
 
 
