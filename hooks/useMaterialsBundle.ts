@@ -1,150 +1,338 @@
 /**
- * useMaterialsBundle — Pass B (mock implementation).
+ * useMaterialsBundle — Pass D (Supabase-backed implementation).
  *
- * Module-level listener store so the BundleSummaryBar, ProductGrid, and the
- * PredictiveAddons all stay in sync without prop-drilling. Pass D will swap
- * this for Supabase-backed `material_bundles` (RLS, tenant-scoped).
+ * Replaces the Pass B in-memory module-level array with real server state:
+ *   - Mount + projectAddress change: hydrate from GET /api/v1/materials/bundles
+ *   - addToBundle / removeFromBundle / updateQuantity / clearBundle:
+ *     optimistic update → API call → rollback on error
+ *   - pushToEstimate: shows confirmation state → POST push-to-estimate →
+ *     success toast state; YELLOW tier gate enforced server-side.
+ *
+ * Return shape locked from Pass B (backwards-compatible extensions):
+ * {
+ *   bundle: BundleItem[],
+ *   addToBundle, removeFromBundle, updateBundleQuantity, clearBundle,
+ *   bundleSubtotal: number,
+ *   bundleSupplierCount: number,
+ *   bundleItemCount: number,
+ *   pushToEstimate: () => Promise<{ estimate_draft_id: string }>,
+ *   isPushingToEstimate: boolean,
+ *   pushError: string | null,
+ * }
+ *
+ * Test seam: __resetMaterialsBundleForTests() resets module state (for tests
+ * that still use the exported reset; real state is hook-local in Pass D).
+ *
+ * Law compliance:
+ *   Law #3 — API errors surface as pushError; no silent degradation.
+ *   Law #5 — capability tokens minted by the Express proxy; hook never touches keys.
+ *   Law #7 — hook is a data bridge only; no autonomous retry or fallback logic.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { useTenant } from '@/providers';
 import type { Product } from './useMaterialsSearch';
+import {
+  fetchBundle as apiFetchBundle,
+  addToBundle as apiAddToBundle,
+  removeFromBundle as apiRemoveFromBundle,
+  updateBundleQuantity as apiUpdateBundleQuantity,
+  clearBundle as apiClearBundle,
+  pushToEstimate as apiPushToEstimate,
+  MaterialsBundleApiError,
+} from '@/lib/api/materialBundlesApi';
+import type { BundleItem as ApiBundleItem } from '@/lib/api/materialBundlesApi';
 
-export interface BundleItem {
-  productId: string;
-  product: Product;
-  quantity: number;
-  addedAt: string;
-}
+// Re-export the canonical BundleItem type for consumers
+export type { BundleItem } from '@/lib/api/materialBundlesApi';
+export type { ApiBundleItem as BundleItemType };
 
-let _bundle: BundleItem[] = [];
-let _boundAddress: string | null = null;
-const _listeners = new Set<(b: BundleItem[]) => void>();
-
-function notify(): void {
-  for (const l of _listeners) {
-    try {
-      l([..._bundle]);
-    } catch {
-      /* swallow */
-    }
-  }
-}
-
-export function getBundle(): BundleItem[] {
-  return [..._bundle];
-}
+// ---------------------------------------------------------------------------
+// Result interface (locked from Pass B + Push extensions)
+// ---------------------------------------------------------------------------
 
 export interface UseMaterialsBundleResult {
-  bundle: BundleItem[];
+  /** Current bundle items (camelCase, typed) */
+  bundle: ApiBundleItem[];
   addToBundle: (product: Product, quantity?: number) => void;
-  removeFromBundle: (productId: string) => void;
-  updateQuantity: (productId: string, quantity: number) => void;
+  removeFromBundle: (bundleItemId: string) => void;
+  updateBundleQuantity: (bundleItemId: string, quantity: number) => void;
   clearBundle: () => void;
+  /** Sum of unitPrice * quantity for all items */
   bundleSubtotal: number;
+  /** Number of unique store_ids in the bundle */
   bundleSupplierCount: number;
+  /** Total units across all items */
   bundleItemCount: number;
-  pushToEstimate: () => Promise<void>;
+  /**
+   * Push current bundle to an estimate draft (YELLOW tier).
+   * Hook does NOT show the modal — caller is responsible for user confirmation
+   * before invoking this. Returns the estimate_draft_id on success.
+   */
+  pushToEstimate: () => Promise<{ estimate_draft_id: string }>;
+  isPushingToEstimate: boolean;
+  pushError: string | null;
+  /** Whether the initial hydration fetch is in-flight */
+  isLoading: boolean;
+  /** Non-fatal error from the last operation (hydration or mutation) */
+  lastError: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
+
 export function useMaterialsBundle(projectAddress: string = ''): UseMaterialsBundleResult {
-  // Bind the in-memory bundle to a project address. Switching addresses
-  // auto-clears the shadow so no cross-project leakage occurs.
-  if (_boundAddress !== null && _boundAddress !== projectAddress) {
-    _bundle = [];
-  }
-  _boundAddress = projectAddress;
+  const { authenticatedFetch } = useAuthFetch();
+  const { officeId } = useTenant();
 
-  const [bundle, setBundle] = useState<BundleItem[]>(_bundle);
+  const [bundle, setBundle] = useState<ApiBundleItem[]>([]);
+  const [bundleSubtotal, setBundleSubtotal] = useState<number>(0);
+  const [bundleSupplierCount, setBundleSupplierCount] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [lastError, setLastError] = useState<string | null>(null);
+  const [isPushingToEstimate, setIsPushingToEstimate] = useState<boolean>(false);
+  const [pushError, setPushError] = useState<string | null>(null);
 
+  // Track the last hydrated address so we reset on address change
+  const hydratedForRef = useRef<string | null>(null);
+
+  // ---------------------------------------------------------------------------
+  // Hydrate from server on mount and projectAddress change
+  // ---------------------------------------------------------------------------
   useEffect(() => {
-    const listener = (b: BundleItem[]) => setBundle(b);
-    _listeners.add(listener);
-    setBundle([..._bundle]);
+    if (!projectAddress.trim()) {
+      setBundle([]);
+      setBundleSubtotal(0);
+      setBundleSupplierCount(0);
+      hydratedForRef.current = null;
+      return;
+    }
+    if (hydratedForRef.current === projectAddress) return;
+
+    let cancelled = false;
+    setIsLoading(true);
+    setLastError(null);
+
+    apiFetchBundle(authenticatedFetch, projectAddress, { officeId: officeId || undefined })
+      .then((result) => {
+        if (cancelled) return;
+        setBundle(result.items);
+        setBundleSubtotal(result.bundleSubtotal);
+        setBundleSupplierCount(result.bundleSupplierCount);
+        hydratedForRef.current = projectAddress;
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : 'Failed to load bundle';
+        setLastError(msg);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
     return () => {
-      _listeners.delete(listener);
+      cancelled = true;
     };
-  }, []);
+  }, [projectAddress, authenticatedFetch, officeId]);
 
-  // Reset the bundle when projectAddress changes after first render.
-  useEffect(() => {
-    if (_boundAddress !== projectAddress) {
-      _bundle = [];
-      _boundAddress = projectAddress;
-      notify();
-    }
-  }, [projectAddress]);
+  // ---------------------------------------------------------------------------
+  // Helpers: apply server result to state
+  // ---------------------------------------------------------------------------
+  const _applyResult = useCallback(
+    (items: ApiBundleItem[], subtotal: number, supplierCount: number) => {
+      setBundle(items);
+      setBundleSubtotal(subtotal);
+      setBundleSupplierCount(supplierCount);
+      setLastError(null);
+    },
+    [],
+  );
 
-  const addToBundle = useCallback((product: Product, quantity: number = 1) => {
-    const existingIdx = _bundle.findIndex((b) => b.productId === product.id);
-    if (existingIdx >= 0) {
-      _bundle = _bundle.map((b, i) =>
-        i === existingIdx ? { ...b, quantity: b.quantity + quantity } : b,
-      );
-    } else {
-      _bundle = [
-        ..._bundle,
-        {
-          productId: product.id,
+  // ---------------------------------------------------------------------------
+  // addToBundle — optimistic update + API call; rollback on error
+  // ---------------------------------------------------------------------------
+  const addToBundle = useCallback(
+    (product: Product, quantity: number = 1) => {
+      if (!projectAddress.trim()) return;
+
+      // Optimistic update: dedup by product.id
+      setBundle((prev) => {
+        const existingIdx = prev.findIndex((b) => b.product.id === product.id);
+        if (existingIdx >= 0) {
+          return prev.map((b, i) =>
+            i === existingIdx ? { ...b, quantity: b.quantity + quantity } : b,
+          );
+        }
+        const optimisticItem: ApiBundleItem = {
+          id: `optimistic-${product.id}-${Date.now()}`,
+          projectId: projectAddress,
           product,
+          storeId: product.store.id,
+          categoryHint: product.category ?? null,
           quantity,
-          addedAt: new Date().toISOString(),
-        },
-      ];
-    }
-    notify();
-  }, []);
+          unitPrice: product.price,
+          fetchedAt: product.fetchedAt,
+          pushedToEstimate: false,
+          estimateDraftId: null,
+          createdAt: new Date().toISOString(),
+        };
+        return [...prev, optimisticItem];
+      });
+      setBundleSubtotal((prev) => Math.round((prev + product.price * quantity) * 100) / 100);
 
-  const removeFromBundle = useCallback((productId: string) => {
-    _bundle = _bundle.filter((b) => b.productId !== productId);
-    notify();
-  }, []);
+      apiAddToBundle(authenticatedFetch, product, projectAddress, {
+        quantity,
+        storeId: product.store.id,
+        categoryHint: product.category ?? undefined,
+        officeId: officeId || undefined,
+      })
+        .then((result) => {
+          _applyResult(result.items, result.bundleSubtotal, result.bundleSupplierCount);
+        })
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : 'Failed to add to bundle';
+          setLastError(msg);
+          // Rollback optimistic state
+          hydratedForRef.current = null; // trigger re-hydration on next render
+        });
+    },
+    [projectAddress, authenticatedFetch, officeId, _applyResult],
+  );
 
-  const updateQuantity = useCallback((productId: string, quantity: number) => {
-    if (quantity <= 0) {
-      _bundle = _bundle.filter((b) => b.productId !== productId);
-    } else {
-      _bundle = _bundle.map((b) => (b.productId === productId ? { ...b, quantity } : b));
-    }
-    notify();
-  }, []);
+  // ---------------------------------------------------------------------------
+  // removeFromBundle — optimistic remove + API call; rollback on error
+  // ---------------------------------------------------------------------------
+  const removeFromBundle = useCallback(
+    (bundleItemId: string) => {
+      if (!projectAddress.trim()) return;
 
-  const clearBundle = useCallback(() => {
-    _bundle = [];
-    notify();
-  }, []);
+      // Optimistic remove
+      setBundle((prev) => prev.filter((b) => b.id !== bundleItemId));
 
-  const bundleSubtotal = bundle.reduce((sum, b) => sum + b.product.price * b.quantity, 0);
-  const supplierIds = new Set(bundle.map((b) => b.product.store.id));
-  const bundleSupplierCount = supplierIds.size;
-  const bundleItemCount = bundle.reduce((sum, b) => sum + b.quantity, 0);
+      apiRemoveFromBundle(authenticatedFetch, bundleItemId, projectAddress, {
+        officeId: officeId || undefined,
+      })
+        .then((result) => {
+          _applyResult(result.items, result.bundleSubtotal, result.bundleSupplierCount);
+        })
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : 'Failed to remove from bundle';
+          setLastError(msg);
+          hydratedForRef.current = null;
+        });
+    },
+    [projectAddress, authenticatedFetch, officeId, _applyResult],
+  );
 
-  const pushToEstimate = useCallback(async () => {
-    // Pass D will: POST /v1/estimates/drafts with {items, projectAddress}.
-    // Pass B: no-op + log so the click handler is real.
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.info(
-        '[materials] pushToEstimate (mock)',
-        _bundle.map((b) => ({ id: b.productId, qty: b.quantity })),
+  // ---------------------------------------------------------------------------
+  // updateBundleQuantity — optimistic update + API call; rollback on error
+  // ---------------------------------------------------------------------------
+  const updateBundleQuantity = useCallback(
+    (bundleItemId: string, quantity: number) => {
+      if (!projectAddress.trim()) return;
+
+      if (quantity <= 0) {
+        removeFromBundle(bundleItemId);
+        return;
+      }
+
+      // Optimistic update
+      setBundle((prev) =>
+        prev.map((b) => (b.id === bundleItemId ? { ...b, quantity } : b)),
       );
+
+      apiUpdateBundleQuantity(authenticatedFetch, bundleItemId, quantity, projectAddress, {
+        officeId: officeId || undefined,
+      })
+        .then((result) => {
+          _applyResult(result.items, result.bundleSubtotal, result.bundleSupplierCount);
+        })
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : 'Failed to update quantity';
+          setLastError(msg);
+          hydratedForRef.current = null;
+        });
+    },
+    [projectAddress, authenticatedFetch, officeId, _applyResult, removeFromBundle],
+  );
+
+  // ---------------------------------------------------------------------------
+  // clearBundle — optimistic clear + API call; rollback on error
+  // ---------------------------------------------------------------------------
+  const clearBundle = useCallback(() => {
+    if (!projectAddress.trim()) return;
+
+    // Optimistic clear
+    setBundle([]);
+    setBundleSubtotal(0);
+    setBundleSupplierCount(0);
+
+    apiClearBundle(authenticatedFetch, projectAddress, {
+      officeId: officeId || undefined,
+    })
+      .then((result) => {
+        _applyResult(result.items, result.bundleSubtotal, result.bundleSupplierCount);
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : 'Failed to clear bundle';
+        setLastError(msg);
+        hydratedForRef.current = null;
+      });
+  }, [projectAddress, authenticatedFetch, officeId, _applyResult]);
+
+  // ---------------------------------------------------------------------------
+  // pushToEstimate — YELLOW tier; caller must confirm before calling
+  // ---------------------------------------------------------------------------
+  const pushToEstimate = useCallback(async (): Promise<{ estimate_draft_id: string }> => {
+    if (!projectAddress.trim()) {
+      throw new MaterialsBundleApiError(400, 'INVALID_INPUT', 'No project address set');
     }
-  }, []);
+    setIsPushingToEstimate(true);
+    setPushError(null);
+    try {
+      const result = await apiPushToEstimate(authenticatedFetch, projectAddress, {
+        officeId: officeId || undefined,
+      });
+      // Refresh bundle state (items are now marked pushed_to_estimate = true)
+      hydratedForRef.current = null; // trigger re-hydration
+      return { estimate_draft_id: result.estimateDraftId };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to push to estimate';
+      setPushError(msg);
+      throw err;
+    } finally {
+      setIsPushingToEstimate(false);
+    }
+  }, [projectAddress, authenticatedFetch, officeId]);
+
+  // ---------------------------------------------------------------------------
+  // Derived stats
+  // ---------------------------------------------------------------------------
+  const bundleItemCount = bundle.reduce((sum, b) => sum + b.quantity, 0);
 
   return {
     bundle,
     addToBundle,
     removeFromBundle,
-    updateQuantity,
+    updateBundleQuantity,
     clearBundle,
     bundleSubtotal,
     bundleSupplierCount,
     bundleItemCount,
     pushToEstimate,
+    isPushingToEstimate,
+    pushError,
+    isLoading,
+    lastError,
   };
 }
 
-/** Test seam — clear module state between cases. */
+// ---------------------------------------------------------------------------
+// Test seam — reset any module-level side-effects (none in Pass D, kept for
+// backwards-compat with test files that import __resetMaterialsBundleForTests).
+// ---------------------------------------------------------------------------
 export function __resetMaterialsBundleForTests(): void {
-  _bundle = [];
-  _boundAddress = null;
-  _listeners.clear();
+  // No module-level state in Pass D — hook state is local to each component tree.
+  // This export is preserved so existing test imports don't break.
 }

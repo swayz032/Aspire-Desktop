@@ -9589,6 +9589,200 @@ router.get('/api/v1/materials/search', async (req: Request, res: Response) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Pass D: /api/v1/materials/bundles/* — bundle CRUD + push-to-estimate
+// ---------------------------------------------------------------------------
+// These 6 endpoints proxy to the Python orchestrator's /v1/materials/bundles/*
+// routes. GREEN tier for all reads/writes; YELLOW for push-to-estimate.
+//
+// Scope mapping:
+//   GET  /api/v1/materials/bundles           → materials:bundles.read  (GREEN)
+//   POST /api/v1/materials/bundles/add       → materials:bundles.write (GREEN)
+//   POST /api/v1/materials/bundles/remove    → materials:bundles.write (GREEN)
+//   POST /api/v1/materials/bundles/update-quantity → materials:bundles.write (GREEN)
+//   POST /api/v1/materials/bundles/clear     → materials:bundles.write (GREEN)
+//   POST /api/v1/materials/bundles/push-to-estimate → materials:bundles.push (YELLOW)
+// ---------------------------------------------------------------------------
+
+/** Shared helper: resolve scope, mint capability token, proxy to orchestrator. */
+async function _proxyBundleRequest(
+  req: Request,
+  res: Response,
+  opts: {
+    method: 'GET' | 'POST';
+    orchestratorPath: string;
+    scope: string;
+    riskTier: 'green' | 'yellow';
+    /** For GET: forward these query params; for POST: pass body through */
+    queryParamKeys?: string[];
+    timeoutMs?: number;
+  },
+): Promise<void> {
+  const suiteId = requireAuth(req, res);
+  if (!suiteId) return;
+
+  const orchestratorUrl = resolveOrchestratorUrl();
+  if (!orchestratorUrl) {
+    res.status(503).json({ error: 'ORCHESTRATOR_UNAVAILABLE', message: 'Backend service is not configured' });
+    return;
+  }
+
+  const officeIdRaw = (req.headers['x-office-id'] as string) || '';
+  const officeId = typeof officeIdRaw === 'string' && officeIdRaw.trim() ? officeIdRaw.trim() : suiteId;
+  const tenantId = suiteId;
+  const actorId = ((req as any).authenticatedUserId as string) || suiteId;
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr_${crypto.randomUUID()}`;
+  const traceId = (req.headers['x-trace-id'] as string) || correlationId;
+
+  if (!resolveSigningKey()) {
+    res.status(503).json({ error: 'SIGNING_KEY_UNAVAILABLE', message: 'Capability token signing key not configured' });
+    return;
+  }
+  const minted = mintCapabilityToken({
+    scope: opts.scope,
+    tenant_id: tenantId,
+    suite_id: suiteId,
+    office_id: officeId,
+    correlation_id: correlationId,
+  });
+  if (!minted) {
+    res.status(503).json({ error: 'SIGNING_KEY_UNAVAILABLE', message: 'Capability token signing key not configured' });
+    return;
+  }
+
+  const scopeHeaders = {
+    'Content-Type': 'application/json',
+    'X-Tenant-Id': tenantId,
+    'X-Suite-Id': suiteId,
+    'X-Office-Id': officeId,
+    'X-Actor-Id': actorId,
+    'X-Correlation-Id': correlationId,
+    'X-Trace-Id': traceId,
+  };
+
+  const timeoutMs = opts.timeoutMs ?? 10_000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  let url: string;
+  let fetchOpts: RequestInit;
+
+  if (opts.method === 'GET') {
+    const qs = new URLSearchParams();
+    for (const key of (opts.queryParamKeys ?? [])) {
+      const val = req.query[key];
+      if (val !== undefined && typeof val === 'string') qs.set(key, val);
+    }
+    qs.set('capability_token', JSON.stringify(minted.token));
+    url = `${orchestratorUrl}${opts.orchestratorPath}?${qs.toString()}`;
+    fetchOpts = { method: 'GET', headers: scopeHeaders, signal: controller.signal };
+  } else {
+    // POST: merge capability_token into body
+    const body = { ...(req.body as Record<string, unknown>), capability_token: JSON.stringify(minted.token) };
+    url = `${orchestratorUrl}${opts.orchestratorPath}`;
+    fetchOpts = { method: 'POST', headers: scopeHeaders, body: JSON.stringify(body), signal: controller.signal };
+  }
+
+  logger.info(`[MaterialsBundle] proxy ${opts.method} ${opts.orchestratorPath}`, {
+    suite_id: suiteId,
+    office_id: officeId,
+    risk_tier: opts.riskTier,
+    correlation_id: correlationId,
+  });
+
+  try {
+    const orchResp = await fetch(url, fetchOpts);
+    clearTimeout(timer);
+    const text = await orchResp.text();
+    let data: unknown = null;
+    if (text) {
+      try { data = JSON.parse(text); } catch { data = { error: 'UPSTREAM_NON_JSON', message: text.slice(0, 200) }; }
+    }
+    if (!orchResp.ok) {
+      logger.warn('[MaterialsBundle] Orchestrator error', { suite_id: suiteId, status: orchResp.status, path: opts.orchestratorPath });
+    }
+    res.status(orchResp.status).json(data ?? {});
+  } catch (err: unknown) {
+    clearTimeout(timer);
+    const isTimeout = err instanceof Error && err.name === 'AbortError';
+    logger.error('[MaterialsBundle] Proxy fetch failed', {
+      suite_id: suiteId,
+      path: opts.orchestratorPath,
+      reason: err instanceof Error ? err.name + ': ' + err.message.slice(0, 120) : 'unknown',
+      is_timeout: isTimeout,
+    });
+    res.status(isTimeout ? 504 : 502).json({
+      error: isTimeout ? 'ORCHESTRATOR_TIMEOUT' : 'ORCHESTRATOR_UNREACHABLE',
+      message: isTimeout ? 'Backend did not respond in time' : 'Could not reach backend service',
+      correlation_id: correlationId,
+    });
+  }
+}
+
+// GET /api/v1/materials/bundles — list bundle for a project
+router.get('/api/v1/materials/bundles', async (req: Request, res: Response) => {
+  await _proxyBundleRequest(req, res, {
+    method: 'GET',
+    orchestratorPath: '/v1/materials/bundles',
+    scope: 'materials:bundles.read',
+    riskTier: 'green',
+    queryParamKeys: ['project_id'],
+  });
+});
+
+// POST /api/v1/materials/bundles/add
+router.post('/api/v1/materials/bundles/add', async (req: Request, res: Response) => {
+  await _proxyBundleRequest(req, res, {
+    method: 'POST',
+    orchestratorPath: '/v1/materials/bundles/add',
+    scope: 'materials:bundles.write',
+    riskTier: 'green',
+  });
+});
+
+// POST /api/v1/materials/bundles/remove
+router.post('/api/v1/materials/bundles/remove', async (req: Request, res: Response) => {
+  await _proxyBundleRequest(req, res, {
+    method: 'POST',
+    orchestratorPath: '/v1/materials/bundles/remove',
+    scope: 'materials:bundles.write',
+    riskTier: 'green',
+  });
+});
+
+// POST /api/v1/materials/bundles/update-quantity
+router.post('/api/v1/materials/bundles/update-quantity', async (req: Request, res: Response) => {
+  await _proxyBundleRequest(req, res, {
+    method: 'POST',
+    orchestratorPath: '/v1/materials/bundles/update-quantity',
+    scope: 'materials:bundles.write',
+    riskTier: 'green',
+  });
+});
+
+// POST /api/v1/materials/bundles/clear
+router.post('/api/v1/materials/bundles/clear', async (req: Request, res: Response) => {
+  await _proxyBundleRequest(req, res, {
+    method: 'POST',
+    orchestratorPath: '/v1/materials/bundles/clear',
+    scope: 'materials:bundles.write',
+    riskTier: 'green',
+  });
+});
+
+// POST /api/v1/materials/bundles/push-to-estimate — YELLOW tier
+// Caller (useMaterialsBundle hook) must present a confirmation modal BEFORE
+// calling this endpoint. The Yellow scope enforces the gate on the server side.
+router.post('/api/v1/materials/bundles/push-to-estimate', async (req: Request, res: Response) => {
+  await _proxyBundleRequest(req, res, {
+    method: 'POST',
+    orchestratorPath: '/v1/materials/bundles/push-to-estimate',
+    scope: 'materials:bundles.push',
+    riskTier: 'yellow',
+    timeoutMs: 15_000,
+  });
+});
+
 export default router;
 
 
