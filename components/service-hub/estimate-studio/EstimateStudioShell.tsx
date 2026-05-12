@@ -127,28 +127,28 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderRadius: 14,
     borderWidth: 1,
-    // Barely-there amber rim — invisible until you look for it.
-    borderColor: 'rgba(251,191,36,0.06)',
+    // Visible amber rim — defines the canvas edge without being a hard line.
+    borderColor: 'rgba(251,191,36,0.18)',
     overflow: 'hidden',
     // Web-only: cap the canvas at the viewport so the rail can scroll
     // internally rather than stretching the whole page. Ambient glow is
-    // a single wide low-opacity amber halo — blends into the page,
-    // doesn't compete with the content. No black drop shadow (the prior
-    // 0.45 black created a hard seam that read as a white edge against
-    // the page bg).
+    // PURE amber — single spread+blur halo, no black drop shadow, no
+    // inset hairline. The earlier multi-layer stack was rendering a
+    // ghost gray ring next to the yellow on some GPUs; collapsing to
+    // one boxShadow with explicit spread keeps the color clean.
     ...(Platform.OS === 'web'
       ? (({
           height: 'calc(100vh - 90px)',
           maxHeight: 'calc(100vh - 90px)',
-          boxShadow: '0 0 120px rgba(251,191,36,0.045)',
+          boxShadow: '0 0 64px 6px rgba(251,191,36,0.22)',
         } as unknown) as ViewStyle)
       : {
-          // Native fallback — single amber halo, very low opacity.
+          // Native fallback — single amber halo.
           shadowColor: '#fbbf24',
           shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: 0.06,
-          shadowRadius: 32,
-          elevation: 4,
+          shadowOpacity: 0.22,
+          shadowRadius: 40,
+          elevation: 12,
         }),
   },
   outerCanvasTablet: {
