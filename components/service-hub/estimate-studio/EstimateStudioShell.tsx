@@ -136,14 +136,16 @@ const styles = StyleSheet.create({
     // page background. Goal: light at the edge, dark everywhere else.
     ...(Platform.OS === 'web'
       ? (({
-          // Hard cap canvas to viewport — user MUST NOT have to scroll
-          // the page to see the bottom of the workspace. Real chrome:
-          // TopNav 52 + content paddingTop 28 + paddingBottom 16 + a
-          // small safety buffer = ~100px. The Tim rail handles its
-          // own overflow via its internal ScrollView; the property
-          // hero is flex:1 inside canvasArea and adapts to fit.
-          height: 'calc(100vh - 100px)',
-          maxHeight: 'calc(100vh - 100px)',
+          // Make the canvas a little SHORTER than viewport so the
+          // bottom edge (and the bottom rows of property cards in the
+          // Tim rail) sit visibly above the page fold — never below.
+          // 100px subtract gave only ~4px safety after real chrome
+          // (TopNav 52 + paddingTop 28 + paddingBottom 16 = 96).
+          // 140px subtract gives ~44px page-bg breathing room below
+          // the canvas so the workspace is FULLY visible without any
+          // page scrolling.
+          height: 'calc(100vh - 140px)',
+          maxHeight: 'calc(100vh - 140px)',
           // Amber lives ENTIRELY inside the canvas — no outer bloom,
           // no outer rim. Page background stays pristine dark.
           boxShadow: [
