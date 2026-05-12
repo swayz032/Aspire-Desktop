@@ -260,11 +260,18 @@ export function PhotoGalleryHero({
 
 const styles = StyleSheet.create({
   shell: {
+    // flex:1 so the gallery fills the heroSlot's vertical space —
+    // photo no longer locked to a 12/5 aspect that didn't quite
+    // match the actual interior/exterior images.
+    flex: 1,
     width: '100%',
     minHeight: 360,
     borderRadius: 12,
     overflow: 'hidden',
-    backgroundColor: '#0F0F12',
+    // Pure black for an immersive 'theater' feel — letterbox bars
+    // around the photo blend into the canvas instead of showing as
+    // gray panels.
+    backgroundColor: '#000000',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
   },
@@ -310,10 +317,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.10)',
   },
   mainImageWrap: {
+    // flex:1 + no fixed aspectRatio — the image wrap fills whatever
+    // vertical space is left after the gallery's header. resizeMode
+    // 'contain' on the image then renders it FULL inside this box
+    // without crop. Black bg matches the shell so any letterboxing
+    // is invisible.
+    flex: 1,
     width: '100%',
-    aspectRatio: 12 / 5,
     minHeight: 320,
-    backgroundColor: '#0A0A0F',
+    backgroundColor: '#000000',
     position: 'relative',
   },
   mainImage: {
