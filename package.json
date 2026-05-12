@@ -18,6 +18,7 @@
     "web:build": "npm run build && node scripts/sentry-release.mjs web",
     "web:serve": "npm run start",
     "test": "jest --watchAll",
+    "check:visuals-lock": "jest __tests__/visuals/regression-lock.test.ts --no-coverage",
     "lint": "expo lint",
     "gen-types": "bash scripts/gen-types.sh",
     "check-types": "bash scripts/gen-types.sh --check",
@@ -33,7 +34,8 @@
     "sync-agent:nora": "node scripts/sync-elevenlabs-nora.mjs",
     "sync-agent:sarah-receptionist": "node scripts/sync-elevenlabs-sarah-receptionist.mjs",
     "sync-agent:sarah-frontdesk": "node scripts/sync-elevenlabs-sarah-frontdesk.mjs",
-    "test:tablet": "playwright test --project=ipad-portrait --project=ipad-landscape --project=ipad-pro-12-portrait --project=ipad-pro-12-landscape --project=android-tablet-landscape --project=android-tablet-portrait"
+    "test:tablet": "playwright test --project=ipad-portrait --project=ipad-landscape --project=ipad-pro-12-portrait --project=ipad-pro-12-landscape --project=android-tablet-landscape --project=android-tablet-portrait",
+    "dev:env": "node scripts/dev-env-sync.mjs"
   },
   "jest": {
     "preset": "jest-expo"
@@ -141,7 +143,8 @@
     "three": "^0.182.0",
     "tsx": "^4.21.0",
     "twilio": "^5.13.1",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "cesium": "^1.141.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

@@ -7,8 +7,11 @@ on:
       - 'components/**'
       - 'lib/**'
       - 'server/**'
+      - 'services/**'
       - 'hooks/**'
       - 'types/**'
+      - '__tests__/**'
+      - 'docs/locks/**'
       - 'package.json'
       - 'package-lock.json'
       - 'e2e/**'
@@ -22,6 +25,9 @@ on:
       - 'components/**'
       - 'lib/**'
       - 'server/**'
+      - 'services/**'
+      - '__tests__/**'
+      - 'docs/locks/**'
       - 'package.json'
       - 'package-lock.json'
       - 'e2e/**'
@@ -39,10 +45,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Lint
         run: npx expo lint 2>&1 | tail -20 || true
@@ -59,10 +64,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Run tests
         run: npx jest --ci --passWithNoTests --forceExit --timeout=30000 2>&1 | tail -30
@@ -87,13 +91,34 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Build
         run: npm run web:build 2>&1 | tail -20
+
+  visuals-lock:
+    # Enforces the Visuals Tab Design Lock v1.0
+    # (see docs/locks/VISUALS_TAB_LOCK.md). Fails fast if any locked
+    # anti-pattern reappears in the source — e.g., the left "VIEW FROM"
+    # cluster comes back, Street View Pano regresses to zoom 1, the
+    # positional photo classifier reappears, or one of the 15 required
+    # PropertyData.facts fields gets dropped from the type contract.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Run Visuals lock regression suite
+        run: npm run check:visuals-lock
 
   type-drift:
     runs-on: ubuntu-latest
@@ -105,10 +130,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Check type drift
         run: |
@@ -130,10 +154,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
@@ -164,10 +187,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium

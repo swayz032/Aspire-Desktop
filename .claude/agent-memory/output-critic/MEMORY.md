@@ -11,3 +11,7 @@
 ## Round 7 Review (2026-04-30)
 
 - [Round 7 patterns](round7-patterns.md) — "Mr. Scott" prompt contradiction (3 override sites), office_id=suite_id UUID silent-fail in emitEarlyExitReceipt, TTS noise root cause unverified, spec drift (services_needed/current_tools missing), all-mock test suite
+
+## Pass 3.1 Review (2026-05-10)
+
+- [Pass 3.1 patterns](pass31-patterns.md) — cache read/write key mismatch (permanent miss), 12s vs 25s Adam timeout contradiction, Apify 15s/120s timeout conflict, FOR_SALE default kills commercial photos, Null Island coords fallback, wrong receipt status for needs_correction, no Apify budget counter

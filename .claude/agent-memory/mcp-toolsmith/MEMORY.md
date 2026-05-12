@@ -40,3 +40,25 @@
 - EL sessions (no runtime_family or runtime_family != 'anam_video') skip the entire handoff block — no supabase_select
 - store_receipts call signature: store_receipts([receipt_dict]) — test assertions must unpack the list, not treat it as a dict
 - The existing stub handoff block used list_by_entity("handoff", ...) which was WRONG — correct is correlation_id filter
+
+## Service Hub Pass 3.1 — Google API proxy patterns (2026-05-10)
+- All 4 Google property clients in `server/serviceHub/property/` use same key via `resolveGooglePlacesApiKey()` from `runtimeGuards.ts`
+- `propertyTypes.ts` is the canonical type file — import types from there, not define your own
+- `AddressValidationVerdict` uses `city/state/zip` (not locality/region/postal) and requires `fetchedAt: string`
+- Client imports+re-exports from `propertyTypes.ts` to avoid drift with the aggregator
+- Solar 404 = `status: 'missing'` (rural/unmodelled) — NOT an error; only 5xx = `api_failure`
+- Solar roof type: inferred from pitchDegrees avg (<5=flat, 5-20=low-slope, >20=steep) — not in upstream response
+- jest.fn() mock.calls tuple TS error fix: `const calls = fetchMock.mock.calls as any[]`
+- Test pattern: `__setFetchForTests(mock)` escape hatch, restored in afterEach (same as apifyZillowClient)
+
+## Service Hub Pass 3.1 — Adam HTTP client (2026-05-10)
+- Adam endpoint: `POST {ORCHESTRATOR_URL}/v1/agents/invoke` body: `{ agent: "adam", task: "PROPERTY_FACTS_AND_PERMITS", details: { address }, suite_id, office_id, correlation_id }`
+- `ORCHESTRATOR_URL` from `process.env.ORCHESTRATOR_URL` (Railway Aspire-Desktop service, verified ✅)
+- Default timeout 12s (Adam runs ATTOM + Apify in parallel; Apify actor cold-starts ~10s)
+- Photo lane bucketing: `record.photos[].lane` → 'interior' | 'exterior' | 'roof' | anything else → 'uncategorized'
+- Lot area units: `lotAreaUnits` (plural, ATTOM canonical); fall back to `lotAreaUnit` (singular, older). Acres × 43560 = sqft.
+- ResearchResponse shape: `{ artifact_type, records[{ address, homeType, livingArea, yearBuilt, zoning, lotAreaValue, lotAreaUnits, stories, bedrooms, bathrooms, photos[{ url, caption?, lane }] }], confidence, receipts[], correlation_id }`
+- `missing` status when classifyStatus returns missing — attach `error: 'no usable facts in record'` (test expects error defined)
+- `receiptsFromAdam` is `undefined` when `response.receipts` is missing/not-array (not empty array) — test checks `toBeUndefined()`
+- Address normalization: `streetAddress` preferred over `street`; `zipcode` preferred over `zip`; `formattedAddress` preferred as formatted
+- mock.calls TS type: use `const calls = fetchMock.mock.calls as Array<[string, RequestInit]>` to avoid any-cast

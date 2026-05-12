@@ -32,6 +32,17 @@ export interface CreateReceiptParams {
   outputs: Record<string, unknown>;
   policyDecisionId?: string;
   metadata?: Record<string, unknown>;
+  /**
+   * Receipt status. Defaults to 'SUCCEEDED' for backward compatibility.
+   * Use 'FAILED' for runtime errors, 'DENIED' for policy/validation rejections
+   * (e.g., invalid address, address-needs-correction).
+   */
+  status?: ReceiptStatus;
+  /**
+   * Correlation ID — written to receipts.correlation_id column for trace
+   * chain reconstruction across systems (desktop ↔ orchestrator).
+   */
+  correlationId?: string;
 }
 
 export interface Receipt {
@@ -123,7 +134,8 @@ export async function createReceipt(params: CreateReceiptParams): Promise<string
     suiteId: params.suiteId,
     officeId: params.officeId || undefined,
     receiptType: params.actionType,
-    status: 'SUCCEEDED',
+    status: params.status ?? 'SUCCEEDED',
+    correlationId: params.correlationId,
     actorType: 'SYSTEM',
     action: { ...params.inputs, policyDecisionId: params.policyDecisionId },
     result: { ...params.outputs, metadata: params.metadata },

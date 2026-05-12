@@ -1,0 +1,1379 @@
+/**
+ * PropertySummaryCard — premium estimate-ready property briefing for the
+ * Tim rail Context tab.
+ *
+ * This is THE estimating brief. Everything a contractor needs to size up a
+ * job sits here, single-pane, no clicks:
+ *
+ *   • Property identity   — formatted address + coords
+ *   • Building dimensions — sqft, lot, stories, year, type, zoning
+ *   • Total building area — large numeric reveal
+ *   • Quick cost estimate — band (low–high)
+ *   • Materials signals   — name + confidence bar
+ *   • Roof + access       — roof type, pitch flag, access risk
+ *   • Evidence gaps       — what's missing before we can quote tighter
+ *   • Photo coverage      — counts by lane
+ *   • Data sources health — provider status + freshness
+ *
+ * Aspire Law #7: pure render. Aspire Law #2: each source row is a receipt
+ * mirror (status + fetchedAt). Aspire Law #3: empty data = explicit "—" or
+ * "missing", never silent fabrication.
+ */
+import React from 'react';
+import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { SheenBlock } from '../visuals/InsightCardBase';
+import type {
+  PropertyData,
+  SourceStatus,
+} from '@/services/serviceHub/propertyDataApi';
+
+interface Props {
+  data?: PropertyData;
+  loading: boolean;
+}
+
+const SOURCE_LABEL: Record<SourceStatus['name'], string> = {
+  addressValidation: 'Address Valid.',
+  geocoding: 'Geocoding',
+  streetView: 'Street View',
+  solar: 'Solar',
+  adam: 'Adam (ATTOM + Zillow)',
+  places: 'Places',
+};
+
+const STATUS_COLOR: Record<SourceStatus['status'], string> = {
+  ok: '#34c759',
+  partial: '#fbbf24',
+  missing: 'rgba(255,255,255,0.30)',
+  api_failure: '#ff6b6b',
+};
+
+const STATUS_LABEL: Record<SourceStatus['status'], string> = {
+  ok: 'ok',
+  partial: 'partial',
+  missing: 'missing',
+  api_failure: 'failed',
+};
+
+const CONFIDENCE_COLOR: Record<'high' | 'medium' | 'low', string> = {
+  high: '#fbbf24',
+  medium: '#60a5fa',
+  low: 'rgba(255,255,255,0.35)',
+};
+
+const CONFIDENCE_PCT: Record<'high' | 'medium' | 'low', number> = {
+  high: 1,
+  medium: 0.6,
+  low: 0.3,
+};
+
+const ACCESS_COLOR: Record<'low' | 'medium' | 'high', string> = {
+  low: '#34c759',
+  medium: '#fbbf24',
+  high: '#ff6b6b',
+};
+
+function formatSqft(n?: number): string {
+  return typeof n === 'number' && Number.isFinite(n) && n > 0
+    ? n.toLocaleString('en-US')
+    : '—';
+}
+
+function formatCurrency(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '—';
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000) return `$${Math.round(n / 1000).toLocaleString('en-US')}K`;
+  return `$${n.toLocaleString('en-US')}`;
+}
+
+export function PropertySummaryCard({ data, loading }: Props) {
+  if (loading) {
+    return (
+      <View style={styles.card} testID="property-summary-card-skeleton">
+        <SkeletonSection lines={3} />
+        <SkeletonSection lines={4} />
+        <SkeletonSection lines={3} />
+        <SkeletonSection lines={3} />
+        <SkeletonSection lines={4} />
+      </View>
+    );
+  }
+
+  if (!data) {
+    return (
+      <View style={styles.card} testID="property-summary-card-empty">
+        <View style={styles.emptyState}>
+          <Ionicons name="business-outline" size={20} color="rgba(255,255,255,0.45)" />
+          <Text style={styles.emptyTitle}>No property loaded</Text>
+          <Text style={styles.emptySubtitle}>
+            Enter an address to populate the estimate brief.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  // -- Derived view models --------------------------------------------------
+  const f = data.facts;
+  const facts: { label: string; value: string }[] = [
+    { label: 'Type', value: f.propertyType ?? '—' },
+    { label: 'Year', value: f.yearBuilt ? String(f.yearBuilt) : '—' },
+    { label: 'Beds', value: f.bedrooms ? String(f.bedrooms) : '—' },
+    { label: 'Baths', value: f.bathrooms ? String(f.bathrooms) : '—' },
+    { label: 'Stories', value: f.stories ? String(f.stories) : '—' },
+    { label: 'Frame', value: f.constructionFrame ?? '—' },
+    { label: 'Quality', value: f.quality ?? '—' },
+    { label: 'Zoning', value: f.zoning ?? '—' },
+    { label: 'Lot', value: f.lotSqft ? `${formatSqft(f.lotSqft)} sf` : '—' },
+    {
+      label: 'Coords',
+      value: data.coords && Number.isFinite(data.coords.lat) && Number.isFinite(data.coords.lng)
+        ? `${data.coords.lat.toFixed(4)}, ${data.coords.lng.toFixed(4)}`
+        : '—',
+    },
+  ];
+
+  const ownerLine = f.ownerName
+    ? `${f.ownerName}${f.ownerOccupied ? ' · owner-occupied' : ''}`
+    : null;
+  const hasAvm =
+    typeof f.estimatedValue === 'number' && f.estimatedValue > 0;
+  const hasLastSale = !!f.lastSaleDate && typeof f.lastSaleAmount === 'number';
+  const hasTax = typeof f.annualTax === 'number' && f.annualTax > 0;
+  const showOwnerSection = !!ownerLine || hasAvm || hasLastSale || hasTax;
+
+  const sqftFmt = formatSqft(data.facts.sqft);
+  const hasSqft = sqftFmt !== '—';
+  const cb = data.costBand;
+  const hasCostBand =
+    cb && Number.isFinite(cb.low) && Number.isFinite(cb.high) && cb.high >= cb.low && cb.high > 0;
+
+  const materials = data.signals.materials.slice(0, 6);
+  const evidenceGaps = data.evidenceGaps ?? [];
+  const sources = data.sources;
+
+  const photoCounts = {
+    interior: data.photos.interior.count ?? 0,
+    exterior: data.photos.exterior.count ?? 0,
+    roof: data.photos.roof.count ?? 0,
+    streetView: data.photos.streetView.count ?? 0,
+  };
+  const totalPhotos =
+    photoCounts.interior + photoCounts.exterior + photoCounts.roof + photoCounts.streetView;
+
+  return (
+    <View style={styles.card} testID="property-summary-card">
+      {/* PROPERTY IDENTITY */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeaderRow}>
+          <Ionicons name="location-outline" size={11} color="rgba(255,255,255,0.45)" />
+          <Text style={styles.sectionLabel}>Property</Text>
+        </View>
+        <View style={styles.sectionBody}>
+          <Text style={styles.addressLine1} numberOfLines={2}>
+            {data.address.street ?? data.address.formatted}
+          </Text>
+          {(data.address.city || data.address.state || data.address.zip) && (
+            <Text style={styles.addressLine2}>
+              {[data.address.city, data.address.state, data.address.zip]
+                .filter(Boolean)
+                .join(', ')}
+            </Text>
+          )}
+        </View>
+      </View>
+
+      {/* TOTAL BUILDING AREA — hero numeric */}
+      <View style={[styles.section, styles.heroSection]}>
+        <View style={styles.sectionHeaderRow}>
+          <Ionicons name="resize-outline" size={11} color="rgba(255,255,255,0.45)" />
+          <Text style={styles.sectionLabel}>Total Building Area</Text>
+        </View>
+        <View style={styles.heroBody}>
+          <Text style={styles.heroNumber} numberOfLines={1} adjustsFontSizeToFit>
+            {sqftFmt}
+          </Text>
+          <Text style={styles.heroUnit}>{hasSqft ? 'sq ft' : 'no facts resolved'}</Text>
+        </View>
+      </View>
+
+      {/* QUICK COST ESTIMATE */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeaderRow}>
+          <Ionicons name="trending-up-outline" size={11} color="rgba(255,255,255,0.45)" />
+          <Text style={styles.sectionLabel}>Quick Cost Estimate</Text>
+        </View>
+        <View style={styles.sectionBody}>
+          {hasCostBand ? (
+            <Text style={styles.costBand} numberOfLines={1} adjustsFontSizeToFit>
+              {formatCurrency(cb!.low)} – {formatCurrency(cb!.high)}
+            </Text>
+          ) : (
+            <Text style={styles.muted}>
+              Add square footage and material details to surface a band.
+            </Text>
+          )}
+        </View>
+      </View>
+
+      {/* PROPERTY FACTS — 2-column grid */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeaderRow}>
+          <Ionicons name="information-circle-outline" size={11} color="rgba(255,255,255,0.45)" />
+          <Text style={styles.sectionLabel}>Property Facts</Text>
+        </View>
+        <View style={styles.factsGrid}>
+          {facts.map((f) => (
+            <View style={styles.factTile} key={f.label}>
+              <Text style={styles.factTileLabel}>{f.label}</Text>
+              <Text style={styles.factTileValue} numberOfLines={1}>
+                {f.value}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      {/* OWNER & VALUATION (ATTOM-derived contractor context) */}
+      {showOwnerSection && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="person-circle-outline" size={11} color="rgba(255,255,255,0.62)" />
+            <Text style={styles.sectionLabel}>Owner &amp; Valuation</Text>
+          </View>
+
+          {/* Hero stat cards — the marquee numbers a contractor uses first */}
+          {(hasAvm || hasLastSale) && (
+            <View style={styles.statGrid}>
+              {hasAvm && (
+                <View style={[styles.statCard, styles.statCardAccent]}>
+                  <Text style={styles.statLabel}>AVM</Text>
+                  <Text style={[styles.statValue, styles.statValueAccent]} numberOfLines={1}>
+                    {formatCurrency(f.estimatedValue!)}
+                  </Text>
+                  {typeof f.estimatedValueLow === 'number' &&
+                    typeof f.estimatedValueHigh === 'number' && (
+                      <Text style={styles.statSub} numberOfLines={1}>
+                        {formatCurrency(f.estimatedValueLow)} – {formatCurrency(f.estimatedValueHigh)}
+                      </Text>
+                    )}
+                </View>
+              )}
+              {hasLastSale && (
+                <View style={styles.statCard}>
+                  <Text style={styles.statLabel}>Last Sale</Text>
+                  <Text style={styles.statValue} numberOfLines={1}>
+                    {formatCurrency(f.lastSaleAmount!)}
+                  </Text>
+                  <Text style={styles.statSub} numberOfLines={1}>{f.lastSaleDate}</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          <View style={styles.sectionBody}>
+            {ownerLine && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Owner</Text>
+                <Text style={styles.factValue} numberOfLines={1}>{f.ownerName}</Text>
+              </View>
+            )}
+            {!!f.previousOwnerName && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Prior owner</Text>
+                <Text style={styles.factValue} numberOfLines={1}>{f.previousOwnerName}</Text>
+              </View>
+            )}
+            {/* Boolean flag chips — visual signal density without row clutter */}
+            {(f.ownerOccupied || f.absenteeOwner || f.homeownerExemption) && (
+              <View style={styles.chipRow}>
+                {f.ownerOccupied && (
+                  <View style={[styles.chip, styles.chipPositive]}>
+                    <Text style={[styles.chipText, styles.chipTextPositive]}>OWNER OCCUPIED</Text>
+                  </View>
+                )}
+                {f.absenteeOwner && (
+                  <View style={[styles.chip, styles.chipWarning]}>
+                    <Text style={[styles.chipText, styles.chipTextWarning]}>ABSENTEE</Text>
+                  </View>
+                )}
+                {f.homeownerExemption && (
+                  <View style={[styles.chip, styles.chipPositive]}>
+                    <Text style={[styles.chipText, styles.chipTextPositive]}>HOMESTEAD EXEMPT</Text>
+                  </View>
+                )}
+              </View>
+            )}
+            {hasTax && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Annual tax</Text>
+                <Text style={styles.factValue} numberOfLines={1}>
+                  {formatCurrency(f.annualTax!)}
+                  {f.taxYear ? ` · ${f.taxYear}` : ''}
+                </Text>
+              </View>
+            )}
+            {typeof f.avmConfidenceScore === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>AVM confidence</Text>
+                <Text style={styles.factValue} numberOfLines={1}>
+                  {f.avmConfidenceScore}/100
+                  {typeof f.avmFsd === 'number' ? ` · ±${f.avmFsd.toFixed(1)}%` : ''}
+                </Text>
+              </View>
+            )}
+            {typeof f.avmPricePerSqft === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>AVM $/sqft</Text>
+                <Text style={styles.factValue}>{formatCurrency(f.avmPricePerSqft)}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* SALE HISTORY DETAIL (last sale ppsf, type, arms-length, appreciation) */}
+      {(typeof f.lastSalePricePerSqft === 'number' ||
+        !!f.lastSaleType ||
+        typeof f.lastSaleArmsLength === 'boolean' ||
+        typeof f.appreciationPct === 'number' ||
+        !!f.lastSaleCashOrMortgage ||
+        typeof f.lastSalePricePerBed === 'number') && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="trending-up-outline" size={11} color="rgba(255,255,255,0.62)" />
+            <Text style={styles.sectionLabel}>Sale Detail</Text>
+          </View>
+          <View style={styles.sectionBody}>
+            {typeof f.lastSalePricePerSqft === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>$/sqft at sale</Text>
+                <Text style={styles.factValue}>{formatCurrency(f.lastSalePricePerSqft)}</Text>
+              </View>
+            )}
+            {typeof f.lastSalePricePerBed === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>$/bed at sale</Text>
+                <Text style={styles.factValue}>{formatCurrency(f.lastSalePricePerBed)}</Text>
+              </View>
+            )}
+            {!!f.lastSaleType && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Sale type</Text>
+                <Text style={styles.factValue}>{f.lastSaleType}</Text>
+              </View>
+            )}
+            {!!f.lastSaleCashOrMortgage && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Financing</Text>
+                <Text style={styles.factValue}>{f.lastSaleCashOrMortgage}</Text>
+              </View>
+            )}
+            {typeof f.appreciationPct === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Appreciation</Text>
+                <Text
+                  style={[
+                    styles.factValue,
+                    f.appreciationPct > 0 && styles.factValueAccent,
+                  ]}
+                >
+                  {f.appreciationPct > 0 ? '+' : ''}
+                  {f.appreciationPct.toFixed(1)}%
+                </Text>
+              </View>
+            )}
+            {typeof f.lastSaleArmsLength === 'boolean' && (
+              <View style={styles.chipRow}>
+                <View
+                  style={[styles.chip, f.lastSaleArmsLength ? styles.chipPositive : styles.chipWarning]}
+                >
+                  <Text
+                    style={[
+                      styles.chipText,
+                      f.lastSaleArmsLength ? styles.chipTextPositive : styles.chipTextWarning,
+                    ]}
+                  >
+                    {f.lastSaleArmsLength ? "ARM'S LENGTH" : 'NON ARM\'S LENGTH'}
+                  </Text>
+                </View>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* MORTGAGE & EQUITY (informs the financing conversation) */}
+      {(!!f.mortgageLender ||
+        typeof f.mortgageAmount === 'number' ||
+        typeof f.ltvRatio === 'number' ||
+        typeof f.availableEquity === 'number') && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="cash-outline" size={11} color="rgba(255,255,255,0.62)" />
+            <Text style={styles.sectionLabel}>Mortgage &amp; Equity</Text>
+          </View>
+
+          {/* Equity + LTV stat cards — the numbers that drive the pitch */}
+          {(typeof f.availableEquity === 'number' || typeof f.ltvRatio === 'number') && (
+            <View style={styles.statGrid}>
+              {typeof f.availableEquity === 'number' && (
+                <View style={[styles.statCard, styles.statCardAccent]}>
+                  <Text style={styles.statLabel}>Available Equity</Text>
+                  <Text style={[styles.statValue, styles.statValueAccent]} numberOfLines={1}>
+                    {formatCurrency(f.availableEquity)}
+                  </Text>
+                </View>
+              )}
+              {typeof f.ltvRatio === 'number' && (
+                <View style={styles.statCard}>
+                  <Text style={styles.statLabel}>LTV</Text>
+                  <Text style={styles.statValue} numberOfLines={1}>{f.ltvRatio}%</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          <View style={styles.sectionBody}>
+            {!!f.mortgageLender && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Lender</Text>
+                <Text style={styles.factValue} numberOfLines={1}>
+                  {f.mortgageLender}
+                  {f.mortgageLoanType ? ` · ${f.mortgageLoanType}` : ''}
+                </Text>
+              </View>
+            )}
+            {typeof f.mortgageAmount === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Original loan</Text>
+                <Text style={styles.factValue} numberOfLines={1}>
+                  {formatCurrency(f.mortgageAmount)}
+                  {f.mortgageDate ? ` · ${f.mortgageDate}` : ''}
+                </Text>
+              </View>
+            )}
+            {typeof f.currentLoanBalance === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Current balance</Text>
+                <Text style={styles.factValue}>{formatCurrency(f.currentLoanBalance)}</Text>
+              </View>
+            )}
+            {typeof f.estimatedMonthlyPayment === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Est. monthly</Text>
+                <Text style={styles.factValue}>{formatCurrency(f.estimatedMonthlyPayment)}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* PERMITS — building permits pulled from attom.building_permits */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeaderRow}>
+          <Ionicons name="document-text-outline" size={11} color="rgba(255,255,255,0.62)" />
+          <Text style={styles.sectionLabel}>
+            Building Permits
+            {Array.isArray(f.permits) && f.permits.length > 0 ? ` · ${f.permits.length}` : ''}
+          </Text>
+        </View>
+        {Array.isArray(f.permits) && f.permits.length > 0 ? (
+          <View style={styles.permitList}>
+            {f.permits.slice(0, 8).map((p, idx) => {
+              // Headline prefers description (the specific scope), with
+              // type as a fallback. ATTOM's `type` field is often the
+              // legacy registry name ("Legacy permit records") — less
+              // useful as a headline. Description is the human-readable
+              // scope of work.
+              const headline =
+                (p.description && p.description.trim()) ||
+                (p.type && p.type.trim()) ||
+                `Permit ${idx + 1}`;
+              // Sub-headline = type when distinct from headline.
+              const subHeadline =
+                p.type && p.description && p.type !== p.description
+                  ? p.type
+                  : '';
+              // Contractor list — semicolon-delimited from ATTOM. Split
+              // into chips for readability.
+              const contractors = (p.contractor || '')
+                .split(/;|·/)
+                .map((s) => s.trim())
+                .filter(Boolean);
+              const status = (p.status || '').toLowerCase();
+              const statusVariant: 'positive' | 'warning' | 'neutral' =
+                status === 'final' || status === 'finalized' || status === 'finaled'
+                  ? 'positive'
+                  : status === 'expired' || status === 'cancelled' || status === 'canceled'
+                    ? 'warning'
+                    : 'neutral';
+              return (
+                <View style={styles.permitCard} key={`permit-${idx}`}>
+                  <View style={styles.permitHeaderRow}>
+                    <Text style={styles.permitHeadline} numberOfLines={2}>
+                      {headline}
+                    </Text>
+                    {!!p.status && (
+                      <View
+                        style={[
+                          styles.chip,
+                          statusVariant === 'positive' && styles.chipPositive,
+                          statusVariant === 'warning' && styles.chipWarning,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.chipText,
+                            statusVariant === 'positive' && styles.chipTextPositive,
+                            statusVariant === 'warning' && styles.chipTextWarning,
+                          ]}
+                        >
+                          {p.status.toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {!!subHeadline && (
+                    <Text style={styles.permitSub} numberOfLines={1}>
+                      {subHeadline}
+                    </Text>
+                  )}
+
+                  <View style={styles.permitMetaRow}>
+                    {!!p.date && (
+                      <View style={styles.permitMetaItem}>
+                        <Ionicons
+                          name="calendar-outline"
+                          size={10}
+                          color="rgba(255,255,255,0.45)"
+                        />
+                        <Text style={styles.permitMetaText}>{p.date}</Text>
+                      </View>
+                    )}
+                    {typeof p.value === 'number' && p.value > 0 && (
+                      <View style={styles.permitMetaItem}>
+                        <Ionicons
+                          name="cash-outline"
+                          size={10}
+                          color="rgba(255,255,255,0.45)"
+                        />
+                        <Text style={[styles.permitMetaText, styles.permitMetaTextAccent]}>
+                          {formatCurrency(p.value)}
+                        </Text>
+                      </View>
+                    )}
+                    {!!p.number && (
+                      <View style={styles.permitMetaItem}>
+                        <Ionicons
+                          name="pricetag-outline"
+                          size={10}
+                          color="rgba(255,255,255,0.45)"
+                        />
+                        <Text style={styles.permitMetaText}>#{p.number}</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {contractors.length > 0 && (
+                    <View style={styles.permitContractorWrap}>
+                      <Text style={styles.permitContractorLabel}>Contractor</Text>
+                      <View style={styles.permitContractorChips}>
+                        {contractors.map((c, ci) => (
+                          <View style={styles.permitContractorChip} key={`c-${ci}`}>
+                            <Text style={styles.permitContractorText} numberOfLines={1}>
+                              {c}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+            {f.permits.length > 8 && (
+              <Text style={styles.muted}>+{f.permits.length - 8} more permits</Text>
+            )}
+          </View>
+        ) : (
+          <View style={styles.surface}>
+            <Text style={styles.muted}>
+              No permits returned by ATTOM for this address. Verify directly
+              with city/county records for renovation history.
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* RENTAL ESTIMATE (only for properties with ATTOM rental AVM) */}
+      {typeof f.estimatedRent === 'number' && f.estimatedRent > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="business-outline" size={11} color="rgba(255,255,255,0.45)" />
+            <Text style={styles.sectionLabel}>Rental Estimate</Text>
+          </View>
+          <View style={styles.sectionBody}>
+            <View style={styles.factRow}>
+              <Text style={styles.factLabel}>Est. rent</Text>
+              <Text style={styles.factValue} numberOfLines={1}>
+                {formatCurrency(f.estimatedRent)}/mo
+                {typeof f.estimatedRentLow === 'number' &&
+                typeof f.estimatedRentHigh === 'number'
+                  ? ` (${formatCurrency(f.estimatedRentLow)}–${formatCurrency(f.estimatedRentHigh)})`
+                  : ''}
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* TAX BREAKDOWN (assessed land vs improvement — tracks structure value) */}
+      {(typeof f.taxAssessedTotal === 'number' ||
+        typeof f.taxMarketValue === 'number' ||
+        typeof f.taxPerSqft === 'number') && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="receipt-outline" size={11} color="rgba(255,255,255,0.45)" />
+            <Text style={styles.sectionLabel}>Tax Assessment</Text>
+          </View>
+          <View style={styles.sectionBody}>
+            {typeof f.taxAssessedTotal === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Assessed total</Text>
+                <Text style={styles.factValue}>{formatCurrency(f.taxAssessedTotal)}</Text>
+              </View>
+            )}
+            {typeof f.taxAssessedLand === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Land</Text>
+                <Text style={styles.factValue}>{formatCurrency(f.taxAssessedLand)}</Text>
+              </View>
+            )}
+            {typeof f.taxAssessedImprovement === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Improvement</Text>
+                <Text style={styles.factValue}>{formatCurrency(f.taxAssessedImprovement)}</Text>
+              </View>
+            )}
+            {typeof f.taxMarketValue === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Market value</Text>
+                <Text style={styles.factValue}>{formatCurrency(f.taxMarketValue)}</Text>
+              </View>
+            )}
+            {typeof f.taxPerSqft === 'number' && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Tax $/sqft</Text>
+                <Text style={styles.factValue}>{formatCurrency(f.taxPerSqft)}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* ROOF + ACCESS */}
+      {(data.signals.roofType || data.signals.accessRisk || f.roofCover) && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="construct-outline" size={11} color="rgba(255,255,255,0.45)" />
+            <Text style={styles.sectionLabel}>Roof &amp; Access</Text>
+          </View>
+          <View style={styles.sectionBody}>
+            {!!f.roofCover && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Roof cover</Text>
+                <Text style={styles.factValue}>{f.roofCover}</Text>
+              </View>
+            )}
+            {data.signals.roofType && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Roof type</Text>
+                <Text style={styles.factValue}>{data.signals.roofType}</Text>
+              </View>
+            )}
+            {data.signals.accessRisk && (
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Access risk</Text>
+                <View style={styles.pillRow}>
+                  <View
+                    style={[
+                      styles.riskDot,
+                      { backgroundColor: ACCESS_COLOR[data.signals.accessRisk] },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.factValue,
+                      { color: ACCESS_COLOR[data.signals.accessRisk], textTransform: 'capitalize' },
+                    ]}
+                  >
+                    {data.signals.accessRisk}
+                  </Text>
+                </View>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* MATERIAL SIGNALS — confidence bars */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeaderRow}>
+          <Ionicons name="layers-outline" size={11} color="rgba(255,255,255,0.45)" />
+          <Text style={styles.sectionLabel}>Material Signals</Text>
+        </View>
+        <View style={styles.sectionBody}>
+          {materials.length === 0 ? (
+            <Text style={styles.muted}>No signals detected yet.</Text>
+          ) : (
+            materials.map((m) => (
+              <View style={styles.materialRow} key={m.name}>
+                <View style={styles.materialNameRow}>
+                  <Text style={styles.materialName} numberOfLines={1}>
+                    {m.name}
+                  </Text>
+                  <Text style={[styles.materialConfidenceText, { color: CONFIDENCE_COLOR[m.confidence] }]}>
+                    {m.confidence.toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.confidenceTrack}>
+                  <View
+                    style={[
+                      styles.confidenceFill,
+                      {
+                        width: `${CONFIDENCE_PCT[m.confidence] * 100}%`,
+                        backgroundColor: CONFIDENCE_COLOR[m.confidence],
+                      },
+                    ]}
+                  />
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+      </View>
+
+      {/* EVIDENCE GAPS */}
+      {evidenceGaps.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="alert-circle-outline" size={11} color="#fbbf24" />
+            <Text style={[styles.sectionLabel, { color: 'rgba(251,191,36,0.85)' }]}>
+              Evidence Gaps
+            </Text>
+          </View>
+          <View style={styles.sectionBody}>
+            {evidenceGaps.slice(0, 4).map((gap, idx) => (
+              <View key={`${gap}-${idx}`} style={styles.gapRow}>
+                <Text style={styles.gapBullet}>•</Text>
+                <Text style={styles.gapText}>{gap}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {/* PHOTO COVERAGE */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeaderRow}>
+          <Ionicons name="images-outline" size={11} color="rgba(255,255,255,0.45)" />
+          <Text style={styles.sectionLabel}>
+            Photo Coverage <Text style={styles.sectionLabelMeta}>· {totalPhotos} total</Text>
+          </Text>
+        </View>
+        <View style={styles.photoGrid}>
+          <PhotoChip label="Interior" count={photoCounts.interior} />
+          <PhotoChip label="Exterior" count={photoCounts.exterior} />
+          <PhotoChip label="Roof" count={photoCounts.roof} />
+          <PhotoChip label="Street" count={photoCounts.streetView} />
+        </View>
+      </View>
+
+      {/* DATA SOURCES */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeaderRow}>
+          <Ionicons name="git-network-outline" size={11} color="rgba(255,255,255,0.45)" />
+          <Text style={styles.sectionLabel}>Data Sources</Text>
+        </View>
+        <View style={styles.sectionBody}>
+          {sources.length === 0 ? (
+            <Text style={styles.muted}>No sources reporting.</Text>
+          ) : (
+            sources.map((src) => <SourceRow key={src.name} source={src} />)
+          )}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Inner pieces
+// ---------------------------------------------------------------------------
+
+function PhotoChip({ label, count }: { label: string; count: number }) {
+  const has = count > 0;
+  return (
+    <View style={[styles.photoChip, has ? styles.photoChipFilled : styles.photoChipEmpty]}>
+      <Text style={[styles.photoChipCount, has ? styles.photoChipCountFilled : styles.photoChipCountEmpty]}>
+        {count}
+      </Text>
+      <Text style={styles.photoChipLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function SourceRow({ source }: { source: SourceStatus }) {
+  const pulse = React.useRef(new Animated.Value(1)).current;
+  React.useEffect(() => {
+    Animated.sequence([
+      Animated.timing(pulse, {
+        toValue: 0.4,
+        duration: 200,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(pulse, {
+        toValue: 1,
+        duration: 320,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [source.status, pulse]);
+
+  return (
+    <View style={styles.sourceRow}>
+      <Animated.View
+        style={[
+          styles.sourceDot,
+          { backgroundColor: STATUS_COLOR[source.status], opacity: pulse },
+        ]}
+      />
+      <Text style={styles.sourceName} numberOfLines={1}>
+        {SOURCE_LABEL[source.name] ?? source.name}
+      </Text>
+      <Text style={[styles.sourceStatus, { color: STATUS_COLOR[source.status] }]}>
+        {STATUS_LABEL[source.status]}
+      </Text>
+      <Text style={styles.sourceTime}>{relativeTime(source.fetchedAt)}</Text>
+    </View>
+  );
+}
+
+function relativeTime(iso: string): string {
+  if (!iso) return '';
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return '';
+  const diffSec = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (diffSec < 60) return `${diffSec}s ago`;
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+  return `${Math.floor(diffSec / 86400)}d ago`;
+}
+
+function SkeletonSection({ lines }: { lines: number }) {
+  return (
+    <View style={styles.section}>
+      <SheenBlock width={80} height={9} radius={3} />
+      <View style={[styles.sectionBody, { marginTop: 8 }]}>
+        {Array.from({ length: lines }).map((_, i) => (
+          <SheenBlock
+            key={i}
+            width="90%"
+            height={11}
+            radius={4}
+            style={{ marginTop: i === 0 ? 0 : 6 }}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    padding: 16,
+    gap: 22,
+  },
+  section: {
+    gap: 10,
+    paddingBottom: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  sectionLast: {
+    borderBottomWidth: 0,
+    paddingBottom: 0,
+  },
+  surface: {
+    backgroundColor: 'rgba(255,255,255,0.025)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 12,
+    padding: 12,
+    gap: 8,
+  },
+  heroSection: {
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(251,191,36,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.18)',
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.62)',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
+  sectionLabelMeta: {
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.35)',
+    letterSpacing: 0.4,
+    textTransform: 'none',
+  },
+  sectionBody: {
+    gap: 6,
+  },
+
+  // PROPERTY IDENTITY
+  addressLine1: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.92)',
+    letterSpacing: -0.1,
+    lineHeight: 18,
+  },
+  addressLine2: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.65)',
+    letterSpacing: -0.1,
+  },
+
+  // HERO (Total Building Area)
+  heroBody: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
+  },
+  heroNumber: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#fbbf24',
+    letterSpacing: -0.8,
+    fontVariant: ['tabular-nums'],
+  },
+  heroUnit: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.55)',
+    letterSpacing: 0.2,
+  },
+
+  // COST BAND
+  costBand: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.92)',
+    letterSpacing: -0.4,
+    fontVariant: ['tabular-nums'],
+  },
+
+  // FACTS GRID (2 columns)
+  factsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  factTile: {
+    flexBasis: '48%',
+    flexGrow: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    gap: 2,
+  },
+  factTileLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.40)',
+    letterSpacing: 1.0,
+    textTransform: 'uppercase',
+  },
+  factTileValue: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.88)',
+    letterSpacing: -0.1,
+    fontVariant: ['tabular-nums'],
+  },
+
+  // ROOF & ACCESS rows
+  factRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 22,
+  },
+  factLabel: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.50)',
+    fontWeight: '500',
+    letterSpacing: 0.1,
+  },
+  factValue: {
+    fontSize: 12.5,
+    color: 'rgba(255,255,255,0.92)',
+    fontWeight: '600',
+    letterSpacing: -0.1,
+    fontVariant: ['tabular-nums'],
+    flexShrink: 1,
+    textAlign: 'right',
+  },
+  factValueAccent: {
+    color: '#fbbf24',
+    fontWeight: '700',
+  },
+
+  // CHIPS (boolean flags / classifications)
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 2,
+  },
+  chip: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  chipPositive: {
+    backgroundColor: 'rgba(52,211,153,0.10)',
+    borderColor: 'rgba(52,211,153,0.30)',
+  },
+  chipWarning: {
+    backgroundColor: 'rgba(251,191,36,0.10)',
+    borderColor: 'rgba(251,191,36,0.30)',
+  },
+  chipText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.80)',
+    letterSpacing: 0.3,
+  },
+  chipTextPositive: {
+    color: 'rgb(110,231,183)',
+  },
+  chipTextWarning: {
+    color: '#fbbf24',
+  },
+
+  // STAT CARDS (premium tiles for marquee values like AVM, equity)
+  statGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  statCard: {
+    flexBasis: '48%',
+    flexGrow: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    gap: 4,
+  },
+  statCardAccent: {
+    backgroundColor: 'rgba(251,191,36,0.06)',
+    borderColor: 'rgba(251,191,36,0.22)',
+  },
+  statLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.50)',
+    letterSpacing: 1.0,
+    textTransform: 'uppercase',
+  },
+  statValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.96)',
+    letterSpacing: -0.3,
+    fontVariant: ['tabular-nums'],
+  },
+  statValueAccent: {
+    color: '#fbbf24',
+  },
+  statSub: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.50)',
+    letterSpacing: -0.05,
+    fontVariant: ['tabular-nums'],
+  },
+
+  // PERMIT CARDS (premium per-permit layout — escapes the narrow factRow)
+  permitList: {
+    gap: 10,
+  },
+  permitCard: {
+    backgroundColor: 'rgba(255,255,255,0.035)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 10,
+    padding: 12,
+    gap: 8,
+  },
+  permitHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  permitHeadline: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.96)',
+    letterSpacing: -0.2,
+    lineHeight: 17,
+  },
+  permitSub: {
+    fontSize: 10.5,
+    color: 'rgba(255,255,255,0.55)',
+    letterSpacing: 0,
+    lineHeight: 14,
+  },
+  permitMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    rowGap: 4,
+    alignItems: 'center',
+  },
+  permitMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  permitMetaText: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.70)',
+    fontVariant: ['tabular-nums'],
+    fontWeight: '500',
+  },
+  permitMetaTextAccent: {
+    color: '#fbbf24',
+    fontWeight: '700',
+  },
+  permitContractorWrap: {
+    paddingTop: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.06)',
+    gap: 5,
+  },
+  permitContractorLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.40)',
+    letterSpacing: 1.0,
+    textTransform: 'uppercase',
+  },
+  permitContractorChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  permitContractorChip: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 5,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+    maxWidth: '100%',
+  },
+  permitContractorText: {
+    fontSize: 10.5,
+    color: 'rgba(255,255,255,0.80)',
+    fontWeight: '500',
+    letterSpacing: -0.05,
+  },
+  pillRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  riskDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+
+  // MATERIAL SIGNALS — bars
+  materialRow: {
+    gap: 4,
+  },
+  materialNameRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  materialName: {
+    flex: 1,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.85)',
+    letterSpacing: -0.1,
+    textTransform: 'capitalize',
+  },
+  materialConfidenceText: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+  },
+  confidenceTrack: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    overflow: 'hidden',
+  },
+  confidenceFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+
+  // EVIDENCE GAPS
+  gapRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  gapBullet: {
+    fontSize: 12,
+    color: 'rgba(251,191,36,0.85)',
+    lineHeight: 16,
+  },
+  gapText: {
+    flex: 1,
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.75)',
+    lineHeight: 16,
+    letterSpacing: -0.1,
+  },
+
+  // PHOTO COVERAGE
+  photoGrid: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  photoChip: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 2,
+  },
+  photoChipFilled: {
+    backgroundColor: 'rgba(52,199,89,0.06)',
+    borderColor: 'rgba(52,199,89,0.20)',
+  },
+  photoChipEmpty: {
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  photoChipCount: {
+    fontSize: 14,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  photoChipCountFilled: {
+    color: '#34c759',
+  },
+  photoChipCountEmpty: {
+    color: 'rgba(255,255,255,0.35)',
+  },
+  photoChipLabel: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.55)',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+
+  // DATA SOURCES
+  sourceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  sourceDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  sourceName: {
+    flex: 1,
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.75)',
+    letterSpacing: -0.1,
+  },
+  sourceStatus: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+    width: 50,
+    textAlign: 'right',
+  },
+  sourceTime: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.40)',
+    letterSpacing: 0.1,
+    width: 48,
+    textAlign: 'right',
+    fontVariant: ['tabular-nums'],
+  },
+
+  // EMPTY STATE
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    gap: 6,
+  },
+  emptyTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.85)',
+    letterSpacing: -0.1,
+  },
+  emptySubtitle: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.55)',
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  muted: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.45)',
+    fontStyle: 'italic',
+    lineHeight: 16,
+  },
+});

@@ -102,6 +102,14 @@ export const AGENT_VOICES: Record<string, VoiceConfig> = {
       speed: 1.0,
     },
   },
+  // Tiffany — Front Desk receptionist persona (Pass D, 2026-05-12).
+  // Voice config is server-side on the EL Tiffany-FrontDesk agent. Client
+  // entry exists so `AgentName` includes 'tiffany' for typed hook usage.
+  tiffany: {
+    name: 'Tiffany',
+    voiceId: '',
+    model: 'eleven_flash_v2_5',
+  },
 };
 
 import { reportProviderError } from '@/lib/providerErrorReporter';
