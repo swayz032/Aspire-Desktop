@@ -2,6 +2,27 @@ import React, { useState, useRef, useEffect } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
+const INVISIBLE_SCROLL_STYLE_ID = 'aspire-invisible-scroll-css';
+
+function ensureInvisibleScrollCss() {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+  if (document.getElementById(INVISIBLE_SCROLL_STYLE_ID)) return;
+  const style = document.createElement('style');
+  style.id = INVISIBLE_SCROLL_STYLE_ID;
+  style.textContent = `
+    .aspire-invisible-scroll {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    .aspire-invisible-scroll::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+      display: none;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 /**
  * SmsWorkspace — SMS section content for the Inbox Rail.
  *
@@ -145,9 +166,11 @@ export function SmsWorkspace({
   onRequestNew?: () => void;
 }) {
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
-  // Expose a way for the parent to flip us into NEW (compose) — wired by ref.
   useEffect(() => {
-    void onRequestNew; // currently unused — parent will trigger via the prop pattern in a follow-up
+    ensureInvisibleScrollCss();
+  }, []);
+  useEffect(() => {
+    void onRequestNew;
   }, [onRequestNew]);
 
   if (Platform.OS !== 'web') {
@@ -168,7 +191,7 @@ export function SmsWorkspace({
 function ThreadList({ onPick, onNew }: { onPick: (id: string) => void; onNew: () => void }) {
   return (
     <div style={listWrap}>
-      <div style={listScroll}>
+      <div className="aspire-invisible-scroll" style={listScroll}>
         {MOCK_THREADS.map((t) => (
           <button
             key={t.id}
@@ -235,7 +258,7 @@ function ThreadDetail({ thread, onBack }: { thread: Thread; onBack: () => void }
         </button>
       </div>
 
-      <div ref={scrollRef} style={bubbleScroll}>
+      <div ref={scrollRef} className="aspire-invisible-scroll" style={bubbleScroll}>
         {thread.bubbles.map((b, i) => {
           const prev = thread.bubbles[i - 1];
           const showStamp = !prev || prev.time !== b.time;
