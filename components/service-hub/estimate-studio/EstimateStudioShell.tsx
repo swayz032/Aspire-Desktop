@@ -117,7 +117,10 @@ export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
 const styles = StyleSheet.create({
   outerCanvas: {
     flex: 1,
-    minHeight: 820,
+    // Lowered from 820 — canvas was being forced taller than typical
+    // 13" laptop viewports (768–810 inner-height after browser chrome),
+    // pushing the bottom off-screen and forcing the user to scroll.
+    minHeight: 600,
     width: '100%',
     maxWidth: CANVAS_MAX_WIDTH,
     alignSelf: 'center',
@@ -135,8 +138,12 @@ const styles = StyleSheet.create({
     // page background. Goal: light at the edge, dark everywhere else.
     ...(Platform.OS === 'web'
       ? (({
-          height: 'calc(100vh - 90px)',
-          maxHeight: 'calc(100vh - 90px)',
+          // Real chrome above canvas: ServiceHubTopNav 52 + content
+          // paddingTop 16 = 68. Below: content paddingBottom 16 + a
+          // safety pad of ~16 for window-zoom drift = ~32. Subtract
+          // 104 to keep the canvas fully on-screen with breathing room.
+          height: 'calc(100vh - 104px)',
+          maxHeight: 'calc(100vh - 104px)',
           // Premium amber ambient stack — four layers, all amber, no
           // black, no white. From inside out:
           //   1) inset bloom — faint inner warmth, canvas feels 'lit'
@@ -171,11 +178,11 @@ const styles = StyleSheet.create({
   },
   outerCanvasTablet: {
     borderRadius: 12,
-    minHeight: 760,
+    minHeight: 560,
   },
   outerCanvasMobile: {
     borderRadius: 10,
-    minHeight: 720,
+    minHeight: 520,
   },
   row: {
     flexDirection: 'row',
@@ -186,7 +193,10 @@ const styles = StyleSheet.create({
   },
   mainZone: {
     flex: 1,
-    minHeight: 760,
+    // Lowered from 760 to match the new outerCanvas budget — the prior
+    // value forced the main column taller than the outer container on
+    // shorter viewports.
+    minHeight: 480,
   },
   mainZonePadded: {
     paddingHorizontal: 18,
@@ -212,6 +222,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.04)',
     overflow: 'hidden',
-    minHeight: 580,
+    minHeight: 320,
   },
 });
