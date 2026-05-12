@@ -60,10 +60,12 @@ import type {
 
 const CACHE_TTL_HOURS = 24;
 const STAGE2_TIMEOUT_MS = 8_000;
+// Adam can take 25-50s cold-start (13 ATTOM endpoints fan-out + Apify Zillow
+// photo scrape on a fresh container). 60s covers the p99 we've observed.
 // Adam's playbook runs ATTOM (~8s) + Apify cold-start (~15s) in parallel
 // — worst-case P95 ≈ 23s. 25s here gives breathing room without falling back
 // to partial. Cached responses bypass this entirely.
-const ADAM_TIMEOUT_MS = 25_000;
+const ADAM_TIMEOUT_MS = 60_000;
 const ADDRESS_MAX_LEN = 200;
 
 /**
@@ -535,10 +537,28 @@ export async function aggregatePropertyData(
    * input). Writing under formattedAddress would mean Stage 0 lookups
    * (which run BEFORE validation, so no formatted form is available)
    * could never hit. If formatted differs, write a second alias so
-   * future requests entered in canonical form also hit. */
-  await writeCache(ctx.suiteId, cleanAddress, data);
-  if (formattedAddress && formattedAddress !== cleanAddress) {
-    await writeCache(ctx.suiteId, formattedAddress, data);
+   * future requests entered in canonical form also hit.
+   *
+   * Cache-poisoning guard: never persist a result that has no Adam records.
+   * Earlier bug era wrote 57 broken `no_records_field` rows to the cache
+   * table that then served stale empty responses for 24h. If Adam timed
+   * out or returned nothing, the next request should retry, not hit cache.
+   */
+  // Adam reports 'ok' when records were returned, 'partial' when some but
+  // not all sources resolved, and 'missing'/'api_failure' when nothing
+  // useful came back. Only cache the first two.
+  const hasUsefulData =
+    adamResult?.status === 'ok' || adamResult?.status === 'partial';
+  if (hasUsefulData) {
+    await writeCache(ctx.suiteId, cleanAddress, data);
+    if (formattedAddress && formattedAddress !== cleanAddress) {
+      await writeCache(ctx.suiteId, formattedAddress, data);
+    }
+  } else {
+    logger.warn('[propertyAggregator] skipping cache write — no Adam records', {
+      suite_id: ctx.suiteId,
+      address: cleanAddress,
+    });
   }
   await writeReceipt(ctx, formattedAddress, sources, 'ok', {
     correlationId,
