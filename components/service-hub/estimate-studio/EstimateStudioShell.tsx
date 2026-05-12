@@ -9,9 +9,14 @@ import { MaterialsSlotBar } from './materials/MaterialsSlotBar';
 import { MaterialsSearchProvider } from './materials/MaterialsSearchContext';
 import { useProjectAddress } from '@/hooks/useProjectAddress';
 
-const WORKSPACE_BREAKPOINT = 1100;        // Tim rail collapses below this (peer of Finance Hub right-rail)
-const CANVAS_MAX_WIDTH = 1440;            // Desktop cap — beyond this the canvas centers with breathing room
-const TABLET_BREAKPOINT = 768;            // Below this we drop horizontal padding
+// Breakpoint ladder (responsive Estimate Studio):
+//   Desktop  : >= 1400  — canvas capped at 1400 + centered
+//   Laptop   : 1100–1399 — canvas full width, rail right
+//   Tablet   : 768–1099  — canvas full width, rail STACKED below
+//   Mobile   : <  768    — canvas full width, rail stacked, tighter chrome
+const DESKTOP_BREAKPOINT = 1400;
+const WORKSPACE_BREAKPOINT = 1100;        // Tim rail collapses below this
+const TABLET_BREAKPOINT = 768;
 
 // Estimate Studio workspace — ONE BIG CANVAS.
 //
@@ -50,9 +55,13 @@ interface EstimateStudioShellProps {
 
 export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
   const { width } = useWindowDimensions();
+  const isDesktop = width >= DESKTOP_BREAKPOINT;
   const isWide = width >= WORKSPACE_BREAKPOINT;
   const isTablet = width < WORKSPACE_BREAKPOINT && width >= TABLET_BREAKPOINT;
   const isMobile = width < TABLET_BREAKPOINT;
+
+  // Responsive canvas width: cap on big desktops, full-width below 1400.
+  const canvasMaxWidth = isDesktop ? 1400 : undefined;
   const pathname = usePathname() ?? '';
   // Materials tab owns its own search bar (the materials warehouse search)
   // and route-hero canvas-swap. Detect the route via path-segment endsWith
@@ -68,6 +77,8 @@ export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
         styles.outerCanvas,
         isMobile && styles.outerCanvasMobile,
         isTablet && styles.outerCanvasTablet,
+        // Responsive max width: 1400 on big desktops, full-width below.
+        canvasMaxWidth ? { maxWidth: canvasMaxWidth } : null,
       ]}
       testID="estimate-studio-canvas"
     >
@@ -118,11 +129,8 @@ const styles = StyleSheet.create({
   outerCanvas: {
     flex: 1,
     width: '100%',
-    // Slimmer — narrower canvas means the hero (which is width:100%
-    // of its slot) renders at a smaller width, so its natural-aspect
-    // height shrinks proportionally. End result: full images and the
-    // Street View pano fit vertically without the bottom getting cut.
-    maxWidth: 1400,
+    // maxWidth applied inline based on viewport: 1400 on big desktops,
+    // unconstrained (full-width) on laptops / tablets / mobile.
     alignSelf: 'center',
     // Transparent fill — earlier 'rgba(255,255,255,0.02)' was picking up
     // the amber bloom and rendering as a faint white wash. Removing it

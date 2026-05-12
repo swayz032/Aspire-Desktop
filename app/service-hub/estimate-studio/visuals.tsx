@@ -24,11 +24,26 @@
  *   - Law #7: render layer only — clicks set `useHeroMode` state.
  */
 import React from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useProjectAddress, setProjectAddress } from '@/hooks/useProjectAddress';
 import { useHeroMode, type HeroMode } from '@/hooks/useHeroMode';
 import { usePropertyData } from '@/hooks/usePropertyData';
+
+// Responsive sizing — keeps the canvas content fitted on desktop,
+// laptop, and tablet. Photo lane and hero floor shrink on smaller
+// viewports so the full hero + lane stay visible without scroll.
+function useResponsiveSizes() {
+  const { width, height } = useWindowDimensions();
+  const isTablet = width < 1100;
+  const isShort = height < 800;
+  return {
+    heroMinHeight: isTablet ? 260 : isShort ? 320 : 360,
+    gridSlotHeight: isTablet ? 108 : isShort ? 118 : 130,
+    containerPadding: isTablet ? 10 : 16,
+    containerGap: isTablet ? 10 : 16,
+  };
+}
 
 // Static imports — components ship in this same commit (Pass 3.2).
 // Hero + photo grid only. PropertyInsights / TotalBuildingArea / MaterialSignals /
@@ -40,6 +55,7 @@ import { PropertyImagesGrid } from '@/components/service-hub/estimate-studio/vis
 export default function VisualsTab() {
   const { address } = useProjectAddress();
   const { mode, setMode } = useHeroMode();
+  const responsive = useResponsiveSizes();
   const {
     data,
     status,
@@ -77,8 +93,14 @@ export default function VisualsTab() {
 
   // ---- Main composition ----------------------------------------------------
   return (
-    <View style={styles.container} testID="estimate-studio-visuals-tab">
-      <View style={styles.heroSlot}>
+    <View
+      style={[
+        styles.container,
+        { padding: responsive.containerPadding, gap: responsive.containerGap },
+      ]}
+      testID="estimate-studio-visuals-tab"
+    >
+      <View style={[styles.heroSlot, { minHeight: responsive.heroMinHeight }]}>
         <HeroSwitcher
           mode={mode}
           onModeChange={setMode}
@@ -87,7 +109,7 @@ export default function VisualsTab() {
         />
       </View>
 
-      <View style={styles.gridSlot}>
+      <View style={[styles.gridSlot, { height: responsive.gridSlotHeight }]}>
         <PropertyImagesGrid
           photos={data?.photos}
           aerialThumbUrl={data?.hero?.aerialThumbUrl}
