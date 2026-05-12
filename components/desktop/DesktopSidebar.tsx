@@ -40,11 +40,15 @@ const navItems: NavItem[] = [
     ]
   },
   {
+    // Renamed from "Return Calls" → "Front Desk" per spec §2 / §3 (Front Desk Hub
+    // replaces the narrow Return Calls room). Primary route now points to the new
+    // hub at /session/front-desk. The legacy /session/calls route is intentionally
+    // kept alive (Pass 5 will add a 301 redirect after QA acceptance).
     id: 'calls',
-    label: 'Return Calls',
+    label: 'Front Desk',
     icon: 'call',
     iconActive: 'call',
-    route: '/session/calls',
+    route: '/session/front-desk',
     subItems: [
       { id: 'front-desk-setup', label: 'Front Desk Setup', route: '/session/calls/setup' },
     ]
