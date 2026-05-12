@@ -80,16 +80,16 @@ export async function handleRoofAerial(req: Request, res: Response): Promise<voi
 
   if (aerial.status !== 'ok' || !aerial.rgbUrl) {
     // Solar has no imagery for ~20% of US addresses (rural / unmodelled
-    // buildings / new construction). Fall back to Street View so the
-    // Roof card always renders a real image instead of going blank.
-    logger.info('[roofAerialRoute] solar unavailable — redirecting to streetview', {
+    // buildings / new construction). Return 404 — the frontend already
+    // knows via `data.roofImagery === 'streetview'` to render the
+    // interactive Pano (4K) for these addresses, so we never get a
+    // request for this endpoint in that case. If we do (e.g., stale
+    // cache lookup), 404 is correct — caller should fall back.
+    logger.info('[roofAerialRoute] solar unavailable', {
       status: aerial.status,
       address: rawAddress.slice(0, 60),
     });
-    res.redirect(
-      302,
-      `/api/places/streetview?address=${encodeURIComponent(rawAddress)}`,
-    );
+    res.status(404).json({ error: 'no aerial available for this address' });
     return;
   }
 

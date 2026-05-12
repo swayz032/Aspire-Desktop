@@ -98,6 +98,13 @@ export type PropertyData = {
     roof: PhotoLane;
     streetView: PhotoLane;
   };
+  /**
+   * Which source the Roof card's CANVAS hero should render with:
+   *  - 'solar'      → PhotoGalleryHero with the Solar 4K aerial image
+   *  - 'streetview' → LiveStreetViewHero (interactive Pano) because Solar
+   *                   has no aerial coverage at this location
+   */
+  roofImagery?: 'solar' | 'streetview';
   signals: {
     materials: { name: string; confidence: 'high' | 'medium' | 'low' }[];
     roofType?: string;

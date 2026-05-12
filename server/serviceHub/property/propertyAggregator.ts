@@ -178,17 +178,23 @@ function emptyLane(): PhotoLane {
 function decorateRoofWithSolarAerial(
   lanes: PropertyData['photos'],
   address: string,
+  hasSolarAerial: boolean,
 ): PropertyData['photos'] {
   const trimmed = (address || '').trim();
   if (!trimmed) return lanes;
+  // Only inject the Solar aerial when Solar actually has coverage. When
+  // it doesn't, leave the roof lane alone — the frontend's HeroSwitcher
+  // sees roofImagery==='streetview' and renders the interactive Pano
+  // instead of a static-image gallery (which would be 640x640 max).
+  if (!hasSolarAerial) {
+    // Keep at least 1 count so the small Roof card tile still renders;
+    // the tile thumbnail falls through to its icon since no thumbnailUrl
+    // is set.
+    if (lanes.roof.count === 0) lanes.roof.count = 1;
+    return lanes;
+  }
   const url = `/api/property/roof-aerial?address=${encodeURIComponent(trimmed)}`;
-  // Thumbnail for the small lane card.
   lanes.roof.thumbnailUrl = url;
-  // Inject the Solar aerial as the FIRST photo so the canvas hero
-  // (PhotoGalleryHero, which renders `photos[]`) has something to display
-  // when the user clicks the Roof card. Without this, the hero shows
-  // blank because Adam's Zillow scrape rarely returns roof-captioned
-  // photos and our new classifier never routes uncaptioned shots there.
   lanes.roof.photos = [
     { id: 'solar_aerial_0', url, source: 'streetview' as const },
     ...lanes.roof.photos,
@@ -555,7 +561,15 @@ export async function aggregatePropertyData(
     photos: decorateRoofWithSolarAerial(
       buildPhotoLanesFromAdam(adamResult?.photos, streetViewProxyUrl),
       formattedAddress || cleanAddress,
+      solarResult?.status === 'ok',
     ),
+    // Solar building insights ('ok') strongly correlates with dataLayers
+    // aerial availability (same coverage map). When Solar said 'ok' the
+    // roof canvas can render the Solar 4K aerial via PhotoGalleryHero.
+    // When Solar said 'missing' or 'api_failure', the canvas falls back
+    // to the interactive Street View Pano (LiveStreetViewHero) — same
+    // 4K experience users get on the Street View card.
+    roofImagery: solarResult?.status === 'ok' ? 'solar' : 'streetview',
     signals: {
       materials,
       roofType: solarRoofType,

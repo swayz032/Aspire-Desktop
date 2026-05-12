@@ -122,12 +122,26 @@ export function HeroSwitcher({ mode, onModeChange, data, loading }: Props) {
         pointerEvents={mode === 'roof' ? 'auto' : 'none'}
         style={[styles.layer, { opacity: opacities.roof }]}
       >
-        <PhotoGalleryHero
-          photos={data?.photos.roof.photos}
-          title="Roof"
-          loading={loading}
-          onClose={() => onModeChange('streetview')}
-        />
+        {/* Roof canvas picks its renderer based on Solar coverage:
+            - 'solar'      → Solar 4K aerial via PhotoGalleryHero
+            - 'streetview' → interactive Street View Pano (4K, same as
+                             the Street View card) because Solar API has
+                             no imagery for ~20% of US addresses. */}
+        {data?.roofImagery === 'streetview' ? (
+          <LiveStreetViewHero
+            coords={data?.coords}
+            loading={loading}
+            onAerialPress={() => onModeChange('aerial')}
+            onEarthPress={() => onModeChange('earth')}
+          />
+        ) : (
+          <PhotoGalleryHero
+            photos={data?.photos.roof.photos}
+            title="Roof"
+            loading={loading}
+            onClose={() => onModeChange('streetview')}
+          />
+        )}
       </Animated.View>
     </View>
   );
