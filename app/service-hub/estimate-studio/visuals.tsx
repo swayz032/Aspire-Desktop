@@ -231,8 +231,13 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   heroSlot: {
+    // flex:1 so the hero fills whatever vertical space is LEFT after
+    // the gridSlot reserves its row. Without flex, heroSlot stayed at
+    // minHeight 360 and the gridSlot could push past the canvas
+    // bottom, cutting photo cards off.
+    flex: 1,
     width: '100%',
-    minHeight: 360,
+    minHeight: 280,
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: '#0F0F12',
@@ -251,7 +256,10 @@ const styles = StyleSheet.create({
   },
   gridSlot: {
     width: '100%',
-    minHeight: 96,
+    // Fixed-height row for the photo lane cards. 96 was too short — the
+    // PropertyImagesGrid cards (image + label) need ~140px to render
+    // fully and were getting clipped at the bottom of the canvas.
+    height: 140,
   },
   skeletonRow: {
     height: 96,
