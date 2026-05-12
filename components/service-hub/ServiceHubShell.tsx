@@ -59,7 +59,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: Colors.background.primary,
     paddingHorizontal: 16,
-    paddingTop: 16,
+    // 16 → 24: a little more gap between the pill nav and the outer
+    // canvas. Canvas height calc compensates so the canvas itself
+    // doesn't lose any room — only the top breathing-space grows.
+    paddingTop: 24,
     paddingBottom: 16,
     overflow: 'hidden',
   },

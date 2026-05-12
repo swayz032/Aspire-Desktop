@@ -138,14 +138,13 @@ const styles = StyleSheet.create({
     // page background. Goal: light at the edge, dark everywhere else.
     ...(Platform.OS === 'web'
       ? (({
-          // Canvas a little taller — 'bottom needs to be longer' so
-          // the hero (now flex:1) gets more vertical room and full
-          // images / Street View render without the bottom clipping.
-          // Was calc(100vh - 140px); -110 adds ~30px to the canvas
-          // height. Real chrome (TopNav 52 + page padding 32 = 84)
-          // still leaves ~26px page-bg breathing below the canvas.
-          height: 'calc(100vh - 110px)',
-          maxHeight: 'calc(100vh - 110px)',
+          // Canvas height accounts for: TopNav 52 + content paddingTop
+          // 24 + paddingBottom 16 + small safety = ~98. Subtract 118
+          // to preserve a small page-bg gutter at the bottom AND keep
+          // the canvas itself the same effective size after the nav
+          // gap was widened.
+          height: 'calc(100vh - 118px)',
+          maxHeight: 'calc(100vh - 118px)',
           // Amber lives ENTIRELY inside the canvas — no outer bloom,
           // no outer rim. Page background stays pristine dark.
           boxShadow: [
