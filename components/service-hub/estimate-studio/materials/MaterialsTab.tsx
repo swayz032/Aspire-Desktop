@@ -120,8 +120,10 @@ export function MaterialsTab() {
 
   const handleDraftRfq = useCallback(() => {
     // Pass G: open RFQDraftModal. Pass B: noop.
-    // eslint-disable-next-line no-console
-    console.info('[materials] draftRfq (mock)');
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.info('[materials] draftRfq (mock)');
+    }
   }, []);
 
   // Predictive add-ons keyed off the most recent bundle addition.
@@ -278,8 +280,10 @@ export function MaterialsTab() {
               <SupplierMatchesRail
                 suppliers={specialtySuppliers}
                 onDraftRfq={(s) => {
-                  // eslint-disable-next-line no-console
-                  console.info('[materials] draft RFQ for specialty', s.id);
+                  if (__DEV__) {
+                    // eslint-disable-next-line no-console
+                    console.info('[materials] draft RFQ for specialty', s.id);
+                  }
                 }}
               />
             )}
