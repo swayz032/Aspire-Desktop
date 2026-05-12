@@ -59,10 +59,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: Colors.background.primary,
     paddingHorizontal: 16,
-    // 16 → 28 so the canvas has visible breathing room below the
-    // pill nav. 'Too close to the navigation pill header' — fixed.
-    paddingTop: 28,
-    paddingBottom: 16,
+    // Tighter than 28 (was added for nav breathing room) — 18 keeps
+    // visual separation from the pill nav but saves ~10px the inner
+    // workspace needs so the photo lane cards aren't clipped.
+    paddingTop: 18,
+    paddingBottom: 10,
     overflow: 'hidden',
   },
   contentStacked: {
