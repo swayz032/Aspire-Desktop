@@ -137,20 +137,29 @@ const styles = StyleSheet.create({
       ? (({
           height: 'calc(100vh - 90px)',
           maxHeight: 'calc(100vh - 90px)',
+          // Premium amber ambient stack — four layers, all amber, no
+          // black, no white. From inside out:
+          //   1) inset bloom — faint inner warmth, canvas feels 'lit'
+          //   2) hairline rim — crisp edge definition
+          //   3) tight LED bloom — concentrated edge glow
+          //   4) ambient halo — wider soft scatter for atmosphere
+          // The wide halo opacity is intentionally low (0.08) so it
+          // does NOT lift the surrounding page bg the way the prior
+          // 0.20 wide halo did.
           boxShadow: [
-            // Hairline amber rim (no blur) — defines the edge clean.
+            'inset 0 0 36px rgba(251,191,36,0.05)',
             '0 0 0 1px rgba(251,191,36,0.22)',
-            // Tight bloom — falls off within ~14px of the edge.
-            '0 0 14px 1px rgba(251,191,36,0.32)',
+            '0 0 14px 1px rgba(251,191,36,0.30)',
+            '0 0 56px rgba(251,191,36,0.08)',
           ].join(', '),
         } as unknown) as ViewStyle)
       : {
-          // Native fallback — tight amber halo.
+          // Native fallback — single amber halo (no layered ambient).
           shadowColor: '#fbbf24',
           shadowOffset: { width: 0, height: 0 },
           shadowOpacity: 0.32,
-          shadowRadius: 10,
-          elevation: 8,
+          shadowRadius: 14,
+          elevation: 10,
         }),
   },
   outerCanvasTablet: {
