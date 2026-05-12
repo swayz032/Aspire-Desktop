@@ -222,38 +222,13 @@ export function PhotoGalleryHero({
         </Text>
       ) : null}
 
-      {total > 1 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.thumbStrip}
-          accessibilityRole="tablist"
-        >
-          {safePhotos.map((photo, i) => {
-            const isCurrent = i === index;
-            return (
-              <Pressable
-                key={photo.id}
-                onPress={() => setIndex(i)}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: isCurrent }}
-                accessibilityLabel={`Show photo ${i + 1} of ${total}`}
-                style={({ hovered }: any) => [
-                  styles.thumb,
-                  hovered && styles.thumbHover,
-                  isCurrent && styles.thumbActive,
-                ]}
-              >
-                <Image
-                  source={{ uri: photo.url }}
-                  style={styles.thumbImage}
-                  resizeMode="cover"
-                />
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      )}
+      {/* Internal gallery thumb strip removed — it was being clipped
+          by the heroSlot's flex height and rendering as ugly tiny
+          slivers at the bottom of the image. Within-set navigation
+          (e.g. 14 interior photos) is handled by the left/right
+          arrows + counter (1/14); cross-mode navigation
+          (Interior/Exterior/Roof/Street/Aerial) lives in the photo
+          lane cards below the canvas. */}
     </View>
   );
 }
