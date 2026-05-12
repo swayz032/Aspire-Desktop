@@ -138,42 +138,27 @@ const styles = StyleSheet.create({
     // page background. Goal: light at the edge, dark everywhere else.
     ...(Platform.OS === 'web'
       ? (({
-          // Real chrome above canvas: ServiceHubTopNav 52 + content
-          // paddingTop 16 = 68. Below: content paddingBottom 16 + a
-          // safety pad of ~16 for window-zoom drift = ~32. Subtract
-          // 104 to keep the canvas fully on-screen with breathing room.
-          height: 'calc(100vh - 104px)',
-          maxHeight: 'calc(100vh - 104px)',
-          // Premium amber ambient stack — four layers, all amber, no
-          // black, no white. From inside out:
-          //   1) inset bloom — faint inner warmth, canvas feels 'lit'
-          //   2) hairline rim — crisp edge definition
-          //   3) tight LED bloom — concentrated edge glow
-          //   4) ambient halo — wider soft scatter for atmosphere
-          // The wide halo opacity is intentionally low (0.08) so it
-          // does NOT lift the surrounding page bg the way the prior
-          // 0.20 wide halo did.
+          // Real chrome above + below the canvas: ServiceHubTopNav 52 +
+          // content paddingTop 16 + paddingBottom 16 + zoom/scrollbar
+          // safety ~16 = ~100. Bumping to 128px guarantees the canvas
+          // bottom stays above the viewport fold on 13–15" laptops AND
+          // accounts for the visual extension from any outer glow.
+          height: 'calc(100vh - 128px)',
+          maxHeight: 'calc(100vh - 128px)',
+          // Amber lives ENTIRELY inside the canvas — no outer bloom, no
+          // outer rim. That keeps the page background pristine dark.
+          // Two inset layers create the ambient: a wide soft bloom that
+          // lights the workspace from its edges inward, plus a tighter
+          // inset hairline that gives the inner edge a crisp amber line.
           boxShadow: [
-            // Inner ambient — wide soft bloom INSIDE the canvas. This is
-            // the 'ambient glow' lighting the workspace from its edges
-            // inward, not flooding the page bg.
-            'inset 0 0 90px rgba(251,191,36,0.10)',
-            'inset 0 0 24px rgba(251,191,36,0.07)',
-            // Hairline rim — crisp edge.
-            '0 0 0 1px rgba(251,191,36,0.22)',
-            // Tight outer LED bloom — falls off within ~14px, no wider
-            // halo (the wide outer scatter is what was lifting the page
-            // background).
-            '0 0 14px 1px rgba(251,191,36,0.30)',
+            'inset 0 0 110px rgba(251,191,36,0.12)',
+            'inset 0 0 28px rgba(251,191,36,0.08)',
+            'inset 0 0 0 1px rgba(251,191,36,0.28)',
           ].join(', '),
         } as unknown) as ViewStyle)
       : {
-          // Native fallback — single amber halo (no layered ambient).
-          shadowColor: '#fbbf24',
-          shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: 0.32,
-          shadowRadius: 14,
-          elevation: 10,
+          // Native — no shadow, ambient is web-only via inset boxShadow
+          // (RN ShadowStyle does not support inset on iOS/Android).
         }),
   },
   outerCanvasTablet: {
