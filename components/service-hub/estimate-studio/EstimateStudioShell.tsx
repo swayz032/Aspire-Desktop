@@ -1,9 +1,13 @@
 import React from 'react';
 import { View, StyleSheet, useWindowDimensions, Platform, type ViewStyle } from 'react-native';
+import { usePathname } from 'expo-router';
 import { EstimateStudioHeader } from './EstimateStudioHeader';
 import { ProjectAddressBar } from './ProjectAddressBar';
 import { EstimateStudioTabBar } from './EstimateStudioTabBar';
 import { TimRailContainer } from './TimRailContainer';
+import { MaterialsSlotBar } from './materials/MaterialsSlotBar';
+import { MaterialsSearchProvider } from './materials/MaterialsSearchContext';
+import { useProjectAddress } from '@/hooks/useProjectAddress';
 
 const WORKSPACE_BREAKPOINT = 1100;        // Tim rail collapses below this (peer of Finance Hub right-rail)
 const CANVAS_MAX_WIDTH = 1440;            // Desktop cap — beyond this the canvas centers with breathing room
@@ -49,8 +53,15 @@ export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
   const isWide = width >= WORKSPACE_BREAKPOINT;
   const isTablet = width < WORKSPACE_BREAKPOINT && width >= TABLET_BREAKPOINT;
   const isMobile = width < TABLET_BREAKPOINT;
+  const pathname = usePathname();
+  // Materials tab owns its own search bar (the materials warehouse search).
+  // Hiding the project address bar there avoids two stacked search inputs.
+  // Per user spec: to set/change the project address, the user goes back to
+  // the Visuals tab. The address persists across tabs via the shared store.
+  const isMaterialsTab = pathname?.includes('/estimate-studio/materials') ?? false;
+  const { address: projectAddress } = useProjectAddress();
 
-  return (
+  const body = (
     <View
       style={[
         styles.outerCanvas,
@@ -67,9 +78,10 @@ export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
           </View>
 
           {/* Contextual slot. Phase 1 default = Visuals address search. Phase 2+
-              swaps based on active tab. */}
+              swaps based on active tab. On Materials, the slot is hidden —
+              the Materials tab renders its own warehouse-search bar. */}
           <View style={styles.contextualSlot}>
-            <ProjectAddressBar />
+            {isMaterialsTab ? <MaterialsSlotBar /> : <ProjectAddressBar />}
           </View>
 
           {/* Tab bar — Phase 2 */}
@@ -88,6 +100,15 @@ export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
       </View>
     </View>
   );
+
+  if (isMaterialsTab) {
+    return (
+      <MaterialsSearchProvider projectAddress={projectAddress}>
+        {body}
+      </MaterialsSearchProvider>
+    );
+  }
+  return body;
 }
 
 const styles = StyleSheet.create({

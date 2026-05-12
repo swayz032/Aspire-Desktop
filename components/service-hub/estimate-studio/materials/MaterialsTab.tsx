@@ -25,39 +25,28 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Platform, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useProjectAddress } from '@/hooks/useProjectAddress';
-import {
-  useMaterialsSearch,
-  getPredictiveAddons,
-  type Product,
-} from '@/hooks/useMaterialsSearch';
-import { useMaterialsBundle } from '@/hooks/useMaterialsBundle';
+import { getPredictiveAddons, type Product } from '@/hooks/useMaterialsSearch';
+import { useMaterialsSearchContext } from './MaterialsSearchContext';
 
-import { MaterialsSearchBar } from './MaterialsSearchBar';
 import { MaterialsEmptyState } from './MaterialsEmptyState';
-import { ClosestStoreCard } from './ClosestStoreCard';
 import { ProductGrid } from './ProductGrid';
 import { ProductCompareDrawer } from './ProductCompareDrawer';
 import { SupplierMatchesRail } from './SupplierMatchesRail';
 import { PredictiveAddons } from './PredictiveAddons';
 import { BundleSummaryBar } from './BundleSummaryBar';
-import { RouteMapModal } from './RouteMapModal';
 
 export function MaterialsTab() {
-  const { address } = useProjectAddress();
+  const { search, bundle: bundleApi } = useMaterialsSearchContext();
   const {
-    query,
-    setQuery,
     submitSearch,
-    clearSearch,
     results,
-    closestStore,
     specialtySuppliers,
     filters,
     isLoading,
     isCachedOnlyMode,
     suggestedQueries,
-  } = useMaterialsSearch();
+    setQuery,
+  } = search;
 
   const {
     bundle,
@@ -68,24 +57,18 @@ export function MaterialsTab() {
     bundleSupplierCount,
     bundleItemCount,
     pushToEstimate,
-  } = useMaterialsBundle(address);
+  } = bundleApi;
 
-  // Clear the in-memory bundle when the Materials tab unmounts so it does not
-  // persist past tab navigation. (Pass D will store this in Supabase.)
-  useEffect(() => {
-    return () => {
-      clearBundle();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Pass D: bundle is Supabase-persisted — do NOT clear on unmount.
+  // The bundle persists across tab navigation and page reloads intentionally.
 
   const [compareProduct, setCompareProduct] = useState<Product | null>(null);
-  const [routeOpen, setRouteOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState<
     { type: 'brand' | 'stock' | 'price'; value: string } | null
   >(null);
 
-  const bundleIds = useMemo(() => new Set(bundle.map((b) => b.productId)), [bundle]);
+  // Pass D: BundleItem.product.id replaces Pass B BundleItem.productId
+  const bundleIds = useMemo(() => new Set(bundle.map((b) => b.product.id)), [bundle]);
 
   const handleSuggestionPick = useCallback(
     (q: string) => {
@@ -114,8 +97,14 @@ export function MaterialsTab() {
     [],
   );
 
+  // YELLOW tier — user clicked "Push to Estimate" in BundleSummaryBar.
+  // The hook enforces server-side capability token gating; the confirmation
+  // modal in BundleSummaryBar provides the UX-level Yellow gate.
   const handlePushToEstimate = useCallback(() => {
-    void pushToEstimate();
+    void pushToEstimate().catch((err) => {
+      // Error is surfaced via pushError in the hook; no additional handling needed here.
+      if (__DEV__) console.warn('[materials] pushToEstimate failed', err);
+    });
   }, [pushToEstimate]);
 
   const handleDraftRfq = useCallback(() => {
@@ -127,9 +116,14 @@ export function MaterialsTab() {
   }, []);
 
   // Predictive add-ons keyed off the most recent bundle addition.
+  // Pass D: bundle items carry the full Product snapshot; Pass B called
+  // bundle[last].product which is already the typed Product in Pass D.
+  // getPredictiveAddons() falls back to mock data until Pass H wires Tim voice.
   const predictiveAddons = useMemo(() => {
     if (bundle.length === 0) return [];
-    const seed = bundle[bundle.length - 1].product;
+    const lastItem = bundle[bundle.length - 1];
+    // Pass D BundleItem.product is typed Product (camelCase)
+    const seed: Product = lastItem.product;
     const addonCandidates = getPredictiveAddons(seed);
     return addonCandidates.filter((p) => !bundleIds.has(p.id));
   }, [bundle, bundleIds]);
@@ -183,7 +177,7 @@ export function MaterialsTab() {
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={Platform.OS === 'web'}
+        showsVerticalScrollIndicator={false}
       >
         {isCachedOnlyMode && (
           <View style={styles.cachedBanner} testID="materials-cached-banner">
@@ -194,29 +188,12 @@ export function MaterialsTab() {
           </View>
         )}
 
-        <MaterialsSearchBar
-          value={query}
-          onChange={setQuery}
-          onSubmit={submitSearch}
-          onClear={clearSearch}
-          closestStore={closestStore}
-          onClosestStorePress={() => setRouteOpen(true)}
-          isLoading={isLoading}
-        />
-
         {showEmptyState && (
           <MaterialsEmptyState suggestions={suggestedQueries} onPick={handleSuggestionPick} />
         )}
 
         {!showEmptyState && (
           <>
-            {closestStore && hasResults && (
-              <ClosestStoreCard
-                store={closestStore}
-                onRoutePress={() => setRouteOpen(true)}
-              />
-            )}
-
             {filters.length > 0 && (
               <View style={styles.filtersBar} testID="materials-filters-bar">
                 {filters.map((f) => (
@@ -319,13 +296,6 @@ export function MaterialsTab() {
         product={compareProduct}
         onClose={() => setCompareProduct(null)}
         onUseAlt={handleUseAlt}
-      />
-
-      <RouteMapModal
-        visible={routeOpen}
-        onClose={() => setRouteOpen(false)}
-        projectAddress={address}
-        store={closestStore}
       />
     </View>
   );

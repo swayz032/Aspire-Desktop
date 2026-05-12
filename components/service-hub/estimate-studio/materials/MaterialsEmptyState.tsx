@@ -68,8 +68,12 @@ const styles = StyleSheet.create({
   wrap: {
     alignItems: 'center',
     paddingHorizontal: 32,
-    paddingVertical: 56,
-    gap: 12,
+    // Tighter top padding so the hero sits close under the search bar
+    // (was 56 — produced a large dark gap with no content between the
+    // search input and the hero icon).
+    paddingTop: 24,
+    paddingBottom: 32,
+    gap: 10,
   },
   iconWrap: {
     width: 72,
