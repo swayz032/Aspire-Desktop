@@ -2,7 +2,7 @@
  * ProductCompareDrawer — slide-over (right side) showing cross-seller pricing
  * for a single product. Pass B: mock 3-seller data. Pass F: real shopping API.
  */
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -46,16 +46,26 @@ export function ProductCompareDrawer({ visible, onClose, product, onUseAlt }: Pr
     return () => document.removeEventListener('keydown', handler);
   }, [visible, onClose]);
 
-  if (!product) return null;
-  const sellers: CompareSeller[] = getMockCompareSellers(product);
-  const cheapest = sellers.reduce((min, s) => (s.price < min.price ? s : min), sellers[0]);
+  // Keep the last product around so the drawer can finish its slide-out
+  // animation after `product` is cleared to null. Without this, the Modal
+  // would unmount mid-transition and the user would see an empty flicker.
+  const lastProductRef = useRef<Product | null>(product);
+  useEffect(() => {
+    if (product) lastProductRef.current = product;
+  }, [product]);
+
+  const shown = product ?? lastProductRef.current;
+  const sellers: CompareSeller[] = shown ? getMockCompareSellers(shown) : [];
+  const cheapest = sellers.length > 0
+    ? sellers.reduce((min, s) => (s.price < min.price ? s : min), sellers[0])
+    : null;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} testID="compare-drawer-backdrop">
         <Pressable
           style={styles.drawer}
-          onPress={(e: any) => e.stopPropagation?.()}
+          onPress={(e: { stopPropagation?: () => void }) => e.stopPropagation?.()}
           testID="materials-compare-drawer"
         >
           {/* Header */}
@@ -63,9 +73,9 @@ export function ProductCompareDrawer({ visible, onClose, product, onUseAlt }: Pr
             <View style={{ flex: 1 }}>
               <Text style={styles.eyebrow}>Cross-Seller Comparison</Text>
               <Text style={styles.title} numberOfLines={2}>
-                {product.title}
+                {shown?.title ?? ''}
               </Text>
-              <Text style={styles.brand}>{product.brand}</Text>
+              <Text style={styles.brand}>{shown?.brand ?? ''}</Text>
             </View>
             <Pressable
               onPress={onClose}
@@ -79,12 +89,14 @@ export function ProductCompareDrawer({ visible, onClose, product, onUseAlt }: Pr
           </View>
 
           {/* Best price callout */}
-          <View style={styles.bestBox}>
-            <Ionicons name="trending-down" size={14} color="#34c759" />
-            <Text style={styles.bestLabel}>BEST PRICE</Text>
-            <Text style={styles.bestSeller}>{cheapest.sellerName}</Text>
-            <Text style={styles.bestPrice}>{formatPrice(cheapest.price)}</Text>
-          </View>
+          {cheapest && (
+            <View style={styles.bestBox}>
+              <Ionicons name="trending-down" size={14} color="#34c759" />
+              <Text style={styles.bestLabel}>BEST PRICE</Text>
+              <Text style={styles.bestSeller}>{cheapest.sellerName}</Text>
+              <Text style={styles.bestPrice}>{formatPrice(cheapest.price)}</Text>
+            </View>
+          )}
 
           {/* Seller table */}
           <View style={styles.table}>
@@ -96,7 +108,7 @@ export function ProductCompareDrawer({ visible, onClose, product, onUseAlt }: Pr
               <View style={[styles.col, styles.colAction]} />
             </View>
             {sellers.map((s) => {
-              const isCheapest = s.sellerId === cheapest.sellerId;
+              const isCheapest = cheapest !== null && s.sellerId === cheapest.sellerId;
               return (
                 <View
                   key={s.sellerId}
