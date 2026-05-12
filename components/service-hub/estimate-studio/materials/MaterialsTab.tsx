@@ -23,7 +23,7 @@
  *   - Law #3: empty query → empty state, never fabricated results.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Platform, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useProjectAddress } from '@/hooks/useProjectAddress';
 import {
@@ -81,6 +81,9 @@ export function MaterialsTab() {
 
   const [compareProduct, setCompareProduct] = useState<Product | null>(null);
   const [routeOpen, setRouteOpen] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<
+    { type: 'brand' | 'stock' | 'price'; value: string } | null
+  >(null);
 
   const bundleIds = useMemo(() => new Set(bundle.map((b) => b.productId)), [bundle]);
 
@@ -129,9 +132,49 @@ export function MaterialsTab() {
     return addonCandidates.filter((p) => !bundleIds.has(p.id));
   }, [bundle, bundleIds]);
 
-  const hasResults = Array.isArray(results) && results.length > 0;
+  // Mid-price threshold (matches deriveFilters() in useMaterialsSearch).
+  const priceMid = useMemo(() => {
+    if (!results || results.length === 0) return 0;
+    const sorted = results.map((p) => p.price).sort((a, b) => a - b);
+    return ((sorted[0] ?? 0) + (sorted[sorted.length - 1] ?? 0)) / 2;
+  }, [results]);
+
+  const filteredResults = useMemo(() => {
+    if (!results || !activeFilter) return results;
+    return results.filter((p) => {
+      if (activeFilter.type === 'brand') return p.brand === activeFilter.value;
+      if (activeFilter.type === 'stock') {
+        if (activeFilter.value === 'in_stock') return p.store.inStock;
+        return true; // 'all'
+      }
+      if (activeFilter.type === 'price') {
+        if (activeFilter.value === 'lo') return p.price < priceMid;
+        return p.price >= priceMid;
+      }
+      return true;
+    });
+  }, [results, activeFilter, priceMid]);
+
+  // Clear stale filter when a new search arrives with a different result set.
+  useEffect(() => {
+    setActiveFilter(null);
+  }, [results]);
+
+  const handleFilterToggle = useCallback(
+    (type: 'brand' | 'stock' | 'price', value: string) => {
+      setActiveFilter((prev) =>
+        prev && prev.type === type && prev.value === value ? null : { type, value },
+      );
+    },
+    [],
+  );
+
+  const hasResults = Array.isArray(filteredResults) && filteredResults.length > 0;
   const hasSpecialty = specialtySuppliers.length > 0;
-  const showEmptyState = !hasResults && !hasSpecialty && !isLoading;
+  // Empty state: no search submitted yet. If a search ran and filters hid
+  // everything, fall through to the inline no-results card.
+  const hasSubmittedSearch = Array.isArray(results);
+  const showEmptyState = !hasSubmittedSearch && !hasSpecialty && !isLoading;
 
   return (
     <View style={styles.tab} testID="materials-tab">
@@ -178,12 +221,44 @@ export function MaterialsTab() {
                   <View key={f.key} style={styles.filterGroup}>
                     <Text style={styles.filterGroupLabel}>{f.label.toUpperCase()}</Text>
                     <View style={styles.filterChipRow}>
-                      {f.options.slice(0, 4).map((opt) => (
-                        <View key={opt.value} style={styles.filterChip}>
-                          <Text style={styles.filterChipText}>{opt.label}</Text>
-                          <Text style={styles.filterChipCount}>{opt.count}</Text>
-                        </View>
-                      ))}
+                      {f.options.slice(0, 4).map((opt) => {
+                        const isActive =
+                          activeFilter?.type === (f.key as 'brand' | 'stock' | 'price') &&
+                          activeFilter.value === opt.value;
+                        return (
+                          <Pressable
+                            key={opt.value}
+                            onPress={() =>
+                              handleFilterToggle(
+                                f.key as 'brand' | 'stock' | 'price',
+                                opt.value,
+                              )
+                            }
+                            accessibilityRole="button"
+                            accessibilityLabel={`Filter by ${f.label}: ${opt.label}`}
+                            accessibilityState={{ selected: isActive }}
+                            testID={`materials-filter-chip-${f.key}-${opt.value}`}
+                            style={[styles.filterChip, isActive && styles.filterChipActive]}
+                          >
+                            <Text
+                              style={[
+                                styles.filterChipText,
+                                isActive && styles.filterChipTextActive,
+                              ]}
+                            >
+                              {opt.label}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.filterChipCount,
+                                isActive && styles.filterChipCountActive,
+                              ]}
+                            >
+                              {opt.count}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
                     </View>
                   </View>
                 ))}
@@ -192,7 +267,7 @@ export function MaterialsTab() {
 
             {hasResults && (
               <ProductGrid
-                products={results!}
+                products={filteredResults!}
                 bundleIds={bundleIds}
                 onAdd={handleAdd}
                 onCompare={handleCompare}
@@ -315,17 +390,28 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
+  filterChipActive: {
+    backgroundColor: 'rgba(251,191,36,0.10)',
+    borderColor: 'rgba(251,191,36,0.55)',
+  },
   filterChipText: {
     fontSize: 10.5,
     color: 'rgba(255,255,255,0.78)',
     fontWeight: '500',
     letterSpacing: -0.05,
   },
+  filterChipTextActive: {
+    color: '#fbbf24',
+    fontWeight: '700',
+  },
   filterChipCount: {
     fontSize: 9.5,
     color: 'rgba(255,255,255,0.45)',
     fontVariant: ['tabular-nums'],
     fontWeight: '600',
+  },
+  filterChipCountActive: {
+    color: 'rgba(251,191,36,0.85)',
   },
 
   // No results inline
