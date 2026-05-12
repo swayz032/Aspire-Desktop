@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { playDTMFTone, resumeAudioContextFromGesture } from '@/app/session/calls';
@@ -6,10 +6,15 @@ import { playDTMFTone, resumeAudioContextFromGesture } from '@/app/session/calls
 /**
  * DialPadArtwork — black glassy keypad card.
  *
- * Layout: glassy number screen on top, 4x3 grid of neutral glass dial
- * buttons in the middle (no gradient — kept calm so the screen + call
- * button breathe), single full-width gradient Call pill at the bottom.
- * Pure CSS grid so the buttons size to fit the container at any width.
+ * - Number screen is a real <input type="tel"> so the user can type from
+ *   their keyboard, paste, or use system autofill. As they type we
+ *   sanitize to {digits, *, #, +} and re-format for display.
+ * - DTMF dual-tones play on each digit (both clicks AND keyboard).
+ * - Call button enables only when the number is in a callable shape
+ *   (10 US digits, 11 with leading 1, or +intl with 8+ digits).
+ * - Press Enter while focused on the screen to trigger Call.
+ *
+ * Skeleton scope — backend wiring (token mint + /call-room) lands later.
  */
 
 const KEYS = [
@@ -30,32 +35,107 @@ const KEYS = [
 const GRADIENT =
   'linear-gradient(135deg, #EF4444 0%, #DC2626 30%, #7C3AED 50%, #3B82F6 70%, #2563EB 100%)';
 
+const MAX_LEN = 18;
+const SANITIZE = /[^\d*#+]/g;
+
+/** Format raw typed string for the display field. */
 function formatPhone(raw: string): string {
-  const d = raw.replace(/[^\d*#+]/g, '');
+  // Pass through DTMF-only strings (* or # present) unmodified.
+  if (/[*#]/.test(raw)) return raw;
+
+  // International: keep leading + and digits, group lightly.
+  if (raw.startsWith('+')) {
+    const digits = raw.slice(1).replace(/\D/g, '');
+    if (digits.length === 0) return '+';
+    if (digits.length <= 3) return `+${digits}`;
+    if (digits.length <= 6) return `+${digits.slice(0, digits.length - 3)} ${digits.slice(-3)}`;
+    return `+${digits.slice(0, digits.length - 10)} ${digits.slice(-10, -7)} ${digits.slice(-7, -4)} ${digits.slice(-4)}`;
+  }
+
+  // US-style.
+  const d = raw.replace(/\D/g, '');
   if (d.length === 0) return '';
-  if (/[*#+]/.test(raw)) return raw;
   if (d.length <= 3) return d;
   if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`;
   if (d.length <= 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
-  return `+${d.slice(0, d.length - 10)} (${d.slice(-10, -7)}) ${d.slice(-7, -4)}-${d.slice(-4)}`;
+  // 11 digits with leading 1 = US country-code
+  if (d.length === 11 && d.startsWith('1')) {
+    return `+1 (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7)}`;
+  }
+  return d;
+}
+
+function isCallable(raw: string): boolean {
+  // DTMF-only strings (caller using * # for tones) — not callable.
+  if (/[*#]/.test(raw)) return false;
+  if (raw.startsWith('+')) {
+    const digits = raw.slice(1).replace(/\D/g, '');
+    return digits.length >= 8 && digits.length <= 15;
+  }
+  const d = raw.replace(/\D/g, '');
+  return d.length === 10 || (d.length === 11 && d.startsWith('1'));
 }
 
 export function DialPadArtwork() {
   const [typed, setTyped] = useState('');
   const display = useMemo(() => formatPhone(typed), [typed]);
+  const callable = useMemo(() => isCallable(typed), [typed]);
   const audioPrimed = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const append = (ch: string) => {
-    setTyped((prev) => (prev + ch).slice(0, 18));
-    // Browsers gate AudioContext.start() behind a user gesture; prime once on
-    // the first keypress, then play the DTMF dual-tone for this digit.
-    if (!audioPrimed.current) {
-      audioPrimed.current = true;
-      void resumeAudioContextFromGesture();
-    }
-    playDTMFTone(ch);
-  };
+  const primeAudio = useCallback(() => {
+    if (audioPrimed.current) return;
+    audioPrimed.current = true;
+    void resumeAudioContextFromGesture();
+  }, []);
+
+  const appendKey = useCallback(
+    (ch: string) => {
+      setTyped((prev) => (prev + ch).slice(0, MAX_LEN));
+      primeAudio();
+      playDTMFTone(ch);
+    },
+    [primeAudio],
+  );
+
   const backspace = () => setTyped((prev) => prev.slice(0, -1));
+
+  const onInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const cleaned = e.target.value.replace(SANITIZE, '').slice(0, MAX_LEN);
+    setTyped(cleaned);
+    // Reformat shifts the visible text — pin cursor to the end so users
+    // typing fast aren't trapped mid-string.
+    requestAnimationFrame(() => {
+      const inp = inputRef.current;
+      if (inp) {
+        const len = inp.value.length;
+        try {
+          inp.setSelectionRange(len, len);
+        } catch {}
+      }
+    });
+  }, []);
+
+  const onInputKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      const k = e.key;
+      if (k === 'Enter') {
+        e.preventDefault();
+        if (callable) {
+          // Visual placeholder — backend dial wiring lands in a later pass.
+        }
+        return;
+      }
+      // Play DTMF for digit / * / # keystrokes
+      if (/^[0-9*#]$/.test(k)) {
+        primeAudio();
+        playDTMFTone(k);
+      } else if (k === '+' && typed.length === 0) {
+        // intl prefix; no tone
+      }
+    },
+    [callable, primeAudio, typed.length],
+  );
 
   if (Platform.OS !== 'web') {
     return <View style={styles.card} />;
@@ -63,18 +143,29 @@ export function DialPadArtwork() {
 
   return (
     <View style={styles.card}>
-      {/* Glassy number screen */}
+      {/* Glassy number screen — real <input> so the keyboard works */}
       <div style={screen}>
-        <span style={screenText(display.length === 0)}>
-          {display || 'Enter number'}
-        </span>
+        <input
+          ref={inputRef}
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+          value={display}
+          onChange={onInputChange}
+          onKeyDown={onInputKeyDown}
+          placeholder="Enter number"
+          aria-label="Phone number"
+          style={screenInput(display.length === 0)}
+        />
         {typed.length > 0 ? (
           <button
             aria-label="Backspace"
             onClick={backspace}
             style={backspaceBtn}
             onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = '#fff')}
-            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.55)')}
+            onMouseLeave={(e) =>
+              ((e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.55)')
+            }
           >
             <Ionicons name="backspace-outline" size={18} color="currentColor" />
           </button>
@@ -86,7 +177,7 @@ export function DialPadArtwork() {
         {KEYS.map((k) => (
           <button
             key={k.d}
-            onClick={() => append(k.d)}
+            onClick={() => appendKey(k.d)}
             style={keyBtn}
             onMouseEnter={(e) => {
               const el = e.currentTarget as HTMLElement;
@@ -116,8 +207,15 @@ export function DialPadArtwork() {
         onClick={() => {
           /* skeleton — wire-up later */
         }}
-        style={callBtn}
+        disabled={!callable}
+        style={{
+          ...callBtn,
+          opacity: callable ? 1 : 0.4,
+          cursor: callable ? 'pointer' : 'not-allowed',
+          filter: callable ? 'none' : 'saturate(0.5)',
+        }}
         onMouseEnter={(e) => {
+          if (!callable) return;
           (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)';
           (e.currentTarget as HTMLElement).style.boxShadow =
             '0 10px 20px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.30)';
@@ -128,9 +226,11 @@ export function DialPadArtwork() {
             '0 6px 14px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.25)';
         }}
         onMouseDown={(e) => {
+          if (!callable) return;
           (e.currentTarget as HTMLElement).style.transform = 'translateY(1px) scale(0.98)';
         }}
         onMouseUp={(e) => {
+          if (!callable) return;
           (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)';
         }}
       >
@@ -185,19 +285,21 @@ const screen: React.CSSProperties = {
   minWidth: 0,
 };
 
-function screenText(empty: boolean): React.CSSProperties {
+function screenInput(empty: boolean): React.CSSProperties {
   return {
     flex: 1,
     minWidth: 0,
+    background: 'transparent',
+    border: 'none',
+    outline: 'none',
     fontFamily: 'Inter, system-ui, sans-serif',
     fontSize: empty ? 13 : 18,
     fontWeight: empty ? 400 : 600,
     letterSpacing: empty ? 0 : 0.4,
-    color: empty ? 'rgba(255,255,255,0.35)' : '#ffffff',
+    color: '#ffffff',
     fontVariantNumeric: 'tabular-nums',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
+    padding: 0,
+    height: '100%',
   };
 }
 
@@ -267,14 +369,13 @@ const callBtn: React.CSSProperties = {
   outline: 'none',
   cursor: 'pointer',
   backgroundImage: GRADIENT,
-  boxShadow:
-    '0 6px 14px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.25)',
+  boxShadow: '0 6px 14px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.25)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   gap: 8,
   flexShrink: 0,
-  transition: 'transform 0.12s ease, box-shadow 0.15s ease',
+  transition: 'transform 0.12s ease, box-shadow 0.15s ease, opacity 0.15s ease, filter 0.15s ease',
 };
 
 const callBtnLabel: React.CSSProperties = {
