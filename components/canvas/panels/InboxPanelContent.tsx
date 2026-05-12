@@ -227,7 +227,7 @@ function InboxPanelContentInner(_props: PanelContentProps) {
                     {call.from && (
                       <Pressable style={[s.ghostSmBtn, { marginTop: 6 }]} onPress={() => handleCallBack(call.from!)}>
                         <Ionicons name="call" size={12} color={BLUE} />
-                        <Text style={s.ghostSmBtnText}>Return Call</Text>
+                        <Text style={s.ghostSmBtnText}>Call back</Text>
                       </Pressable>
                     )}
                   </View>

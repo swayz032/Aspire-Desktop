@@ -75,7 +75,7 @@ const TILES: readonly TileEntry[] = [
   {
     id: 'return_calls',
     desk: 'sarah',
-    label: 'Return Calls',
+    label: 'Front Desk',
     icon: 'call-outline',
     defaultVerb: 'draft_callback_plan',
     verbs: [
