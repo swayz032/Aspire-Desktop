@@ -235,12 +235,20 @@ function normalizePhotos(record: AdamRecordRaw): AdamPropertyResult['photos'] {
   const KW_ROOF      = /\b(roof|aerial|drone|overhead|chimney|gutter)\b/i;
   const KW_EXTERIOR  = /\b(exterior|front|back|side|yard|deck|patio|porch|driveway|garage|fence|landscap|view from|street view|curb)\b/i;
 
-  function classify(caption: string | undefined): 'interior' | 'exterior' | 'roof' {
-    if (!caption) return 'interior';
-    if (KW_ROOF.test(caption)) return 'roof';
-    if (KW_EXTERIOR.test(caption)) return 'exterior';
-    if (KW_INTERIOR.test(caption)) return 'interior';
-    return 'interior';
+  function classify(
+    caption: string | undefined,
+    idx: number,
+  ): 'interior' | 'exterior' | 'roof' {
+    // Caption wins when it's specific.
+    if (caption) {
+      if (KW_ROOF.test(caption)) return 'roof';
+      if (KW_EXTERIOR.test(caption)) return 'exterior';
+      if (KW_INTERIOR.test(caption)) return 'interior';
+    }
+    // Listing hero (idx 0) is reliably the exterior cover on Zillow — it's
+    // how the listing renders on the search results page. Anything beyond
+    // that defaults to interior; Roof is now owned by Google Solar 4K.
+    return idx === 0 ? 'exterior' : 'interior';
   }
 
   raw.forEach((p, idx) => {
@@ -264,14 +272,14 @@ function normalizePhotos(record: AdamRecordRaw): AdamPropertyResult['photos'] {
     if (adamLane === 'interior' || adamLane === 'exterior' || adamLane === 'roof') {
       lane = adamLane;
     } else {
-      lane = classify(caption);
+      lane = classify(caption, idx);
     }
 
     if (lane === 'interior') interior.push(item);
     else if (lane === 'exterior') exterior.push(item);
     else roof.push(item);
-    // unused but kept so the existing AdamPropertyResult shape stays stable
-    void idx; void uncategorized;
+    // uncategorized stays declared so the AdamPropertyResult shape is stable
+    void uncategorized;
   });
 
   return {
