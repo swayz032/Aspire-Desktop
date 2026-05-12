@@ -10,6 +10,8 @@ import {
   styleTokens as t,
   TYPE_COLOR,
 } from '@/components/front-desk/inboxShared';
+import { callBack, sendSms, markVoicemailReviewed, deleteVoicemail } from '@/lib/actions/frontDeskActions';
+import { useAction } from '@/hooks/useAction';
 import type { VoicemailVM } from '@/components/front-desk/types';
 import { MOCK_VOICEMAILS } from '@/lib/frontDeskMock';
 import { useFrontDeskSection } from '@/hooks/useFrontDeskSection';
@@ -156,6 +158,10 @@ function VmDetail({ item, onBack }: { item: VoicemailVM; onBack: () => void }) {
   const [playing, setPlaying] = useState(false);
   const [activeBar, setActiveBar] = useState(0);
   const displayName = item.kind === 'unknown' ? 'Unknown caller' : item.name;
+  const [runCall, callPending] = useAction('Call back');
+  const [runSms, smsPending] = useAction('SMS jump');
+  const [runReviewed, reviewedPending] = useAction('Marked reviewed');
+  const [runDelete, deletePending] = useAction('Voicemail deleted');
 
   useEffect(() => {
     if (!playing) return;
@@ -216,10 +222,33 @@ function VmDetail({ item, onBack }: { item: VoicemailVM; onBack: () => void }) {
         </div>
 
         <div style={t.actionRow}>
-          <ActionButton icon="call-outline" label="Call back" tint="#22C55E" />
-          <ActionButton icon="chatbubble-outline" label="Send SMS" tint="#3B82F6" />
-          <ActionButton icon="checkmark-done-outline" label="Mark reviewed" />
-          <ActionButton icon="trash-outline" label="Delete" tint="#EF4444" />
+          <ActionButton
+            icon="call-outline"
+            label="Call back"
+            tint="#22C55E"
+            pending={callPending}
+            onClick={() => void runCall(() => callBack(item.phone))}
+          />
+          <ActionButton
+            icon="chatbubble-outline"
+            label="Send SMS"
+            tint="#3B82F6"
+            pending={smsPending}
+            onClick={() => void runSms(() => sendSms(item.id, ''))}
+          />
+          <ActionButton
+            icon="checkmark-done-outline"
+            label="Mark reviewed"
+            pending={reviewedPending}
+            onClick={() => void runReviewed(() => markVoicemailReviewed(item.id))}
+          />
+          <ActionButton
+            icon="trash-outline"
+            label="Delete"
+            tint="#EF4444"
+            pending={deletePending}
+            onClick={() => void runDelete(() => deleteVoicemail(item.id))}
+          />
         </div>
       </div>
     </div>

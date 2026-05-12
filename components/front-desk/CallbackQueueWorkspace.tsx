@@ -9,6 +9,8 @@ import {
   ActionButton,
   styleTokens as t,
 } from '@/components/front-desk/inboxShared';
+import { callBack, rescheduleCallback, completeCallback } from '@/lib/actions/frontDeskActions';
+import { useAction } from '@/hooks/useAction';
 import type { CallbackVM, CallbackBucket } from '@/components/front-desk/types';
 import { MOCK_CALLBACKS } from '@/lib/frontDeskMock';
 import { useFrontDeskSection } from '@/hooks/useFrontDeskSection';
@@ -195,6 +197,9 @@ function QueueList({
 function QueueDetail({ item, onBack }: { item: CallbackVM; onBack: () => void }) {
   const color = BUCKET_COLOR[item.bucket];
   const displayName = item.kind === 'unknown' ? 'Unknown caller' : item.name;
+  const [runCall, callPending] = useAction('Calling now');
+  const [runReschedule, reschedulePending] = useAction('Rescheduled');
+  const [runComplete, completePending] = useAction('Marked complete');
   return (
     <div style={t.detailWrap}>
       <DetailHeader
@@ -238,9 +243,31 @@ function QueueDetail({ item, onBack }: { item: CallbackVM; onBack: () => void })
         </div>
 
         <div style={t.actionRow}>
-          <ActionButton icon="call-outline" label="Call now" tint="#22C55E" />
-          <ActionButton icon="calendar-outline" label="Reschedule" tint="#F59E0B" />
-          <ActionButton icon="checkmark-done-outline" label="Mark complete" tint="#3B82F6" />
+          <ActionButton
+            icon="call-outline"
+            label="Call now"
+            tint="#22C55E"
+            pending={callPending}
+            onClick={() => void runCall(() => callBack(item.phone))}
+          />
+          <ActionButton
+            icon="calendar-outline"
+            label="Reschedule"
+            tint="#F59E0B"
+            pending={reschedulePending}
+            onClick={() => {
+              // dueAt: 1h from now as ISO string (Pass G will open a date picker)
+              const dueAt = new Date(Date.now() + 60 * 60 * 1_000).toISOString();
+              void runReschedule(() => rescheduleCallback(item.id, dueAt));
+            }}
+          />
+          <ActionButton
+            icon="checkmark-done-outline"
+            label="Mark complete"
+            tint="#3B82F6"
+            pending={completePending}
+            onClick={() => void runComplete(() => completeCallback(item.id))}
+          />
         </div>
       </div>
     </div>

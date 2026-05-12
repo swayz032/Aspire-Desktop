@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ensureInvisibleScrollCss, Avatar } from '@/components/front-desk/inboxShared';
+import { sendSms, sendNewSms, callBack } from '@/lib/actions/frontDeskActions';
+import { useAction } from '@/hooks/useAction';
 import type { SmsThreadVM } from '@/components/front-desk/types';
 import { MOCK_SMS_THREADS } from '@/lib/frontDeskMock';
 import { useFrontDeskSection } from '@/hooks/useFrontDeskSection';
@@ -189,6 +191,8 @@ function ThreadDetail({ thread, onBack }: { thread: Thread; onBack: () => void }
   const [draft, setDraft] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const displayName = thread.kind === 'unknown' ? 'Unknown caller' : thread.name;
+  const [runSend, sendPending] = useAction('SMS sent');
+  const [runCall, callPending] = useAction('Call back');
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -213,8 +217,13 @@ function ThreadDetail({ thread, onBack }: { thread: Thread; onBack: () => void }
           </div>
           <div style={detailHeaderPhone}>{thread.phone}</div>
         </div>
-        <button aria-label="Call" style={detailIconBtn}>
-          <Ionicons name="call-outline" size={16} color="rgba(255,255,255,0.7)" />
+        <button
+          aria-label="Call"
+          disabled={callPending}
+          style={{ ...detailIconBtn, opacity: callPending ? 0.5 : 1 }}
+          onClick={() => void runCall(() => callBack(thread.phone))}
+        >
+          <Ionicons name={callPending ? 'reload-outline' : 'call-outline'} size={16} color="rgba(255,255,255,0.7)" />
         </button>
         <button aria-label="Info" style={detailIconBtn}>
           <Ionicons name="ellipsis-horizontal" size={16} color="rgba(255,255,255,0.7)" />
@@ -258,15 +267,20 @@ function ThreadDetail({ thread, onBack }: { thread: Thread; onBack: () => void }
         </button>
         <button
           aria-label="Send"
-          onClick={() => setDraft('')}
-          disabled={draft.trim().length === 0}
+          onClick={() => {
+            if (draft.trim().length === 0 || sendPending) return;
+            const body = draft;
+            setDraft('');
+            void runSend(() => sendSms(thread.id, body));
+          }}
+          disabled={draft.trim().length === 0 || sendPending}
           style={{
             ...sendBtn,
-            opacity: draft.trim().length === 0 ? 0.4 : 1,
-            cursor: draft.trim().length === 0 ? 'not-allowed' : 'pointer',
+            opacity: draft.trim().length === 0 || sendPending ? 0.4 : 1,
+            cursor: draft.trim().length === 0 || sendPending ? 'not-allowed' : 'pointer',
           }}
         >
-          <Ionicons name="arrow-up" size={16} color="#fff" />
+          <Ionicons name={sendPending ? 'reload-outline' : 'arrow-up'} size={16} color="#fff" />
         </button>
       </div>
     </div>
@@ -276,6 +290,7 @@ function ThreadDetail({ thread, onBack }: { thread: Thread; onBack: () => void }
 function NewMessage({ onBack }: { onBack: () => void }) {
   const [to, setTo] = useState('');
   const [draft, setDraft] = useState('');
+  const [runSend, sendPending] = useAction('SMS sent');
   return (
     <div style={detailWrap}>
       <div style={detailHeader}>
@@ -314,15 +329,22 @@ function NewMessage({ onBack }: { onBack: () => void }) {
         </button>
         <button
           aria-label="Send"
-          onClick={() => { setDraft(''); setTo(''); }}
-          disabled={draft.trim().length === 0 || to.trim().length === 0}
+          onClick={() => {
+            if (draft.trim().length === 0 || to.trim().length === 0 || sendPending) return;
+            const body = draft;
+            const phone = to;
+            setDraft('');
+            setTo('');
+            void runSend(() => sendNewSms(phone, body));
+          }}
+          disabled={draft.trim().length === 0 || to.trim().length === 0 || sendPending}
           style={{
             ...sendBtn,
-            opacity: draft.trim().length === 0 || to.trim().length === 0 ? 0.4 : 1,
-            cursor: draft.trim().length === 0 || to.trim().length === 0 ? 'not-allowed' : 'pointer',
+            opacity: draft.trim().length === 0 || to.trim().length === 0 || sendPending ? 0.4 : 1,
+            cursor: draft.trim().length === 0 || to.trim().length === 0 || sendPending ? 'not-allowed' : 'pointer',
           }}
         >
-          <Ionicons name="arrow-up" size={16} color="#fff" />
+          <Ionicons name={sendPending ? 'reload-outline' : 'arrow-up'} size={16} color="#fff" />
         </button>
       </div>
     </div>

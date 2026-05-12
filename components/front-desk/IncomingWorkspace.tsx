@@ -10,6 +10,8 @@ import {
   styleTokens as t,
   TYPE_COLOR,
 } from '@/components/front-desk/inboxShared';
+import { callBack, sendSms } from '@/lib/actions/frontDeskActions';
+import { useAction } from '@/hooks/useAction';
 import type { IncomingCallVM } from '@/components/front-desk/types';
 import { MOCK_INCOMING_CALLS } from '@/lib/frontDeskMock';
 import { useFrontDeskSection } from '@/hooks/useFrontDeskSection';
@@ -132,6 +134,8 @@ function InboundList({
 
 function InboundDetail({ item, onBack }: { item: IncomingCallVM; onBack: () => void }) {
   const displayName = item.kind === 'unknown' ? 'Unknown caller' : item.name;
+  const [runCall, callPending] = useAction('Call back');
+  const [runSms, smsPending] = useAction('SMS jump');
   return (
     <div style={t.detailWrap}>
       <DetailHeader
@@ -179,8 +183,21 @@ function InboundDetail({ item, onBack }: { item: IncomingCallVM; onBack: () => v
         </div>
 
         <div style={t.actionRow}>
-          <ActionButton icon="call-outline" label="Call back" tint="#22C55E" />
-          <ActionButton icon="chatbubble-outline" label="Send SMS" tint="#3B82F6" />
+          <ActionButton
+            icon="call-outline"
+            label="Call back"
+            tint="#22C55E"
+            pending={callPending}
+            onClick={() => void runCall(() => callBack(item.phone))}
+          />
+          <ActionButton
+            icon="chatbubble-outline"
+            label="Send SMS"
+            tint="#3B82F6"
+            pending={smsPending}
+            onClick={() => void runSms(() => sendSms(item.id, ''))}
+          />
+          {/* Add note — Pass G will add the endpoint; placeholder for now */}
           <ActionButton icon="create-outline" label="Add note" />
         </div>
       </div>

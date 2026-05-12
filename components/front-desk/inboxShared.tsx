@@ -160,22 +160,28 @@ export function ActionButton({
   label,
   tint,
   onClick,
+  pending,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   tint?: string;
   onClick?: () => void;
+  /** When true, replaces the icon with a spinner and disables the button. */
+  pending?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
+      disabled={pending}
       style={{
         ...actionBtn,
         ...(tint
           ? { background: `${tint}1A`, border: `1px solid ${tint}44` }
           : {}),
+        ...(pending ? { opacity: 0.6, cursor: 'not-allowed' } : {}),
       }}
       onMouseEnter={(e) => {
+        if (pending) return;
         const el = e.currentTarget as HTMLElement;
         el.style.background = tint ? `${tint}26` : 'rgba(255,255,255,0.08)';
       }}
@@ -184,8 +190,14 @@ export function ActionButton({
         el.style.background = tint ? `${tint}1A` : 'rgba(255,255,255,0.04)';
       }}
     >
-      <Ionicons name={icon} size={16} color={tint ?? 'rgba(255,255,255,0.85)'} />
-      <span style={{ ...actionBtnLabel, color: tint ?? 'rgba(255,255,255,0.85)' }}>{label}</span>
+      {pending ? (
+        <Ionicons name="reload-outline" size={16} color={tint ?? 'rgba(255,255,255,0.85)'} />
+      ) : (
+        <Ionicons name={icon} size={16} color={tint ?? 'rgba(255,255,255,0.85)'} />
+      )}
+      <span style={{ ...actionBtnLabel, color: tint ?? 'rgba(255,255,255,0.85)' }}>
+        {pending ? '…' : label}
+      </span>
     </button>
   );
 }

@@ -6,7 +6,9 @@ import { DialPadArtwork } from '@/components/front-desk/DialPadArtwork';
 import { InboxRail } from '@/components/front-desk/InboxRail';
 import { TodayFeed } from '@/components/front-desk/TodayFeed';
 import { ErrorState } from '@/components/front-desk/states/ErrorState';
+import { ActionToastBar } from '@/components/front-desk/ActionToastBar';
 import { fetchFrontDeskConfig } from '@/lib/api/frontDesk';
+import { FrontDeskProvider } from '@/lib/context/FrontDeskContext';
 import {
   useTiffanyVoiceSession,
   type VoiceSessionState,
@@ -523,6 +525,7 @@ export function FrontDeskHubSkeleton() {
   const personaName = PERSONA_DISPLAY[persona];
 
   return (
+    <FrontDeskProvider>
     <View style={styles.outer}>
       <FrontDeskHeaderStrip />
       <View style={[styles.root, twoCol ? styles.rootRow : styles.rootStack]}>
@@ -569,7 +572,10 @@ export function FrontDeskHubSkeleton() {
           <DialPadArtwork />
         </View>
       </View>
+      {/* Pass F: action receipt toasts — bottom-center above all cards */}
+      <ActionToastBar />
     </View>
+    </FrontDeskProvider>
   );
 }
 

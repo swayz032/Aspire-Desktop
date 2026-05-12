@@ -3,6 +3,17 @@ import { View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { FeedEventType, EventItemVM } from '@/components/front-desk/types';
 import { UnknownAvatar } from '@/components/front-desk/states/UnknownAvatar';
+import {
+  callBack,
+  sendSms,
+  markVoicemailReviewed,
+  deleteVoicemail,
+  rescheduleCallback,
+  completeCallback,
+  addToContacts,
+} from '@/lib/actions/frontDeskActions';
+import { useAction } from '@/hooks/useAction';
+import { useFrontDeskContext, type InboxSection } from '@/lib/context/FrontDeskContext';
 
 /**
  * EventDetailModal — flat premium black glassy popup that opens when the user
@@ -237,53 +248,129 @@ function Body({ item }: { item: EventItem }) {
 }
 
 function Footer({ item, onClose }: { item: EventItem; onClose: () => void }) {
-  const handle = (label: string) => () => {
-    // Mock — no backend wiring.
-    void label;
+  const { crossLink } = useFrontDeskContext();
+  const [runCall, callPending] = useAction('Call back');
+  const [runSms, smsPending] = useAction('SMS jump');
+  const [runAdd, addPending] = useAction('Contact added');
+  const [runDelete, deletePending] = useAction('Voicemail deleted');
+  const [runReviewed, reviewedPending] = useAction('Marked reviewed');
+  const [runComplete, completePending] = useAction('Marked complete');
+  const [runReschedule, reschedulePending] = useAction('Rescheduled');
+
+  const openInSection = (section: InboxSection) => {
+    crossLink({ section, itemId: item.id });
     onClose();
   };
 
   if (item.type === 'missed_call') {
     return (
       <>
-        <SecondaryBtn icon="chatbubble-ellipses-outline" label="Send SMS" onClick={handle('sms')} />
-        <SecondaryBtn icon="person-add-outline" label="Add contact" onClick={handle('add')} />
-        <PrimaryBtn icon="call" label="Call back" onClick={handle('call')} />
+        <SecondaryBtn
+          icon="chatbubble-ellipses-outline"
+          label="Send SMS"
+          pending={smsPending}
+          onClick={() => void runSms(() => sendSms(item.id, ''))}
+        />
+        <SecondaryBtn
+          icon="person-add-outline"
+          label="Add contact"
+          pending={addPending}
+          onClick={() =>
+            void runAdd(() =>
+              addToContacts({ phone: item.phone ?? '', name: item.kind === 'unknown' ? undefined : item.name }),
+            )
+          }
+        />
+        <PrimaryBtn
+          icon="call"
+          label="Call back"
+          pending={callPending}
+          onClick={() => void runCall(() => callBack(item.phone ?? ''))}
+        />
       </>
     );
   }
   if (item.type === 'voicemail') {
     return (
       <>
-        <SecondaryBtn icon="trash-outline" label="Delete" onClick={handle('delete')} />
-        <SecondaryBtn icon="checkmark-circle-outline" label="Mark reviewed" onClick={handle('reviewed')} />
-        <PrimaryBtn icon="call" label="Call back" onClick={handle('call')} />
+        <SecondaryBtn
+          icon="trash-outline"
+          label="Delete"
+          pending={deletePending}
+          onClick={() => void runDelete(() => deleteVoicemail(item.id))}
+        />
+        <SecondaryBtn
+          icon="checkmark-circle-outline"
+          label="Mark reviewed"
+          pending={reviewedPending}
+          onClick={() => void runReviewed(() => markVoicemailReviewed(item.id))}
+        />
+        <PrimaryBtn
+          icon="call"
+          label="Call back"
+          pending={callPending}
+          onClick={() => void runCall(() => callBack(item.phone ?? ''))}
+        />
       </>
     );
   }
   if (item.type === 'sms') {
     return (
       <>
-        <SecondaryBtn icon="ban-outline" label="Block" onClick={handle('block')} />
-        <PrimaryBtn icon="arrow-forward" label="Open in SMS" onClick={handle('open')} />
+        {/* Block — Pass G endpoint */}
+        <SecondaryBtn icon="ban-outline" label="Block" onClick={() => {}} />
+        <PrimaryBtn
+          icon="arrow-forward"
+          label="Open in SMS"
+          onClick={() => openInSection('sms')}
+        />
       </>
     );
   }
   if (item.type === 'callback') {
     return (
       <>
-        <SecondaryBtn icon="checkmark-circle-outline" label="Mark complete" onClick={handle('complete')} />
-        <SecondaryBtn icon="calendar-outline" label="Reschedule" onClick={handle('reschedule')} />
-        <PrimaryBtn icon="call" label="Call now" onClick={handle('call')} />
+        <SecondaryBtn
+          icon="checkmark-circle-outline"
+          label="Mark complete"
+          pending={completePending}
+          onClick={() => void runComplete(() => completeCallback(item.id))}
+        />
+        <SecondaryBtn
+          icon="calendar-outline"
+          label="Reschedule"
+          pending={reschedulePending}
+          onClick={() => {
+            const dueAt = new Date(Date.now() + 60 * 60 * 1_000).toISOString();
+            void runReschedule(() => rescheduleCallback(item.id, dueAt));
+          }}
+        />
+        <PrimaryBtn
+          icon="call"
+          label="Call now"
+          pending={callPending}
+          onClick={() => void runCall(() => callBack(item.phone ?? ''))}
+        />
       </>
     );
   }
   // incoming_call
   return (
     <>
-      <SecondaryBtn icon="document-text-outline" label="Add note" onClick={handle('note')} />
-      <SecondaryBtn icon="chatbubble-ellipses-outline" label="Send SMS" onClick={handle('sms')} />
-      <PrimaryBtn icon="call" label="Call back" onClick={handle('call')} />
+      {/* Add note — Pass G endpoint */}
+      <SecondaryBtn icon="document-text-outline" label="Add note" onClick={() => {}} />
+      <SecondaryBtn
+        icon="chatbubble-ellipses-outline"
+        label="Open in SMS"
+        pending={smsPending}
+        onClick={() => openInSection('sms')}
+      />
+      <PrimaryBtn
+        icon="call"
+        label="Call back"
+        pending={callPending}
+        onClick={() => void runCall(() => callBack(item.phone ?? ''))}
+      />
     </>
   );
 }
@@ -403,15 +490,21 @@ function PrimaryBtn({
   icon,
   label,
   onClick,
+  pending,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   onClick: () => void;
+  pending?: boolean;
 }) {
   return (
-    <button onClick={onClick} style={primaryBtn}>
-      <Ionicons name={icon} size={16} color="#fff" />
-      <span style={primaryBtnLabel}>{label}</span>
+    <button
+      onClick={onClick}
+      disabled={pending}
+      style={{ ...primaryBtn, opacity: pending ? 0.65 : 1, cursor: pending ? 'not-allowed' : 'pointer' }}
+    >
+      <Ionicons name={pending ? 'reload-outline' : icon} size={16} color="#fff" />
+      <span style={primaryBtnLabel}>{pending ? '…' : label}</span>
     </button>
   );
 }
@@ -420,16 +513,20 @@ function SecondaryBtn({
   icon,
   label,
   onClick,
+  pending,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   onClick: () => void;
+  pending?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      style={secondaryBtn}
+      disabled={pending}
+      style={{ ...secondaryBtn, opacity: pending ? 0.65 : 1, cursor: pending ? 'not-allowed' : 'pointer' }}
       onMouseEnter={(e) => {
+        if (pending) return;
         (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.08)';
         (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.14)';
       }}
@@ -438,8 +535,8 @@ function SecondaryBtn({
         (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.08)';
       }}
     >
-      <Ionicons name={icon} size={14} color="rgba(255,255,255,0.85)" />
-      <span style={secondaryBtnLabel}>{label}</span>
+      <Ionicons name={pending ? 'reload-outline' : icon} size={14} color="rgba(255,255,255,0.85)" />
+      <span style={secondaryBtnLabel}>{pending ? '…' : label}</span>
     </button>
   );
 }

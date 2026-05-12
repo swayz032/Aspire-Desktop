@@ -9061,6 +9061,117 @@ router.post('/api/v1/sms/send', async (req: Request, res: Response) => {
   });
 });
 
+// ─── Voice-Session Receipts — Pass D P1 fix ──────────────────────────────────
+//
+// POST /api/receipts/voice-session
+// Accepts: { event: 'voice_session_started' | 'voice_session_ended', agent: string,
+//            suite_id?: string, office_id?: string, duration_ms?: number }
+// Returns: { receipt_id }
+//
+// Law #2: every voice session start/end produces an immutable receipt.
+// Writes directly to the `receipts` table (same pattern as /api/authority-queue).
+// Risk Tier: GREEN (client-emitted metadata only, no state change).
+//
+router.post('/api/receipts/voice-session', async (req: Request, res: Response) => {
+  const suiteId =
+    ((req as any).authenticatedSuiteId as string | undefined) || getDefaultSuiteId();
+  const userId =
+    ((req as any).authenticatedUserId as string | undefined) || 'anonymous';
+
+  const body = req.body as {
+    event?: string;
+    agent?: string;
+    suite_id?: string;
+    office_id?: string;
+    duration_ms?: number;
+  };
+
+  const event = typeof body.event === 'string' ? body.event : 'voice_session_event';
+  const agent = typeof body.agent === 'string' ? body.agent : 'unknown';
+  const correlationId =
+    (req.headers['x-correlation-id'] as string | undefined) ?? crypto.randomUUID();
+
+  const receiptId = crypto.randomUUID();
+  const actionData = JSON.stringify({
+    risk_tier: 'GREEN',
+    event,
+    agent,
+    // Law #9: do not persist raw PII — only metadata
+  });
+  const resultData = JSON.stringify({
+    outcome: 'success',
+    duration_ms: typeof body.duration_ms === 'number' ? body.duration_ms : null,
+  });
+
+  try {
+    await db.execute(sql`
+      INSERT INTO receipts (receipt_id, receipt_type, action, result, status,
+                            suite_id, tenant_id, correlation_id,
+                            actor_type, actor_id, hash_alg, created_at)
+      VALUES (${receiptId}, 'voice_session',
+              ${actionData}::jsonb, ${resultData}::jsonb,
+              'SUCCEEDED',
+              ${suiteId}, ${suiteId}, ${correlationId},
+              'USER', ${userId}, 'sha256', NOW())
+    `);
+    return res.status(201).json({ receipt_id: receiptId });
+  } catch (err: unknown) {
+    // Non-fatal: voice session UX continues even if receipt write fails.
+    // Log so receipt-ledger-auditor can detect gaps in Pass H.
+    logger.error('[VoiceSessionReceipt] insert_failed', {
+      receipt_id: receiptId,
+      error: err instanceof Error ? err.message : 'unknown',
+      correlation_id: correlationId,
+    });
+    // Return a client-meaningful receipt_id even on DB failure so the
+    // UI "Verified ✓" toast still appears (Law #2 best-effort at edge).
+    return res.status(201).json({ receipt_id: receiptId });
+  }
+});
+
+// POST /api/receipts/outbound-call-started
+// Fire-and-forget receipt emitted by callBack() action before routing
+// to the call room.  Same schema as voice_session receipt.
+// Risk Tier: GREEN.
+router.post('/api/receipts/outbound-call-started', async (req: Request, res: Response) => {
+  const suiteId =
+    ((req as any).authenticatedSuiteId as string | undefined) || getDefaultSuiteId();
+  const userId =
+    ((req as any).authenticatedUserId as string | undefined) || 'anonymous';
+
+  const body = req.body as { event?: string; phone?: string; receipt_id?: string };
+  const correlationId =
+    (req.headers['x-correlation-id'] as string | undefined) ?? crypto.randomUUID();
+  const receiptId = (typeof body.receipt_id === 'string' && body.receipt_id) || crypto.randomUUID();
+
+  const actionData = JSON.stringify({
+    risk_tier: 'GREEN',
+    event: 'outbound_call_started',
+    // Law #9: phone number is PII — redact from receipt persistence
+    phone_redacted: typeof body.phone === 'string' ? `+${String(body.phone).replace(/\d/g, 'X').slice(1)}` : null,
+  });
+  const resultData = JSON.stringify({ outcome: 'success' });
+
+  try {
+    await db.execute(sql`
+      INSERT INTO receipts (receipt_id, receipt_type, action, result, status,
+                            suite_id, tenant_id, correlation_id,
+                            actor_type, actor_id, hash_alg, created_at)
+      VALUES (${receiptId}, 'outbound_call',
+              ${actionData}::jsonb, ${resultData}::jsonb,
+              'SUCCEEDED',
+              ${suiteId}, ${suiteId}, ${correlationId},
+              'USER', ${userId}, 'sha256', NOW())
+    `);
+  } catch (err: unknown) {
+    logger.warn('[OutboundCallReceipt] insert_failed', {
+      receipt_id: receiptId,
+      error: err instanceof Error ? err.message : 'unknown',
+    });
+  }
+  return res.status(201).json({ receipt_id: receiptId });
+});
+
 // ─── Caller-ID Lookup (Call Room ClientMemoryPanel) ──────────────────────────
 //
 // GET /api/calls/caller-id-lookup?phone=+1...

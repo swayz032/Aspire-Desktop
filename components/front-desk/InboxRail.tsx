@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFrontDeskContext, type InboxSection } from '@/lib/context/FrontDeskContext';
 import { SmsWorkspace } from '@/components/front-desk/SmsWorkspace';
 import { AllWorkspace } from '@/components/front-desk/AllWorkspace';
 import { MissedWorkspace } from '@/components/front-desk/MissedWorkspace';
@@ -46,6 +47,17 @@ const SECTIONS: { id: Section; label: string; icon: keyof typeof Ionicons.glyphM
 
 export function InboxRail() {
   const [section, setSection] = useState<Section | null>(null);
+  const { registerCrossLinkHandler } = useFrontDeskContext();
+
+  // Register a cross-link handler so EventDetailModal can imperatively
+  // switch section + open a specific item inside InboxRail.
+  useEffect(() => {
+    registerCrossLinkHandler((target) => {
+      setSection(target.section as Section);
+      // TODO (Pass G): if target.itemId is set, pass it into the section
+      // workspace so it auto-opens the detail view.
+    });
+  }, [registerCrossLinkHandler]);
 
   if (Platform.OS !== 'web') {
     return <View style={styles.card} />;

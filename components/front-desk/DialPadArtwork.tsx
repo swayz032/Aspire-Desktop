@@ -2,6 +2,8 @@ import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { playDTMFTone, resumeAudioContextFromGesture } from '@/app/session/calls';
+import { callBack } from '@/lib/actions/frontDeskActions';
+import { useAction } from '@/hooks/useAction';
 
 /**
  * DialPadArtwork — black glassy keypad card.
@@ -82,6 +84,7 @@ export function DialPadArtwork() {
   const callable = useMemo(() => isCallable(typed), [typed]);
   const audioPrimed = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [runCall, callPending] = useAction('Call back');
 
   const primeAudio = useCallback(() => {
     if (audioPrimed.current) return;
@@ -121,8 +124,8 @@ export function DialPadArtwork() {
       const k = e.key;
       if (k === 'Enter') {
         e.preventDefault();
-        if (callable) {
-          // Visual placeholder — backend dial wiring lands in a later pass.
+        if (callable && !callPending) {
+          void runCall(() => callBack(typed));
         }
         return;
       }
@@ -205,12 +208,15 @@ export function DialPadArtwork() {
       {/* Gradient Call pill */}
       <button
         onClick={() => {
-          /* skeleton — wire-up later */
+          if (callable && !callPending) {
+            void runCall(() => callBack(typed));
+          }
         }}
-        disabled={!callable}
+        disabled={!callable || callPending}
         style={{
           ...callBtn,
-          cursor: callable ? 'pointer' : 'not-allowed',
+          cursor: callable && !callPending ? 'pointer' : 'not-allowed',
+          opacity: callPending ? 0.7 : 1,
         }}
         onMouseEnter={(e) => {
           if (!callable) return;
@@ -232,8 +238,12 @@ export function DialPadArtwork() {
           (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)';
         }}
       >
-        <Ionicons name="call" size={18} color="#ffffff" />
-        <span style={callBtnLabel}>Call</span>
+        {callPending ? (
+          <Ionicons name="reload-outline" size={18} color="#ffffff" />
+        ) : (
+          <Ionicons name="call" size={18} color="#ffffff" />
+        )}
+        <span style={callBtnLabel}>{callPending ? 'Calling…' : 'Call'}</span>
       </button>
     </View>
   );

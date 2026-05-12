@@ -17,6 +17,8 @@ import { LoadingSkeleton } from '@/components/front-desk/states/LoadingSkeleton'
 import { EmptyState } from '@/components/front-desk/states/EmptyState';
 import { ErrorState } from '@/components/front-desk/states/ErrorState';
 import { UnknownAvatar } from '@/components/front-desk/states/UnknownAvatar';
+import { callBack, sendSms, addToContacts } from '@/lib/actions/frontDeskActions';
+import { useAction } from '@/hooks/useAction';
 
 /**
  * MissedWorkspace — list of missed calls.
@@ -140,6 +142,9 @@ function MissedList({
 
 function MissedDetail({ item, onBack }: { item: MissedCallVM; onBack: () => void }) {
   const displayName = item.kind === 'unknown' ? 'Unknown caller' : item.name;
+  const [runCall, callPending] = useAction('Call back');
+  const [runSms, smsPending] = useAction('SMS jump');
+  const [runAdd, addPending] = useAction('Contact added');
   return (
     <div style={t.detailWrap}>
       <DetailHeader
@@ -156,9 +161,33 @@ function MissedDetail({ item, onBack }: { item: MissedCallVM; onBack: () => void
         </div>
 
         <div style={t.actionRow}>
-          <ActionButton icon="call-outline" label="Call back" tint="#22C55E" />
-          <ActionButton icon="chatbubble-outline" label="Send SMS" tint="#3B82F6" />
-          <ActionButton icon="person-add-outline" label="Add to contacts" />
+          <ActionButton
+            icon="call-outline"
+            label="Call back"
+            tint="#22C55E"
+            pending={callPending}
+            onClick={() => void runCall(() => callBack(item.phone))}
+          />
+          <ActionButton
+            icon="chatbubble-outline"
+            label="Send SMS"
+            tint="#3B82F6"
+            pending={smsPending}
+            onClick={() => void runSms(() => sendSms(item.id, ''))}
+          />
+          <ActionButton
+            icon="person-add-outline"
+            label="Add to contacts"
+            pending={addPending}
+            onClick={() =>
+              void runAdd(() =>
+                addToContacts({
+                  phone: item.phone,
+                  name: item.kind === 'unknown' ? undefined : item.name,
+                }),
+              )
+            }
+          />
         </div>
 
         {item.transcript ? (

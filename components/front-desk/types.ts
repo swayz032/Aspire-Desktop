@@ -251,6 +251,8 @@ export interface EventItemVM {
   type: FeedEventType;
   preview: string;
   time: string;
+  /** E.164 or display-formatted phone — used by footer action buttons (Pass F). */
+  phone?: string;
 }
 
 // ---------------------------------------------------------------------------

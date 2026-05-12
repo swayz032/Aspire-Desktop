@@ -8,6 +8,8 @@ import {
   styleTokens as t,
   headerBtn,
 } from '@/components/front-desk/inboxShared';
+import { callBack, sendSms } from '@/lib/actions/frontDeskActions';
+import { useAction } from '@/hooks/useAction';
 import type { ContactVM, EntityType } from '@/components/front-desk/types';
 import { MOCK_CONTACTS } from '@/lib/frontDeskMock';
 import { useFrontDeskSection } from '@/hooks/useFrontDeskSection';
@@ -206,6 +208,8 @@ function ContactList({
 
 function ContactDetail({ item, onBack }: { item: ContactVM; onBack: () => void }) {
   const isUnknown = item.entity === 'Unknown';
+  const [runCall, callPending] = useAction('Calling');
+  const [runSms, smsPending] = useAction('SMS jump');
   return (
     <div style={t.detailWrap}>
       <div style={contactDetailHeader}>
@@ -268,8 +272,20 @@ function ContactDetail({ item, onBack }: { item: ContactVM; onBack: () => void }
 
         {/* Actions */}
         <div style={t.actionRow}>
-          <ActionContactBtn icon="call-outline" label="Call" tint="#22C55E" />
-          <ActionContactBtn icon="chatbubble-outline" label="SMS" tint="#3B82F6" />
+          <ActionContactBtn
+            icon="call-outline"
+            label="Call"
+            tint="#22C55E"
+            pending={callPending}
+            onClick={() => void runCall(() => callBack(item.phone))}
+          />
+          <ActionContactBtn
+            icon="chatbubble-outline"
+            label="SMS"
+            tint="#3B82F6"
+            pending={smsPending}
+            onClick={() => void runSms(() => sendSms(item.id, ''))}
+          />
           <ActionContactBtn icon="create-outline" label="Edit" />
         </div>
       </div>
@@ -291,9 +307,23 @@ function FieldRow({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap
   );
 }
 
-function ActionContactBtn({ icon, label, tint }: { icon: keyof typeof Ionicons.glyphMap; label: string; tint?: string }) {
+function ActionContactBtn({
+  icon,
+  label,
+  tint,
+  onClick,
+  pending,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  tint?: string;
+  onClick?: () => void;
+  pending?: boolean;
+}) {
   return (
     <button
+      onClick={onClick}
+      disabled={pending}
       style={{
         flex: 1,
         display: 'flex',
@@ -306,21 +336,27 @@ function ActionContactBtn({ icon, label, tint }: { icon: keyof typeof Ionicons.g
         background: tint ? `${tint}1A` : 'rgba(255,255,255,0.04)',
         border: tint ? `1px solid ${tint}44` : '1px solid rgba(255,255,255,0.08)',
         borderRadius: 12,
-        cursor: 'pointer',
+        cursor: pending ? 'not-allowed' : 'pointer',
         outline: 'none',
         transition: 'background 0.12s ease',
         minHeight: 64,
+        opacity: pending ? 0.6 : 1,
       }}
       onMouseEnter={(e) => {
+        if (pending) return;
         (e.currentTarget as HTMLElement).style.background = tint ? `${tint}26` : 'rgba(255,255,255,0.08)';
       }}
       onMouseLeave={(e) => {
         (e.currentTarget as HTMLElement).style.background = tint ? `${tint}1A` : 'rgba(255,255,255,0.04)';
       }}
     >
-      <Ionicons name={icon} size={16} color={tint ?? 'rgba(255,255,255,0.85)'} />
+      {pending ? (
+        <Ionicons name="reload-outline" size={16} color={tint ?? 'rgba(255,255,255,0.85)'} />
+      ) : (
+        <Ionicons name={icon} size={16} color={tint ?? 'rgba(255,255,255,0.85)'} />
+      )}
       <span style={{ fontFamily: 'Inter, system-ui, sans-serif', fontSize: 11, fontWeight: 500, color: tint ?? 'rgba(255,255,255,0.85)' }}>
-        {label}
+        {pending ? '…' : label}
       </span>
     </button>
   );
