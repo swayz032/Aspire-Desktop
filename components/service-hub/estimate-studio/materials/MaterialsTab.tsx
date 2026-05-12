@@ -34,8 +34,20 @@ import { ProductCompareDrawer } from './ProductCompareDrawer';
 import { SupplierMatchesRail } from './SupplierMatchesRail';
 import { PredictiveAddons } from './PredictiveAddons';
 import { BundleSummaryBar } from './BundleSummaryBar';
+import { MaterialsRouteHero } from './MaterialsRouteHero';
 
+/**
+ * Thin chooser: picks the canvas view (results | route) from context.
+ * Each branch is a separate component so each owns its own hook list —
+ * keeps the React hook count stable across re-renders.
+ */
 export function MaterialsTab() {
+  const { canvasView } = useMaterialsSearchContext();
+  if (canvasView === 'route') return <MaterialsRouteHero />;
+  return <MaterialsTabResults />;
+}
+
+function MaterialsTabResults() {
   const { search, bundle: bundleApi } = useMaterialsSearchContext();
   const {
     submitSearch,

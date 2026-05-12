@@ -1,21 +1,19 @@
 /**
- * MaterialsSearchContext — shared state for the Materials tab's search + bundle.
+ * MaterialsSearchContext — shared state for the Materials tab.
  *
- * Why this exists: the Materials search bar and closest-store card live in the
- * EstimateStudio SHELL's contextual slot (where the project address bar lives
- * on other tabs). The product grid, filters, and bundle bar live in the
- * MATERIALS CANVAS (Slot child). Both halves need the same `useMaterialsSearch`
- * + `useMaterialsBundle` hook instance — otherwise typing in the bar wouldn't
- * update the grid.
+ * Exposes:
+ *   - search   : useMaterialsSearch() instance
+ *   - bundle   : useMaterialsBundle() instance
+ *   - canvasView / setCanvasView : which view the BIG canvas is rendering.
+ *       'results' = product grid + filters + bundle (default)
+ *       'route'   = full-bleed LiveRouteHero (premium canvas-swap; entered
+ *                   from the Tim Rail "Today's Route" card, exited from the
+ *                   back pill floating over the hero).
  *
- * This provider wraps the EstimateStudio tree when the active route is the
- * Materials tab, mounts the hooks once, and exposes them via context to:
- *   - The shell's contextual slot (MaterialsSearchBar + ClosestStoreCard)
- *   - The canvas (MaterialsTab body)
- *
- * Aspire Law #7: pure render — hooks own all state.
+ * Aspire Law #7: pure render — hooks own all state. The shell wraps the
+ * tree in MaterialsSearchProvider when the active route is Materials.
  */
-import React, { createContext, useContext } from 'react';
+import React, { createContext, useContext, useMemo, useState } from 'react';
 import {
   useMaterialsSearch,
   type UseMaterialsSearchResult,
@@ -25,9 +23,13 @@ import {
   type UseMaterialsBundleResult,
 } from '@/hooks/useMaterialsBundle';
 
+export type MaterialsCanvasView = 'results' | 'route';
+
 interface MaterialsSearchContextValue {
   search: UseMaterialsSearchResult;
   bundle: UseMaterialsBundleResult;
+  canvasView: MaterialsCanvasView;
+  setCanvasView: (v: MaterialsCanvasView) => void;
 }
 
 export const MaterialsSearchContext = createContext<MaterialsSearchContextValue | null>(null);
@@ -49,8 +51,23 @@ interface ProviderProps {
 export function MaterialsSearchProvider({ children, projectAddress }: ProviderProps) {
   const search = useMaterialsSearch();
   const bundle = useMaterialsBundle(projectAddress);
+  const [canvasView, setCanvasView] = useState<MaterialsCanvasView>('results');
+
+  // Auto-revert to results when the closest store disappears (e.g. user
+  // cleared the search) — keeps the canvas honest.
+  React.useEffect(() => {
+    if (canvasView === 'route' && !search.closestStore) {
+      setCanvasView('results');
+    }
+  }, [canvasView, search.closestStore]);
+
+  const value = useMemo(
+    () => ({ search, bundle, canvasView, setCanvasView }),
+    [search, bundle, canvasView],
+  );
+
   return (
-    <MaterialsSearchContext.Provider value={{ search, bundle }}>
+    <MaterialsSearchContext.Provider value={value}>
       {children}
     </MaterialsSearchContext.Provider>
   );
