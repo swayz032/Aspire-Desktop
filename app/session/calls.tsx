@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius, Shadows } from '@/constants/tokens';
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { useDesktop } from '@/lib/useDesktop';
@@ -282,7 +282,20 @@ function formatCallDuration(seconds: number): string {
 // Main component
 // ---------------------------------------------------------------------------
 
+/**
+ * Legacy /session/calls route — replaced by /session/front-desk (the Front
+ * Desk Hub) 2026-05-12. Kept as a redirect so any bookmarked URL or stale
+ * deep-link still lands on the new hub instead of the old "Return Calls"
+ * page. The CallsScreen implementation below is retained only so the
+ * exported DTMF helpers (DTMF_FREQUENCIES, playDTMFTone, resumeAudioContext-
+ * FromGesture) — which DialPadArtwork/DialPadCard import — keep working.
+ */
 export default function CallsScreenPage() {
+  return <Redirect href="/session/front-desk" />;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _LegacyCallsScreenPageKeptForExports() {
   return (
     <PageErrorBoundary pageName="calls">
       <CallsScreen />
