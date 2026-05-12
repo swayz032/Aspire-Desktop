@@ -228,59 +228,77 @@ export async function fetchSolarRoofAerial(
   }
 
   const radiusMeters = opts.radiusMeters ?? 50;
-  const params = new URLSearchParams();
-  params.set('location.latitude', String(coords.lat));
-  params.set('location.longitude', String(coords.lng));
-  params.set('radiusMeters', String(radiusMeters));
-  params.set('view', 'IMAGERY_AND_ANNUAL_FLUX_LAYERS');
-  params.set('requiredQuality', 'HIGH');
-  params.set('pixelSizeMeters', '0.1');
-  params.set('key', apiKey);
-
-  const realUrl = `https://solar.googleapis.com/v1/dataLayers:get?${params.toString()}`;
-  const safeUrl = 'https://solar.googleapis.com/v1/dataLayers:get?<params>&key=<REDACTED>';
-
   const timeoutMs = opts.timeoutMs ?? 8_000;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
   const _fetch = getFetch();
-  try {
-    const upstream = await _fetch(realUrl, { method: 'GET', signal: controller.signal });
-    clearTimeout(timer);
-    if (upstream.status === 404) return { status: 'missing' };
-    if (!upstream.ok) {
-      logger.warn('[Solar] aerial upstream non-2xx', {
-        status: upstream.status, url: safeUrl,
-      });
-      return { status: 'api_failure' };
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data = await upstream.json() as any;
-    const rgbUrl = typeof data?.rgbUrl === 'string' ? data.rgbUrl : undefined;
-    if (!rgbUrl) return { status: 'missing' };
 
-    // Bounding box computed from request — Solar doesn't echo it back.
-    const dLat = radiusMeters / 111320;
-    const dLng = radiusMeters / (111320 * Math.cos((coords.lat * Math.PI) / 180));
-    return {
-      status: 'ok',
-      rgbUrl,
-      boundingBox: {
-        sw: { lat: coords.lat - dLat, lng: coords.lng - dLng },
-        ne: { lat: coords.lat + dLat, lng: coords.lng + dLng },
-      },
-    };
-  } catch (err: unknown) {
-    clearTimeout(timer);
-    const isTimeout = err instanceof Error && err.name === 'AbortError';
-    logger.warn('[Solar] aerial proxy error', {
-      isTimeout,
-      reason: err instanceof Error ? err.message.slice(0, 120) : 'unknown',
-      url: safeUrl,
-    });
-    return { status: 'api_failure' };
+  // Solar dataLayers serves 3 quality tiers: HIGH (0.1 m/px), MEDIUM, LOW
+  // (~0.5 m/px). HIGH is only available in urban / well-modelled areas;
+  // rural addresses (e.g., 2934 Bicycle Rd, Tallahassee FL) only have
+  // MEDIUM/LOW. Verified 2026-05-12: that address 404s on HIGH but returns
+  // a valid rgbUrl on LOW. Walk the tiers in order so we ship the best
+  // available imagery to the user instead of falling all the way back to
+  // Street View when ANY Solar tier is present.
+  type TierTry = { quality: 'HIGH' | 'MEDIUM' | 'LOW'; pixelSize: string };
+  const tiers: TierTry[] = [
+    { quality: 'HIGH',   pixelSize: '0.1' },
+    { quality: 'MEDIUM', pixelSize: '0.25' },
+    { quality: 'LOW',    pixelSize: '0.5' },
+  ];
+
+  for (const tier of tiers) {
+    const params = new URLSearchParams();
+    params.set('location.latitude', String(coords.lat));
+    params.set('location.longitude', String(coords.lng));
+    params.set('radiusMeters', String(radiusMeters));
+    params.set('view', 'IMAGERY_AND_ANNUAL_FLUX_LAYERS');
+    params.set('requiredQuality', tier.quality);
+    params.set('pixelSizeMeters', tier.pixelSize);
+    params.set('key', apiKey);
+
+    const realUrl = `https://solar.googleapis.com/v1/dataLayers:get?${params.toString()}`;
+    const safeUrl = `https://solar.googleapis.com/v1/dataLayers:get?<params>&requiredQuality=${tier.quality}&key=<REDACTED>`;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const upstream = await _fetch(realUrl, { method: 'GET', signal: controller.signal });
+      clearTimeout(timer);
+      // 404 = no imagery at this tier. Try the next tier.
+      if (upstream.status === 404) continue;
+      if (!upstream.ok) {
+        logger.warn('[Solar] aerial upstream non-2xx', {
+          status: upstream.status, quality: tier.quality, url: safeUrl,
+        });
+        // For non-404 errors, also try the next tier rather than giving up.
+        continue;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = await upstream.json() as any;
+      const rgbUrl = typeof data?.rgbUrl === 'string' ? data.rgbUrl : undefined;
+      if (!rgbUrl) continue;
+
+      const dLat = radiusMeters / 111320;
+      const dLng = radiusMeters / (111320 * Math.cos((coords.lat * Math.PI) / 180));
+      logger.info('[Solar] aerial served', { quality: tier.quality });
+      return {
+        status: 'ok',
+        rgbUrl,
+        boundingBox: {
+          sw: { lat: coords.lat - dLat, lng: coords.lng - dLng },
+          ne: { lat: coords.lat + dLat, lng: coords.lng + dLng },
+        },
+      };
+    } catch (err: unknown) {
+      clearTimeout(timer);
+      logger.warn('[Solar] aerial proxy error', {
+        quality: tier.quality,
+        reason: err instanceof Error ? err.message.slice(0, 120) : 'unknown',
+      });
+      // Continue to next tier on transient failure.
+    }
   }
+  return { status: 'missing' };
 }
 
 /**
