@@ -7,9 +7,11 @@ import {
   ListHeader,
   DetailHeader,
   ActionButton,
+  InlineActionError,
   styleTokens as t,
   TYPE_COLOR,
 } from '@/components/front-desk/inboxShared';
+import { useFrontDeskContext } from '@/lib/context/FrontDeskContext';
 import type { MissedCallVM } from '@/components/front-desk/types';
 import { MOCK_MISSED_CALLS } from '@/lib/frontDeskMock';
 import { useFrontDeskSection } from '@/hooks/useFrontDeskSection';
@@ -17,7 +19,7 @@ import { LoadingSkeleton } from '@/components/front-desk/states/LoadingSkeleton'
 import { EmptyState } from '@/components/front-desk/states/EmptyState';
 import { ErrorState } from '@/components/front-desk/states/ErrorState';
 import { UnknownAvatar } from '@/components/front-desk/states/UnknownAvatar';
-import { callBack, sendSms, addToContacts } from '@/lib/actions/frontDeskActions';
+import { callBack, addToContacts } from '@/lib/actions/frontDeskActions';
 import { useAction } from '@/hooks/useAction';
 
 /**
@@ -142,9 +144,11 @@ function MissedList({
 
 function MissedDetail({ item, onBack }: { item: MissedCallVM; onBack: () => void }) {
   const displayName = item.kind === 'unknown' ? 'Unknown caller' : item.name;
-  const [runCall, callPending] = useAction('Call back');
-  const [runSms, smsPending] = useAction('SMS jump');
-  const [runAdd, addPending] = useAction('Contact added');
+  const { crossLink } = useFrontDeskContext();
+  // Pass I P0 #5: surface lastError inline.
+  const [runCall, callPending, callError] = useAction('Call back');
+  const [runAdd, addPending, addError] = useAction('Contact added');
+  const anyError = callError || addError;
   return (
     <div style={t.detailWrap}>
       <DetailHeader
@@ -172,8 +176,13 @@ function MissedDetail({ item, onBack }: { item: MissedCallVM; onBack: () => void
             icon="chatbubble-outline"
             label="Send SMS"
             tint="#3B82F6"
-            pending={smsPending}
-            onClick={() => void runSms(() => sendSms(item.id, ''))}
+            // Pass I P0 #3: cross-link to SmsWorkspace NEW with phone pre-filled.
+            onClick={() =>
+              crossLink({
+                section: 'sms',
+                payload: { newMessage: { to: item.phone } },
+              })
+            }
           />
           <ActionButton
             icon="person-add-outline"
@@ -196,6 +205,7 @@ function MissedDetail({ item, onBack }: { item: MissedCallVM; onBack: () => void
             <div style={t.bodyText}>{item.transcript}</div>
           </div>
         ) : null}
+        <InlineActionError message={anyError} />
       </div>
     </div>
   );

@@ -47,13 +47,23 @@ const SECTIONS: { id: Section; label: string; icon: keyof typeof Ionicons.glyphM
 
 export function InboxRail() {
   const [section, setSection] = useState<Section | null>(null);
+  // Pass I P0 #3: stash the cross-link payload so non-SMS workspaces can hand
+  // a recipient-phone pre-fill to SmsWorkspace's NEW mode.
+  const [smsPrefillTo, setSmsPrefillTo] = useState<string | null>(null);
   const { registerCrossLinkHandler } = useFrontDeskContext();
 
-  // Register a cross-link handler so EventDetailModal can imperatively
-  // switch section + open a specific item inside InboxRail.
+  // Register a cross-link handler so EventDetailModal + workspaces can
+  // imperatively switch section + open a specific item inside InboxRail.
   useEffect(() => {
     registerCrossLinkHandler((target) => {
       setSection(target.section as Section);
+      // Pass I P0 #3: surface the SMS-new-message payload (recipient phone)
+      // to SmsWorkspace so it lands in NEW mode with the recipient filled in.
+      if (target.section === 'sms' && target.payload?.newMessage?.to) {
+        setSmsPrefillTo(target.payload.newMessage.to);
+      } else {
+        setSmsPrefillTo(null);
+      }
       // TODO (Pass G): if target.itemId is set, pass it into the section
       // workspace so it auto-opens the detail view.
     });
@@ -70,7 +80,12 @@ export function InboxRail() {
       ) : (
         <SectionMode
           section={section}
-          onBack={() => setSection(null)}
+          onBack={() => {
+            setSection(null);
+            setSmsPrefillTo(null);
+          }}
+          smsPrefillTo={smsPrefillTo}
+          onSmsPrefillConsumed={() => setSmsPrefillTo(null)}
         />
       )}
     </View>
@@ -130,15 +145,26 @@ function MenuMode({ onPick }: { onPick: (s: Section) => void }) {
 function SectionMode({
   section,
   onBack,
+  smsPrefillTo,
+  onSmsPrefillConsumed,
 }: {
   section: Section;
   onBack: () => void;
+  /** Pass I P0 #3: when set, SmsWorkspace opens in NEW mode pre-filled. */
+  smsPrefillTo?: string | null;
+  onSmsPrefillConsumed?: () => void;
 }) {
   // SMS owns its whole content area — header swaps per inner mode
   // (list / thread detail / new message), so the rail's generic
   // section header is hidden for SMS.
   if (section === 'sms') {
-    return <SmsWorkspace onBackToMenu={onBack} />;
+    return (
+      <SmsWorkspace
+        onBackToMenu={onBack}
+        prefillTo={smsPrefillTo ?? undefined}
+        onPrefillConsumed={onSmsPrefillConsumed}
+      />
+    );
   }
   if (section === 'all') {
     return <AllWorkspace onBackToMenu={onBack} />;

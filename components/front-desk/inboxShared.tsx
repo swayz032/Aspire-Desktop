@@ -202,6 +202,30 @@ export function ActionButton({
   );
 }
 
+/**
+ * Inline error label rendered below an action button when useAction's lastError
+ * is non-null. Pass I P0 #5 fix — errors are contextual (inline), not toasted.
+ * Toasts are reserved for success receipts.
+ */
+export function InlineActionError({ message }: { message: string | null }) {
+  if (!message) return null;
+  return (
+    <div
+      role="alert"
+      style={{
+        fontFamily: 'Inter, system-ui, sans-serif',
+        fontSize: 11,
+        color: '#EF4444',
+        marginTop: 6,
+        paddingLeft: 4,
+        paddingRight: 4,
+      }}
+    >
+      {message}
+    </div>
+  );
+}
+
 export const styleTokens = {
   listWrap: {
     position: 'relative',

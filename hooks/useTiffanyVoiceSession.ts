@@ -44,6 +44,11 @@ const MIC_DENIED_MESSAGE =
   'Microphone permission denied. Allow mic access to talk to Tiffany.';
 const GENERIC_ERROR_MESSAGE =
   'Voice session failed to start. Please try again.';
+// Pass I P0 #7: hard cap on EL handshake. If the SDK doesn't transition
+// to listening/responding within this window we fail closed (Law #3).
+const START_TIMEOUT_MS = 15_000;
+const START_TIMEOUT_MESSAGE =
+  'Could not reach Tiffany — check your connection and try again.';
 
 function mapVoiceStatusToSessionState(
   status: VoiceStatus,
@@ -193,7 +198,22 @@ export function useTiffanyVoiceSession(): UseTiffanyVoiceSession {
         }
       }
 
-      await agent.startSession();
+      // Pass I P0 #7: 15s timeout via Promise.race. If the EL handshake
+      // hangs (network drop, agent mint failure, mic stuck) we fail closed
+      // instead of leaving the UI parked in `connecting` indefinitely.
+      const startPromise = agent.startSession();
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error('VOICE_SESSION_TIMEOUT'));
+        }, START_TIMEOUT_MS);
+      });
+
+      try {
+        await Promise.race([startPromise, timeoutPromise]);
+      } finally {
+        if (timeoutId !== null) clearTimeout(timeoutId);
+      }
 
       // Receipt: best-effort, do not await.
       void emitVoiceReceipt('voice_session_started', {
@@ -202,12 +222,47 @@ export function useTiffanyVoiceSession(): UseTiffanyVoiceSession {
       });
       devLog('[useTiffanyVoiceSession] session started', { receiptId });
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : GENERIC_ERROR_MESSAGE;
+      const isTimeout =
+        err instanceof Error && err.message === 'VOICE_SESSION_TIMEOUT';
+      const message = isTimeout
+        ? START_TIMEOUT_MESSAGE
+        : err instanceof Error
+          ? err.message
+          : GENERIC_ERROR_MESSAGE;
       setErrorMessage(message);
       setExplicitlyConnecting(false);
       startedAtRef.current = null;
-      devWarn('[useTiffanyVoiceSession] start failed', { message });
+
+      // Cleanup any partial session state — release mic, end SDK session if
+      // it limped to a half-state. Swallow errors; we're already in fail mode.
+      try {
+        await agent.endSession();
+      } catch {
+        /* swallow */
+      }
+
+      if (isTimeout) {
+        // Pass I P0 #7: fire-and-forget receipt event for the timeout so
+        // ops can graph it. Server-side may need to whitelist this event
+        // type — POST is keepalive so unmount doesn't drop it.
+        try {
+          void fetch('/api/receipts/voice-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              kind: 'voice_session_timeout',
+              receiptId,
+              agent: 'tiffany',
+              timeoutMs: START_TIMEOUT_MS,
+            }),
+            keepalive: true,
+          });
+        } catch {
+          /* swallow — best-effort */
+        }
+      }
+
+      devWarn('[useTiffanyVoiceSession] start failed', { message, isTimeout });
     }
   }, [agent]);
 

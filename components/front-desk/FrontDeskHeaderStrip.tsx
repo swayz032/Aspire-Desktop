@@ -3,6 +3,8 @@ import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { fetchFrontDeskConfig } from '@/lib/api/frontDesk';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { useTenant } from '@/providers/TenantProvider';
 
 type Persona = 'sarah' | 'tiffany';
 
@@ -13,25 +15,33 @@ const PERSONA_DISPLAY: Record<Persona, string> = {
 
 export function FrontDeskHeaderStrip() {
   const router = useRouter();
+  const { authenticatedFetch } = useAuthFetch();
+  const { tenant } = useTenant();
   // Default persona = Tiffany (founder lock 2026-05-12). FrontDeskConfig
   // override still wins if the user picks a different persona in Setup.
   const [persona, setPersona] = useState<Persona>('tiffany');
 
+  // Pass I P0 fix: thread the required {authenticatedFetch, officeId}. Guard
+  // the effect so it only fires once tenant resolution lands — fetching
+  // config with an undefined officeId would surface as a tenant-isolation
+  // gap (Law #6) AND crash the runtime (Law #3 fail-closed).
   useEffect(() => {
+    const officeId = tenant?.officeId;
+    if (!officeId) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetchFrontDeskConfig();
+        const res = await fetchFrontDeskConfig({ authenticatedFetch, officeId });
         const slug = (res?.config as any)?.receptionist_persona;
         if (!cancelled && (slug === 'sarah' || slug === 'tiffany')) {
           setPersona(slug);
         }
       } catch {
-        // keep default sarah
+        // keep default tiffany
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [authenticatedFetch, tenant?.officeId]);
 
   const name = PERSONA_DISPLAY[persona];
 

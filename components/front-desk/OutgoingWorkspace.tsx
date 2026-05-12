@@ -7,11 +7,13 @@ import {
   ListHeader,
   DetailHeader,
   ActionButton,
+  InlineActionError,
   styleTokens as t,
   TYPE_COLOR,
 } from '@/components/front-desk/inboxShared';
-import { callBack, sendSms } from '@/lib/actions/frontDeskActions';
+import { callBack } from '@/lib/actions/frontDeskActions';
 import { useAction } from '@/hooks/useAction';
+import { useFrontDeskContext } from '@/lib/context/FrontDeskContext';
 import type { OutgoingCallVM } from '@/components/front-desk/types';
 import { MOCK_OUTGOING_CALLS } from '@/lib/frontDeskMock';
 import { useFrontDeskSection } from '@/hooks/useFrontDeskSection';
@@ -134,8 +136,9 @@ function OutboundList({
 
 function OutboundDetail({ item, onBack }: { item: OutgoingCallVM; onBack: () => void }) {
   const displayName = item.kind === 'unknown' ? 'Unknown caller' : item.name;
-  const [runCall, callPending] = useAction('Call again');
-  const [runSms, smsPending] = useAction('SMS jump');
+  const { crossLink } = useFrontDeskContext();
+  // Pass I P0 #5: surface lastError inline.
+  const [runCall, callPending, callError] = useAction('Call again');
   return (
     <div style={t.detailWrap}>
       <DetailHeader
@@ -184,12 +187,18 @@ function OutboundDetail({ item, onBack }: { item: OutgoingCallVM; onBack: () => 
             icon="chatbubble-outline"
             label="Send SMS"
             tint="#3B82F6"
-            pending={smsPending}
-            onClick={() => void runSms(() => sendSms(item.id, ''))}
+            // Pass I P0 #3: cross-link to SmsWorkspace NEW with phone pre-filled.
+            onClick={() =>
+              crossLink({
+                section: 'sms',
+                payload: { newMessage: { to: item.phone } },
+              })
+            }
           />
           {/* Add note — Pass G endpoint */}
           <ActionButton icon="create-outline" label="Add note" />
         </div>
+        <InlineActionError message={callError} />
       </div>
     </div>
   );

@@ -8,6 +8,8 @@ import { TodayFeed } from '@/components/front-desk/TodayFeed';
 import { ErrorState } from '@/components/front-desk/states/ErrorState';
 import { ActionToastBar } from '@/components/front-desk/ActionToastBar';
 import { fetchFrontDeskConfig } from '@/lib/api/frontDesk';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { useTenant } from '@/providers/TenantProvider';
 import { FrontDeskProvider } from '@/lib/context/FrontDeskContext';
 import {
   useTiffanyVoiceSession,
@@ -463,6 +465,8 @@ function ToggleBtn({
 export function FrontDeskHubSkeleton() {
   const { width } = useWindowDimensions();
   const twoCol = width >= BREAKPOINT_TWO_COL;
+  const { authenticatedFetch } = useAuthFetch();
+  const { tenant } = useTenant();
   const [mode, setMode] = useState<StageMode>('voice');
   // Default persona = Tiffany (founder lock 2026-05-12). FrontDeskConfig
   // override still wins if the user picks a different persona in Setup.
@@ -508,11 +512,17 @@ export function FrontDeskHubSkeleton() {
     void voice.end();
   }, [voice]);
 
+  // Pass I P0 fix: thread the required {authenticatedFetch, officeId} into
+  // fetchFrontDeskConfig (was previously called with zero args — runtime crash
+  // and tenant-isolation gap per Law #6). Guard the effect so it only fires
+  // once tenant resolution lands.
   useEffect(() => {
+    const officeId = tenant?.officeId;
+    if (!officeId) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetchFrontDeskConfig();
+        const res = await fetchFrontDeskConfig({ authenticatedFetch, officeId });
         const slug = (res?.config as any)?.receptionist_persona;
         if (!cancelled && (slug === 'sarah' || slug === 'tiffany')) {
           setPersona(slug);
@@ -520,12 +530,12 @@ export function FrontDeskHubSkeleton() {
       } catch {}
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [authenticatedFetch, tenant?.officeId]);
 
   const personaName = PERSONA_DISPLAY[persona];
 
   return (
-    <FrontDeskProvider>
+    <FrontDeskProvider personaName={personaName}>
     <View style={styles.outer}>
       <FrontDeskHeaderStrip />
       <View style={[styles.root, twoCol ? styles.rootRow : styles.rootStack]}>

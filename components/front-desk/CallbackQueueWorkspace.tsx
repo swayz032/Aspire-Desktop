@@ -7,6 +7,7 @@ import {
   ListHeader,
   DetailHeader,
   ActionButton,
+  InlineActionError,
   styleTokens as t,
 } from '@/components/front-desk/inboxShared';
 import { callBack, rescheduleCallback, completeCallback } from '@/lib/actions/frontDeskActions';
@@ -197,9 +198,16 @@ function QueueList({
 function QueueDetail({ item, onBack }: { item: CallbackVM; onBack: () => void }) {
   const color = BUCKET_COLOR[item.bucket];
   const displayName = item.kind === 'unknown' ? 'Unknown caller' : item.name;
-  const [runCall, callPending] = useAction('Calling now');
-  const [runReschedule, reschedulePending] = useAction('Rescheduled');
-  const [runComplete, completePending] = useAction('Marked complete');
+  // Pass I P0 #5: surface lastError inline.
+  const [runCall, callPending, callError] = useAction('Calling now');
+  const [runReschedule, reschedulePending, rescheduleError] = useAction('Rescheduled');
+  const [runComplete, completePending, completeError] = useAction('Marked complete');
+  const anyError = callError || rescheduleError || completeError;
+
+  // Pass I P0 #8: reschedule now requires explicit user-picked datetime —
+  // no more silent "1h from now" auto-pick with "Verified ✓" toast.
+  const [showRescheduleInput, setShowRescheduleInput] = useState(false);
+  const [rescheduleAt, setRescheduleAt] = useState<string>('');
   return (
     <div style={t.detailWrap}>
       <DetailHeader
@@ -250,17 +258,51 @@ function QueueDetail({ item, onBack }: { item: CallbackVM; onBack: () => void })
             pending={callPending}
             onClick={() => void runCall(() => callBack(item.phone))}
           />
-          <ActionButton
-            icon="calendar-outline"
-            label="Reschedule"
-            tint="#F59E0B"
-            pending={reschedulePending}
-            onClick={() => {
-              // dueAt: 1h from now as ISO string (Pass G will open a date picker)
-              const dueAt = new Date(Date.now() + 60 * 60 * 1_000).toISOString();
-              void runReschedule(() => rescheduleCallback(item.id, dueAt));
-            }}
-          />
+          {showRescheduleInput ? (
+            <div style={rescheduleInputWrap}>
+              <input
+                type="datetime-local"
+                value={rescheduleAt}
+                onChange={(e) => setRescheduleAt(e.target.value)}
+                aria-label="New due date and time"
+                style={rescheduleInputStyle}
+              />
+              <button
+                disabled={!rescheduleAt || reschedulePending}
+                style={{
+                  ...rescheduleConfirmBtn,
+                  opacity: !rescheduleAt || reschedulePending ? 0.5 : 1,
+                  cursor: !rescheduleAt || reschedulePending ? 'not-allowed' : 'pointer',
+                }}
+                onClick={() => {
+                  const dueAt = new Date(rescheduleAt).toISOString();
+                  void runReschedule(() => rescheduleCallback(item.id, dueAt));
+                  setShowRescheduleInput(false);
+                  setRescheduleAt('');
+                }}
+              >
+                Confirm
+              </button>
+              <button
+                style={rescheduleCancelBtn}
+                aria-label="Cancel reschedule"
+                onClick={() => {
+                  setShowRescheduleInput(false);
+                  setRescheduleAt('');
+                }}
+              >
+                <Ionicons name="close" size={14} color="rgba(255,255,255,0.7)" />
+              </button>
+            </div>
+          ) : (
+            <ActionButton
+              icon="calendar-outline"
+              label="Reschedule"
+              tint="#F59E0B"
+              pending={reschedulePending}
+              onClick={() => setShowRescheduleInput(true)}
+            />
+          )}
           <ActionButton
             icon="checkmark-done-outline"
             label="Mark complete"
@@ -269,10 +311,60 @@ function QueueDetail({ item, onBack }: { item: CallbackVM; onBack: () => void })
             onClick={() => void runComplete(() => completeCallback(item.id))}
           />
         </div>
+        <InlineActionError message={anyError} />
       </div>
     </div>
   );
 }
+
+const rescheduleInputWrap: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  height: 36,
+  paddingLeft: 8,
+  paddingRight: 4,
+  borderRadius: 18,
+  background: 'rgba(245,158,11,0.10)',
+  border: '1px solid rgba(245,158,11,0.30)',
+};
+
+const rescheduleInputStyle: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  outline: 'none',
+  color: '#fff',
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 12,
+  colorScheme: 'dark',
+};
+
+const rescheduleConfirmBtn: React.CSSProperties = {
+  height: 28,
+  paddingLeft: 10,
+  paddingRight: 10,
+  borderRadius: 14,
+  border: 'none',
+  outline: 'none',
+  background: 'rgba(245,158,11,0.25)',
+  color: '#F59E0B',
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 11,
+  fontWeight: 600,
+};
+
+const rescheduleCancelBtn: React.CSSProperties = {
+  width: 28,
+  height: 28,
+  borderRadius: 14,
+  border: 'none',
+  outline: 'none',
+  background: 'transparent',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
 
 const styles = StyleSheet.create({ fill: { flex: 1 } });
 

@@ -35,10 +35,23 @@ export type InboxSection =
   | 'contacts'
   | 'callback_queue';
 
+export interface CrossLinkPayload {
+  /**
+   * Pre-fill the NEW SMS composer with this recipient phone number. Used by
+   * non-SMS workspaces (voicemail/missed/incoming/etc) when the user taps
+   * "Send SMS" — instead of firing a blank sendSms() with the wrong ID, we
+   * navigate to the SMS workspace in NEW mode with the recipient already
+   * filled in so the user types the body themselves.
+   */
+  newMessage?: { to: string };
+}
+
 export interface CrossLinkTarget {
   section: InboxSection;
   /** Optional item ID to open detail mode immediately. */
   itemId?: string;
+  /** Optional structured payload for section-specific pre-fill behavior. */
+  payload?: CrossLinkPayload;
 }
 
 // ---------------------------------------------------------------------------
@@ -57,6 +70,12 @@ export interface ActionToast {
 // ---------------------------------------------------------------------------
 
 interface FrontDeskContextValue {
+  /**
+   * Persona display name ("Sarah" | "Tiffany" | "Receptionist") — resolved by
+   * FrontDeskHubSkeleton from FrontDeskConfig and passed through the provider.
+   * Pass I P0 fix #2: replaces hardcoded "Sarah" strings in EventDetailModal.
+   */
+  personaName: string;
   /** Request InboxRail to switch section + optionally open item detail. */
   crossLink: (target: CrossLinkTarget) => void;
   /** Register a handler that InboxRail calls to respond to crossLink. */
@@ -71,7 +90,14 @@ interface FrontDeskContextValue {
 
 const FrontDeskContext = createContext<FrontDeskContextValue | null>(null);
 
-export function FrontDeskProvider({ children }: { children: React.ReactNode }) {
+export function FrontDeskProvider({
+  children,
+  personaName = 'Tiffany',
+}: {
+  children: React.ReactNode;
+  /** Persona display name. Defaults to "Tiffany" (founder lock 2026-05-12). */
+  personaName?: string;
+}) {
   const [toasts, setToasts] = useState<ActionToast[]>([]);
   const crossLinkHandlerRef = useRef<((target: CrossLinkTarget) => void) | null>(null);
 
@@ -102,6 +128,7 @@ export function FrontDeskProvider({ children }: { children: React.ReactNode }) {
   return (
     <FrontDeskContext.Provider
       value={{
+        personaName,
         crossLink,
         registerCrossLinkHandler,
         showActionToast,

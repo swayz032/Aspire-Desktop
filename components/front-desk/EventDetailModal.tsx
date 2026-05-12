@@ -1,15 +1,14 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { FeedEventType, EventItemVM } from '@/components/front-desk/types';
 import { UnknownAvatar } from '@/components/front-desk/states/UnknownAvatar';
 import {
   callBack,
-  sendSms,
   markVoicemailReviewed,
   deleteVoicemail,
-  rescheduleCallback,
   completeCallback,
+  rescheduleCallback,
   addToContacts,
 } from '@/lib/actions/frontDeskActions';
 import { useAction } from '@/hooks/useAction';
@@ -82,6 +81,10 @@ export function EventDetailModal({
   item: EventItem | null;
   onClose: () => void;
 }) {
+  // Pass I P0 fix #2: persona name comes from FrontDeskContext (resolved from
+  // FrontDeskConfig.receptionist_persona). NO hardcoded "Sarah" — Tiffany-
+  // configured tenants must see the correct name in transcripts and captions.
+  const { personaName } = useFrontDeskContext();
   useEffect(() => {
     ensureModalScrollCss();
   }, []);
@@ -146,7 +149,7 @@ export function EventDetailModal({
 
         {/* Body */}
         <div className="aspire-modal-scroll" style={body}>
-          <Body item={item} />
+          <Body item={item} personaName={personaName} />
         </div>
 
         <div style={divider} />
@@ -160,7 +163,7 @@ export function EventDetailModal({
   );
 }
 
-function Body({ item }: { item: EventItem }) {
+function Body({ item, personaName }: { item: EventItem; personaName: string }) {
   if (item.type === 'missed_call') {
     return (
       <>
@@ -209,7 +212,7 @@ function Body({ item }: { item: EventItem }) {
       <>
         <Section title="Callback promise">
           <p style={pText}>{item.preview}.</p>
-          <p style={pTextMuted}>Captured by Sarah during inbound call · context: Needs exterior quote follow-up.</p>
+          <p style={pTextMuted}>{`Captured by ${personaName} during inbound call · context: Needs exterior quote follow-up.`}</p>
         </Section>
         <Section title="Schedule">
           <div style={scheduleRow}>
@@ -230,7 +233,7 @@ function Body({ item }: { item: EventItem }) {
   return (
     <>
       <Section title="Summary">
-        <p style={pText}>Inbound call · 4:23 · Sarah answered.</p>
+        <p style={pText}>{`Inbound call · 4:23 · ${personaName} answered.`}</p>
         <ul style={bulletList}>
           <li style={bulletItem}>Caller asked about availability for interior painting estimate.</li>
           <li style={bulletItem}>Mentioned the kitchen and master bedroom.</li>
@@ -249,68 +252,93 @@ function Body({ item }: { item: EventItem }) {
 
 function Footer({ item, onClose }: { item: EventItem; onClose: () => void }) {
   const { crossLink } = useFrontDeskContext();
-  const [runCall, callPending] = useAction('Call back');
-  const [runSms, smsPending] = useAction('SMS jump');
-  const [runAdd, addPending] = useAction('Contact added');
-  const [runDelete, deletePending] = useAction('Voicemail deleted');
-  const [runReviewed, reviewedPending] = useAction('Marked reviewed');
-  const [runComplete, completePending] = useAction('Marked complete');
-  const [runReschedule, reschedulePending] = useAction('Rescheduled');
+  // Pass I P0 fix #5: surface lastError inline below action buttons.
+  const [runCall, callPending, callError] = useAction('Call back');
+  const [runAdd, addPending, addError] = useAction('Contact added');
+  const [runDelete, deletePending, deleteError] = useAction('Voicemail deleted');
+  const [runReviewed, reviewedPending, reviewedError] = useAction('Marked reviewed');
+  const [runComplete, completePending, completeError] = useAction('Marked complete');
+  const [runReschedule, reschedulePending, rescheduleError] = useAction('Rescheduled');
+
+  // Pass I P0 fix #8: reschedule now requires user-picked datetime — no more
+  // silent "1h from now" auto-pick.
+  const [showRescheduleInput, setShowRescheduleInput] = useState(false);
+  const [rescheduleAt, setRescheduleAt] = useState<string>('');
 
   const openInSection = (section: InboxSection) => {
     crossLink({ section, itemId: item.id });
     onClose();
   };
 
+  // Pass I P0 fix #3: "Send SMS" buttons in non-SMS workspaces must NOT call
+  // sendSms(item.id, '') — item.id is a voicemail/call/contact id, not a
+  // thread_id, and the body is empty. Navigate to SmsWorkspace NEW mode with
+  // the recipient phone pre-filled so the user types the body and sends.
+  const jumpToNewSms = () => {
+    crossLink({
+      section: 'sms',
+      payload: { newMessage: { to: item.phone ?? '' } },
+    });
+    onClose();
+  };
+
+  const anyError =
+    callError || addError || deleteError || reviewedError || completeError || rescheduleError;
+
   if (item.type === 'missed_call') {
     return (
       <>
-        <SecondaryBtn
-          icon="chatbubble-ellipses-outline"
-          label="Send SMS"
-          pending={smsPending}
-          onClick={() => void runSms(() => sendSms(item.id, ''))}
-        />
-        <SecondaryBtn
-          icon="person-add-outline"
-          label="Add contact"
-          pending={addPending}
-          onClick={() =>
-            void runAdd(() =>
-              addToContacts({ phone: item.phone ?? '', name: item.kind === 'unknown' ? undefined : item.name }),
-            )
-          }
-        />
-        <PrimaryBtn
-          icon="call"
-          label="Call back"
-          pending={callPending}
-          onClick={() => void runCall(() => callBack(item.phone ?? ''))}
-        />
+        <FooterButtons>
+          <SecondaryBtn
+            icon="chatbubble-ellipses-outline"
+            label="Send SMS"
+            onClick={jumpToNewSms}
+          />
+          <SecondaryBtn
+            icon="person-add-outline"
+            label="Add contact"
+            pending={addPending}
+            onClick={() =>
+              void runAdd(() =>
+                addToContacts({ phone: item.phone ?? '', name: item.kind === 'unknown' ? undefined : item.name }),
+              )
+            }
+          />
+          <PrimaryBtn
+            icon="call"
+            label="Call back"
+            pending={callPending}
+            onClick={() => void runCall(() => callBack(item.phone ?? ''))}
+          />
+        </FooterButtons>
+        {anyError ? <InlineError message={anyError} /> : null}
       </>
     );
   }
   if (item.type === 'voicemail') {
     return (
       <>
-        <SecondaryBtn
-          icon="trash-outline"
-          label="Delete"
-          pending={deletePending}
-          onClick={() => void runDelete(() => deleteVoicemail(item.id))}
-        />
-        <SecondaryBtn
-          icon="checkmark-circle-outline"
-          label="Mark reviewed"
-          pending={reviewedPending}
-          onClick={() => void runReviewed(() => markVoicemailReviewed(item.id))}
-        />
-        <PrimaryBtn
-          icon="call"
-          label="Call back"
-          pending={callPending}
-          onClick={() => void runCall(() => callBack(item.phone ?? ''))}
-        />
+        <FooterButtons>
+          <SecondaryBtn
+            icon="trash-outline"
+            label="Delete"
+            pending={deletePending}
+            onClick={() => void runDelete(() => deleteVoicemail(item.id))}
+          />
+          <SecondaryBtn
+            icon="checkmark-circle-outline"
+            label="Mark reviewed"
+            pending={reviewedPending}
+            onClick={() => void runReviewed(() => markVoicemailReviewed(item.id))}
+          />
+          <PrimaryBtn
+            icon="call"
+            label="Call back"
+            pending={callPending}
+            onClick={() => void runCall(() => callBack(item.phone ?? ''))}
+          />
+        </FooterButtons>
+        {anyError ? <InlineError message={anyError} /> : null}
       </>
     );
   }
@@ -330,48 +358,117 @@ function Footer({ item, onClose }: { item: EventItem; onClose: () => void }) {
   if (item.type === 'callback') {
     return (
       <>
-        <SecondaryBtn
-          icon="checkmark-circle-outline"
-          label="Mark complete"
-          pending={completePending}
-          onClick={() => void runComplete(() => completeCallback(item.id))}
-        />
-        <SecondaryBtn
-          icon="calendar-outline"
-          label="Reschedule"
-          pending={reschedulePending}
-          onClick={() => {
-            const dueAt = new Date(Date.now() + 60 * 60 * 1_000).toISOString();
-            void runReschedule(() => rescheduleCallback(item.id, dueAt));
-          }}
-        />
-        <PrimaryBtn
-          icon="call"
-          label="Call now"
-          pending={callPending}
-          onClick={() => void runCall(() => callBack(item.phone ?? ''))}
-        />
+        <FooterButtons>
+          <SecondaryBtn
+            icon="checkmark-circle-outline"
+            label="Mark complete"
+            pending={completePending}
+            onClick={() => void runComplete(() => completeCallback(item.id))}
+          />
+          {showRescheduleInput ? (
+            <div style={rescheduleInputWrap}>
+              <input
+                type="datetime-local"
+                value={rescheduleAt}
+                onChange={(e) => setRescheduleAt(e.target.value)}
+                style={rescheduleInput}
+                aria-label="New due date and time"
+              />
+              <button
+                disabled={!rescheduleAt || reschedulePending}
+                style={{
+                  ...rescheduleConfirmBtn,
+                  opacity: !rescheduleAt || reschedulePending ? 0.5 : 1,
+                  cursor: !rescheduleAt || reschedulePending ? 'not-allowed' : 'pointer',
+                }}
+                onClick={() => {
+                  const dueAt = new Date(rescheduleAt).toISOString();
+                  void runReschedule(() => rescheduleCallback(item.id, dueAt));
+                  setShowRescheduleInput(false);
+                  setRescheduleAt('');
+                }}
+              >
+                Confirm
+              </button>
+              <button
+                style={rescheduleCancelBtn}
+                onClick={() => {
+                  setShowRescheduleInput(false);
+                  setRescheduleAt('');
+                }}
+                aria-label="Cancel reschedule"
+              >
+                <Ionicons name="close" size={14} color="rgba(255,255,255,0.7)" />
+              </button>
+            </div>
+          ) : (
+            <SecondaryBtn
+              icon="calendar-outline"
+              label="Reschedule"
+              pending={reschedulePending}
+              onClick={() => setShowRescheduleInput(true)}
+            />
+          )}
+          <PrimaryBtn
+            icon="call"
+            label="Call now"
+            pending={callPending}
+            onClick={() => void runCall(() => callBack(item.phone ?? ''))}
+          />
+        </FooterButtons>
+        {anyError ? <InlineError message={anyError} /> : null}
       </>
     );
   }
   // incoming_call
   return (
     <>
-      {/* Add note — Pass G endpoint */}
-      <SecondaryBtn icon="document-text-outline" label="Add note" onClick={() => {}} />
-      <SecondaryBtn
-        icon="chatbubble-ellipses-outline"
-        label="Open in SMS"
-        pending={smsPending}
-        onClick={() => openInSection('sms')}
-      />
-      <PrimaryBtn
-        icon="call"
-        label="Call back"
-        pending={callPending}
-        onClick={() => void runCall(() => callBack(item.phone ?? ''))}
-      />
+      <FooterButtons>
+        {/* Add note — Pass G endpoint */}
+        <SecondaryBtn icon="document-text-outline" label="Add note" onClick={() => {}} />
+        <SecondaryBtn
+          icon="chatbubble-ellipses-outline"
+          label="Send SMS"
+          onClick={jumpToNewSms}
+        />
+        <PrimaryBtn
+          icon="call"
+          label="Call back"
+          pending={callPending}
+          onClick={() => void runCall(() => callBack(item.phone ?? ''))}
+        />
+      </FooterButtons>
+      {anyError ? <InlineError message={anyError} /> : null}
     </>
+  );
+}
+
+function FooterButtons({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={footerButtonsRow}>{children}</div>
+  );
+}
+
+/**
+ * Inline error label rendered below action buttons when useAction returns a
+ * non-null lastError. Per Pass I §P5: errors are contextual (inline), not
+ * toasted — toast is reserved for success receipts.
+ */
+function InlineError({ message }: { message: string }) {
+  return (
+    <span
+      role="alert"
+      style={{
+        fontFamily: 'Inter, system-ui, sans-serif',
+        fontSize: 11,
+        color: '#EF4444',
+        marginTop: 6,
+        display: 'block',
+        textAlign: 'right',
+      }}
+    >
+      {message}
+    </span>
   );
 }
 
@@ -955,4 +1052,62 @@ const secondaryBtnLabel: React.CSSProperties = {
   fontWeight: 500,
   color: 'rgba(255,255,255,0.85)',
   letterSpacing: -0.1,
+};
+
+const footerButtonsRow: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'flex-end',
+  gap: 8,
+  flexWrap: 'wrap',
+  width: '100%',
+};
+
+const rescheduleInputWrap: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  height: 36,
+  paddingLeft: 8,
+  paddingRight: 4,
+  borderRadius: 18,
+  background: 'rgba(245,158,11,0.10)',
+  border: '1px solid rgba(245,158,11,0.30)',
+};
+
+const rescheduleInput: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  outline: 'none',
+  color: '#fff',
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 12,
+  colorScheme: 'dark',
+};
+
+const rescheduleConfirmBtn: React.CSSProperties = {
+  height: 28,
+  paddingLeft: 10,
+  paddingRight: 10,
+  borderRadius: 14,
+  border: 'none',
+  outline: 'none',
+  background: 'rgba(245,158,11,0.25)',
+  color: '#F59E0B',
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 11,
+  fontWeight: 600,
+};
+
+const rescheduleCancelBtn: React.CSSProperties = {
+  width: 28,
+  height: 28,
+  borderRadius: 14,
+  border: 'none',
+  outline: 'none',
+  background: 'transparent',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
 };

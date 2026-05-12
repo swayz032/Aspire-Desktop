@@ -60,15 +60,19 @@ export function useFrontDeskSection<T>(
 
   const pollMs = Math.min(MAX_POLL_MS, Math.max(MIN_POLL_MS, opts.pollIntervalMs ?? DEFAULT_POLL_MS));
 
-  const [data, setData] = useState<T[] | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  // Pass I P0 #6: when mock mode is active, initialize data/loading synchronously
+  // so the LoadingSkeleton doesn't flash for one paint cycle before the effect
+  // settles. Without this, every workspace flickers a skeleton on mount even
+  // though the fixture is available immediately.
+  const [data, setData] = useState<T[] | null>(isMockMode ? (opts.mock ?? []) : null);
+  const [loading, setLoading] = useState<boolean>(!isMockMode);
   const [error, setError] = useState<string | null>(null);
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nextDelayRef = useRef<number>(pollMs);
   const mountedRef = useRef<boolean>(true);
 
-  // Mock mode: skip fetcher, return opts.mock immediately.
+  // Mock mode: keep state in sync if opts.mock changes after mount.
   useEffect(() => {
     if (!isMockMode) return;
     setData(opts.mock ?? []);

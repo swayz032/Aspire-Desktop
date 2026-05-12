@@ -269,34 +269,31 @@ export async function deleteVoicemail(voicemailId: string): Promise<ActionResult
  * Reschedule a callback to a new due time.
  *
  * Target: PATCH /api/callbacks/{id}.
- * Fail-soft: endpoint added in Pass G.
+ *
+ * Pass I P0 #4: removed the 404 fail-soft branch that rewrote a real 404 to
+ * a fake `ok:true` (Law #3 fail-closed violation). The real endpoint MUST
+ * exist post-backend-agent's Pass I work. If it 404s now, the error
+ * surfaces inline via useAction's lastError.
+ *
+ * DEPENDENCY: backend agent's Pass I PR (PATCH /api/callbacks/{id} +
+ * gateway proxy) must land for this to return ok:true at runtime.
  */
 export async function rescheduleCallback(callbackId: string, dueAt: string): Promise<ActionResult> {
-  const result = await apiPatch(`/api/callbacks/${encodeURIComponent(callbackId)}`, {
+  return apiPatch(`/api/callbacks/${encodeURIComponent(callbackId)}`, {
     due_at: dueAt,
   });
-  if (!result.ok && result.error?.includes('404')) {
-    console.warn('[frontDeskActions] rescheduleCallback: endpoint not yet built (Pass G). Returning client receipt.');
-    return { ok: true, receipt_id: result.receipt_id };
-  }
-  return result;
 }
 
 /**
  * Mark a callback as complete.
  *
  * Target: POST /api/callbacks/{id}/complete.
- * Fail-soft: endpoint added in Pass G.
+ * Pass I P0 #4: no 404 fail-soft. Same dependency on backend agent's PR.
  */
 export async function completeCallback(callbackId: string): Promise<ActionResult> {
-  const result = await apiPost(`/api/callbacks/${encodeURIComponent(callbackId)}/complete`, {
+  return apiPost(`/api/callbacks/${encodeURIComponent(callbackId)}/complete`, {
     callback_id: callbackId,
   });
-  if (!result.ok && result.error?.includes('404')) {
-    console.warn('[frontDeskActions] completeCallback: endpoint not yet built (Pass G). Returning client receipt.');
-    return { ok: true, receipt_id: result.receipt_id };
-  }
-  return result;
 }
 
 /**

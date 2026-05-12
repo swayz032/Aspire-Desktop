@@ -5,11 +5,13 @@ import {
   ensureInvisibleScrollCss,
   Avatar,
   ListHeader,
+  InlineActionError,
   styleTokens as t,
   headerBtn,
 } from '@/components/front-desk/inboxShared';
-import { callBack, sendSms } from '@/lib/actions/frontDeskActions';
+import { callBack } from '@/lib/actions/frontDeskActions';
 import { useAction } from '@/hooks/useAction';
+import { useFrontDeskContext } from '@/lib/context/FrontDeskContext';
 import type { ContactVM, EntityType } from '@/components/front-desk/types';
 import { MOCK_CONTACTS } from '@/lib/frontDeskMock';
 import { useFrontDeskSection } from '@/hooks/useFrontDeskSection';
@@ -208,8 +210,9 @@ function ContactList({
 
 function ContactDetail({ item, onBack }: { item: ContactVM; onBack: () => void }) {
   const isUnknown = item.entity === 'Unknown';
-  const [runCall, callPending] = useAction('Calling');
-  const [runSms, smsPending] = useAction('SMS jump');
+  // Pass I P0 #5: surface lastError inline.
+  const [runCall, callPending, callError] = useAction('Calling');
+  const { crossLink } = useFrontDeskContext();
   return (
     <div style={t.detailWrap}>
       <div style={contactDetailHeader}>
@@ -283,11 +286,17 @@ function ContactDetail({ item, onBack }: { item: ContactVM; onBack: () => void }
             icon="chatbubble-outline"
             label="SMS"
             tint="#3B82F6"
-            pending={smsPending}
-            onClick={() => void runSms(() => sendSms(item.id, ''))}
+            // Pass I P0 #3: cross-link to SmsWorkspace NEW with phone pre-filled.
+            onClick={() =>
+              crossLink({
+                section: 'sms',
+                payload: { newMessage: { to: item.phone } },
+              })
+            }
           />
           <ActionContactBtn icon="create-outline" label="Edit" />
         </div>
+        <InlineActionError message={callError} />
       </div>
     </div>
   );

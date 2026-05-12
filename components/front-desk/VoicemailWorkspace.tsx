@@ -10,8 +10,10 @@ import {
   styleTokens as t,
   TYPE_COLOR,
 } from '@/components/front-desk/inboxShared';
-import { callBack, sendSms, markVoicemailReviewed, deleteVoicemail } from '@/lib/actions/frontDeskActions';
+import { callBack, markVoicemailReviewed, deleteVoicemail } from '@/lib/actions/frontDeskActions';
 import { useAction } from '@/hooks/useAction';
+import { useFrontDeskContext } from '@/lib/context/FrontDeskContext';
+import { InlineActionError } from '@/components/front-desk/inboxShared';
 import type { VoicemailVM } from '@/components/front-desk/types';
 import { MOCK_VOICEMAILS } from '@/lib/frontDeskMock';
 import { useFrontDeskSection } from '@/hooks/useFrontDeskSection';
@@ -158,10 +160,12 @@ function VmDetail({ item, onBack }: { item: VoicemailVM; onBack: () => void }) {
   const [playing, setPlaying] = useState(false);
   const [activeBar, setActiveBar] = useState(0);
   const displayName = item.kind === 'unknown' ? 'Unknown caller' : item.name;
-  const [runCall, callPending] = useAction('Call back');
-  const [runSms, smsPending] = useAction('SMS jump');
-  const [runReviewed, reviewedPending] = useAction('Marked reviewed');
-  const [runDelete, deletePending] = useAction('Voicemail deleted');
+  const { crossLink } = useFrontDeskContext();
+  // Pass I P0 #5: destructure lastError from useAction.
+  const [runCall, callPending, callError] = useAction('Call back');
+  const [runReviewed, reviewedPending, reviewedError] = useAction('Marked reviewed');
+  const [runDelete, deletePending, deleteError] = useAction('Voicemail deleted');
+  const anyError = callError || reviewedError || deleteError;
 
   useEffect(() => {
     if (!playing) return;
@@ -233,8 +237,14 @@ function VmDetail({ item, onBack }: { item: VoicemailVM; onBack: () => void }) {
             icon="chatbubble-outline"
             label="Send SMS"
             tint="#3B82F6"
-            pending={smsPending}
-            onClick={() => void runSms(() => sendSms(item.id, ''))}
+            // Pass I P0 #3: navigate to SmsWorkspace NEW with recipient pre-filled
+            // instead of firing sendSms(item.id, '') with the wrong id + empty body.
+            onClick={() =>
+              crossLink({
+                section: 'sms',
+                payload: { newMessage: { to: item.phone } },
+              })
+            }
           />
           <ActionButton
             icon="checkmark-done-outline"
@@ -250,6 +260,7 @@ function VmDetail({ item, onBack }: { item: VoicemailVM; onBack: () => void }) {
             onClick={() => void runDelete(() => deleteVoicemail(item.id))}
           />
         </div>
+        <InlineActionError message={anyError} />
       </div>
     </div>
   );

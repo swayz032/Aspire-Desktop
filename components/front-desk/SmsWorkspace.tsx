@@ -34,14 +34,33 @@ type Thread = SmsThreadVM;
 
 export function SmsWorkspace({
   onBackToMenu,
+  prefillTo,
+  onPrefillConsumed,
 }: {
   /** Called when the list-mode back arrow is tapped — returns to the inbox menu. */
   onBackToMenu?: () => void;
+  /**
+   * Pass I P0 #3: when set, open in NEW mode with `to` already filled. Used
+   * by cross-links from voicemail/missed/incoming/outgoing/contacts/event
+   * detail "Send SMS" buttons so the user doesn't have to retype the phone.
+   */
+  prefillTo?: string;
+  /** Called once `prefillTo` has been consumed (so parent can clear it). */
+  onPrefillConsumed?: () => void;
 }) {
-  const [mode, setMode] = useState<Mode>({ kind: 'list' });
+  const [mode, setMode] = useState<Mode>(
+    prefillTo ? { kind: 'new' } : { kind: 'list' },
+  );
   useEffect(() => {
     ensureInvisibleScrollCss();
   }, []);
+
+  // If a new prefillTo arrives later, force NEW mode.
+  useEffect(() => {
+    if (prefillTo) {
+      setMode({ kind: 'new' });
+    }
+  }, [prefillTo]);
 
   const fetcher = useCallback(() => Promise.resolve(MOCK_SMS_THREADS), []);
   const { data, loading, error, refresh } = useFrontDeskSection<Thread>(fetcher, {
@@ -81,7 +100,16 @@ export function SmsWorkspace({
       );
     return <ThreadDetail thread={thread} onBack={() => setMode({ kind: 'list' })} />;
   }
-  return <NewMessage onBack={() => setMode({ kind: 'list' })} />;
+  return (
+    <NewMessage
+      onBack={() => {
+        setMode({ kind: 'list' });
+        onPrefillConsumed?.();
+      }}
+      initialTo={prefillTo}
+      onPrefillConsumed={onPrefillConsumed}
+    />
+  );
 }
 
 function ThreadList({
@@ -191,8 +219,10 @@ function ThreadDetail({ thread, onBack }: { thread: Thread; onBack: () => void }
   const [draft, setDraft] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const displayName = thread.kind === 'unknown' ? 'Unknown caller' : thread.name;
-  const [runSend, sendPending] = useAction('SMS sent');
-  const [runCall, callPending] = useAction('Call back');
+  // Pass I P0 #5: surface lastError inline.
+  const [runSend, sendPending, sendError] = useAction('SMS sent');
+  const [runCall, callPending, callError] = useAction('Call back');
+  const anyError = sendError || callError;
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -283,14 +313,34 @@ function ThreadDetail({ thread, onBack }: { thread: Thread; onBack: () => void }
           <Ionicons name={sendPending ? 'reload-outline' : 'arrow-up'} size={16} color="#fff" />
         </button>
       </div>
+      {anyError ? (
+        <div role="alert" style={smsInlineError}>
+          {anyError}
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function NewMessage({ onBack }: { onBack: () => void }) {
-  const [to, setTo] = useState('');
+function NewMessage({
+  onBack,
+  initialTo,
+  onPrefillConsumed,
+}: {
+  onBack: () => void;
+  initialTo?: string;
+  onPrefillConsumed?: () => void;
+}) {
+  const [to, setTo] = useState(initialTo ?? '');
   const [draft, setDraft] = useState('');
-  const [runSend, sendPending] = useAction('SMS sent');
+  // Pass I P0 #5: surface lastError inline.
+  const [runSend, sendPending, sendError] = useAction('SMS sent');
+
+  // Once the prefill is rendered into local state, tell the parent it can
+  // clear its prefillTo so a subsequent user edit isn't fought by re-prefill.
+  useEffect(() => {
+    if (initialTo) onPrefillConsumed?.();
+  }, [initialTo, onPrefillConsumed]);
   return (
     <div style={detailWrap}>
       <div style={detailHeader}>
@@ -347,9 +397,23 @@ function NewMessage({ onBack }: { onBack: () => void }) {
           <Ionicons name={sendPending ? 'reload-outline' : 'arrow-up'} size={16} color="#fff" />
         </button>
       </div>
+      {sendError ? (
+        <div role="alert" style={smsInlineError}>
+          {sendError}
+        </div>
+      ) : null}
     </div>
   );
 }
+
+const smsInlineError: React.CSSProperties = {
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 11,
+  color: '#EF4444',
+  marginTop: 6,
+  paddingLeft: 4,
+  paddingRight: 4,
+};
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
