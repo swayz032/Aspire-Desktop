@@ -118,7 +118,9 @@ const styles = StyleSheet.create({
   outerCanvas: {
     flex: 1,
     width: '100%',
-    maxWidth: CANVAS_MAX_WIDTH,
+    // 'A little less wide' — 1760 → 1640 keeps a presence but pulls
+    // back enough to feel premium rather than poster-sized.
+    maxWidth: 1640,
     alignSelf: 'center',
     // Transparent fill — earlier 'rgba(255,255,255,0.02)' was picking up
     // the amber bloom and rendering as a faint white wash. Removing it
@@ -134,11 +136,14 @@ const styles = StyleSheet.create({
     // page background. Goal: light at the edge, dark everywhere else.
     ...(Platform.OS === 'web'
       ? (({
-          // Flex owns sizing now — no explicit height calc. The
-          // parent flex chain (container > content > mainArea >
-          // scrollView with scrollContent.flexGrow=1) gives this
-          // canvas the exact viewport-minus-chrome height, and
-          // crucially keeps it CONSISTENT regardless of inner content.
+          // Hard cap canvas to viewport — user MUST NOT have to scroll
+          // the page to see the bottom of the workspace. Real chrome:
+          // TopNav 52 + content paddingTop 28 + paddingBottom 16 + a
+          // small safety buffer = ~100px. The Tim rail handles its
+          // own overflow via its internal ScrollView; the property
+          // hero is flex:1 inside canvasArea and adapts to fit.
+          height: 'calc(100vh - 100px)',
+          maxHeight: 'calc(100vh - 100px)',
           // Amber lives ENTIRELY inside the canvas — no outer bloom,
           // no outer rim. Page background stays pristine dark.
           boxShadow: [

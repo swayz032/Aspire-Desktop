@@ -59,7 +59,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: Colors.background.primary,
     paddingHorizontal: 16,
-    paddingTop: 16,
+    // 16 → 28 so the canvas has visible breathing room below the
+    // pill nav. 'Too close to the navigation pill header' — fixed.
+    paddingTop: 28,
     paddingBottom: 16,
     overflow: 'hidden',
   },
