@@ -24,6 +24,7 @@
  */
 
 import { API_BASE } from './officeMemory';
+import type { BackendContact } from './frontDeskAdapters'; // used by FetchContactsResponse + re-export
 
 type FetchFn = (url: string, options?: RequestInit) => Promise<Response>;
 
@@ -529,6 +530,51 @@ export async function deleteRoutingContact(
     signal: opts.signal,
   });
   await expectJson<{ success: boolean }>(resp, 'ROUTING_CONTACT_DELETE_FAILED');
+}
+
+// ---------------------------------------------------------------------------
+// Contacts — Green tier (read-only list of Tiffany-captured caller records).
+// ---------------------------------------------------------------------------
+
+// Re-export for consumers that only import from frontDesk.ts.
+export type { BackendContact } from './frontDeskAdapters';
+
+export interface FetchContactsResponse {
+  contacts: BackendContact[];
+  has_more: boolean;
+  next_cursor?: string;
+  receipt_id?: string;
+}
+
+export interface FetchContactsOpts {
+  authenticatedFetch: FetchFn;
+  officeId: string;
+  bucket?: 'all' | 'lead' | 'client' | 'unknown';
+  limit?: number;
+  cursor?: string;
+  signal?: AbortSignal;
+}
+
+
+/**
+ * Green tier — list frontdesk_contacts for this office.
+ * Records are written by Tiffany's `capture_message` tool during calls.
+ */
+export async function fetchContacts(
+  opts: FetchContactsOpts,
+): Promise<FetchContactsResponse> {
+  const params = new URLSearchParams();
+  if (opts.bucket && opts.bucket !== 'all') params.set('bucket', opts.bucket);
+  if (opts.limit != null) params.set('limit', String(opts.limit));
+  if (opts.cursor) params.set('cursor', opts.cursor);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  const url = `${API_BASE}/api/contacts${qs}`;
+  const resp = await opts.authenticatedFetch(url, {
+    method: 'GET',
+    headers: { 'X-Office-Id': opts.officeId },
+    signal: opts.signal,
+  });
+  return expectJson<FetchContactsResponse>(resp, 'CONTACTS_FETCH_FAILED');
 }
 
 /**

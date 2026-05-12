@@ -9142,6 +9142,26 @@ router.delete('/api/voicemail/:id', async (req: Request, res: Response) => {
   });
 });
 
+// ─── Contacts (Pass J) ───────────────────────────────────────────────────────
+//
+// GET /api/contacts → /v1/contacts (Green — list Tiffany-captured contact records)
+
+router.get('/api/contacts', async (req: Request, res: Response) => {
+  const params = new URLSearchParams();
+  if (typeof req.query.bucket === 'string') params.set('bucket', req.query.bucket);
+  if (typeof req.query.limit === 'string') params.set('limit', req.query.limit);
+  if (typeof req.query.cursor === 'string') params.set('cursor', req.query.cursor);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  await proxyForward({
+    orchestratorPath: `/v1/contacts${qs}`,
+    method: 'GET',
+    logTag: 'ContactsList',
+    timeoutMs: 8_000,
+    req,
+    res,
+  });
+});
+
 // ─── Voice-Session Receipts — Pass D P1 fix ──────────────────────────────────
 //
 // POST /api/receipts/voice-session

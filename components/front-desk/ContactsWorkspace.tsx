@@ -19,6 +19,10 @@ import { LoadingSkeleton } from '@/components/front-desk/states/LoadingSkeleton'
 import { EmptyState } from '@/components/front-desk/states/EmptyState';
 import { ErrorState } from '@/components/front-desk/states/ErrorState';
 import { UnknownAvatar } from '@/components/front-desk/states/UnknownAvatar';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { useTenant } from '@/providers/TenantProvider';
+import { fetchContacts } from '@/lib/api/frontDesk';
+import { mapToContact } from '@/lib/api/frontDeskAdapters';
 
 /**
  * ContactsWorkspace — searchable list of people grouped by entity type.
@@ -42,7 +46,16 @@ export function ContactsWorkspace({ onBackToMenu }: { onBackToMenu?: () => void 
     ensureInvisibleScrollCss();
   }, []);
 
-  const fetcher = useCallback(() => Promise.resolve(MOCK_CONTACTS), []);
+  const { authenticatedFetch } = useAuthFetch();
+  const { tenant } = useTenant();
+  const officeId = tenant?.officeId ?? '';
+
+  const fetcher = useCallback(async (): Promise<ContactVM[]> => {
+    if (!officeId) return [];
+    const res = await fetchContacts({ authenticatedFetch, officeId });
+    return (res.contacts ?? []).map(mapToContact);
+  }, [authenticatedFetch, officeId]);
+
   const { data, loading, error, refresh } = useFrontDeskSection<ContactVM>(fetcher, {
     mock: MOCK_CONTACTS,
   });
@@ -153,7 +166,7 @@ function ContactList({
           <EmptyState
             icon="people-outline"
             headline="No contacts yet"
-            subtitle="People you talk to will collect here automatically."
+            subtitle="Contacts captured by Tiffany during calls will appear here."
           />
         ) : filtered.length === 0 ? (
           <div style={emptyState}>
