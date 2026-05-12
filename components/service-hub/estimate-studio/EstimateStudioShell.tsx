@@ -117,13 +117,9 @@ export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
 const styles = StyleSheet.create({
   outerCanvas: {
     flex: 1,
-    // No minHeight — the canvas takes whatever vertical space the
-    // ScrollView gives it (which is now exactly the viewport minus
-    // TopNav + 4px content padding, thanks to scrollContent.flexGrow=1).
     width: '100%',
-    // Drop the 1440 cap — caps that small leave page-bg gutters on
-    // 1600+ monitors. Canvas is now full-width inside its parent.
-    alignSelf: 'stretch',
+    maxWidth: CANVAS_MAX_WIDTH,
+    alignSelf: 'center',
     // Transparent fill — earlier 'rgba(255,255,255,0.02)' was picking up
     // the amber bloom and rendering as a faint white wash. Removing it
     // lets the glow read as pure warmth, not glare.
@@ -191,19 +187,16 @@ const styles = StyleSheet.create({
   },
   canvasArea: {
     flex: 1,
-    // Tightened from 18 → 6 horizontal, 8 → 4 top, 18 → 6 bottom so
-    // the property hero (3D Aerial / Street View / etc.) hugs the
-    // outer canvas edges. The big visual is the workspace — chrome
-    // around it should be minimal.
-    marginHorizontal: 6,
-    marginTop: 4,
-    marginBottom: 6,
-    borderRadius: 10,
+    // Zero margins — inner canvas fully fills the space below the
+    // tab bar so the property hero (3D Aerial / Street View / etc.)
+    // has no visible gap between it and the outer canvas edge.
+    margin: 0,
+    // Drop the inner border + radius too — they were the visible
+    // 'second frame' creating the gap effect. The hero owns the
+    // visual now; only the outer canvas defines the edge.
+    borderRadius: 0,
     backgroundColor: 'rgba(0,0,0,0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 0,
     overflow: 'hidden',
-    // No minHeight — canvasArea flexes inside mainZone, which is now
-    // bounded by the flex chain instead of a hard min.
   },
 });

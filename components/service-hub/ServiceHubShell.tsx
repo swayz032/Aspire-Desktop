@@ -58,13 +58,9 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     backgroundColor: Colors.background.primary,
-    // Truly immersive — 4px breathing edge between TopNav and canvas
-    // top, and 4px on the sides so the canvas's amber inner glow has
-    // room to read without bleeding into the TopNav. Zero would clip
-    // the rounded corners against the viewport edge on web.
-    paddingHorizontal: 4,
-    paddingTop: 4,
-    paddingBottom: 4,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
     overflow: 'hidden',
   },
   contentStacked: {
