@@ -16,6 +16,7 @@ export interface BundleItem {
 }
 
 let _bundle: BundleItem[] = [];
+let _boundAddress: string | null = null;
 const _listeners = new Set<(b: BundleItem[]) => void>();
 
 function notify(): void {
@@ -44,7 +45,14 @@ export interface UseMaterialsBundleResult {
   pushToEstimate: () => Promise<void>;
 }
 
-export function useMaterialsBundle(): UseMaterialsBundleResult {
+export function useMaterialsBundle(projectAddress: string = ''): UseMaterialsBundleResult {
+  // Bind the in-memory bundle to a project address. Switching addresses
+  // auto-clears the shadow so no cross-project leakage occurs.
+  if (_boundAddress !== null && _boundAddress !== projectAddress) {
+    _bundle = [];
+  }
+  _boundAddress = projectAddress;
+
   const [bundle, setBundle] = useState<BundleItem[]>(_bundle);
 
   useEffect(() => {
@@ -55,6 +63,15 @@ export function useMaterialsBundle(): UseMaterialsBundleResult {
       _listeners.delete(listener);
     };
   }, []);
+
+  // Reset the bundle when projectAddress changes after first render.
+  useEffect(() => {
+    if (_boundAddress !== projectAddress) {
+      _bundle = [];
+      _boundAddress = projectAddress;
+      notify();
+    }
+  }, [projectAddress]);
 
   const addToBundle = useCallback((product: Product, quantity: number = 1) => {
     const existingIdx = _bundle.findIndex((b) => b.productId === product.id);
@@ -103,8 +120,13 @@ export function useMaterialsBundle(): UseMaterialsBundleResult {
   const pushToEstimate = useCallback(async () => {
     // Pass D will: POST /v1/estimates/drafts with {items, projectAddress}.
     // Pass B: no-op + log so the click handler is real.
-    // eslint-disable-next-line no-console
-    console.info('[materials] pushToEstimate (mock)', _bundle);
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.info(
+        '[materials] pushToEstimate (mock)',
+        _bundle.map((b) => ({ id: b.productId, qty: b.quantity })),
+      );
+    }
   }, []);
 
   return {
@@ -123,5 +145,6 @@ export function useMaterialsBundle(): UseMaterialsBundleResult {
 /** Test seam — clear module state between cases. */
 export function __resetMaterialsBundleForTests(): void {
   _bundle = [];
+  _boundAddress = null;
   _listeners.clear();
 }

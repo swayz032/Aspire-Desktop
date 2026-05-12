@@ -22,7 +22,7 @@
  *   - Law #6: project address consumed via useProjectAddress (tenant-scoped).
  *   - Law #3: empty query → empty state, never fabricated results.
  */
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useProjectAddress } from '@/hooks/useProjectAddress';
@@ -68,7 +68,16 @@ export function MaterialsTab() {
     bundleSupplierCount,
     bundleItemCount,
     pushToEstimate,
-  } = useMaterialsBundle();
+  } = useMaterialsBundle(address);
+
+  // Clear the in-memory bundle when the Materials tab unmounts so it does not
+  // persist past tab navigation. (Pass D will store this in Supabase.)
+  useEffect(() => {
+    return () => {
+      clearBundle();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [compareProduct, setCompareProduct] = useState<Product | null>(null);
   const [routeOpen, setRouteOpen] = useState(false);
