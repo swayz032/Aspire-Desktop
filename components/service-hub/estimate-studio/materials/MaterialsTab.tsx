@@ -371,8 +371,8 @@ const styles = StyleSheet.create({
   filterGroupLabel: {
     fontSize: 9,
     fontWeight: '700',
-    color: 'rgba(255,255,255,0.45)',
-    letterSpacing: 1.1,
+    color: 'rgba(255,255,255,0.62)',
+    letterSpacing: 1.4,
   },
   filterChipRow: {
     flexDirection: 'row',
