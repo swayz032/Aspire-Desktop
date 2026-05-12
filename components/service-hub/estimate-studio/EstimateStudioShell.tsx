@@ -118,9 +118,11 @@ const styles = StyleSheet.create({
   outerCanvas: {
     flex: 1,
     width: '100%',
-    // 'A little less wide' — 1760 → 1640 keeps a presence but pulls
-    // back enough to feel premium rather than poster-sized.
-    maxWidth: 1640,
+    // Slimmer — narrower canvas means the hero (which is width:100%
+    // of its slot) renders at a smaller width, so its natural-aspect
+    // height shrinks proportionally. End result: full images and the
+    // Street View pano fit vertically without the bottom getting cut.
+    maxWidth: 1400,
     alignSelf: 'center',
     // Transparent fill — earlier 'rgba(255,255,255,0.02)' was picking up
     // the amber bloom and rendering as a faint white wash. Removing it
