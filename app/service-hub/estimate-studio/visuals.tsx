@@ -229,6 +229,13 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
     gap: 16,
+    // position:relative so gridSlot can absolute-anchor to the
+    // bottom of the canvas. This guarantees the photo lane is
+    // ALWAYS visible regardless of how tall the hero renders.
+    position: 'relative',
+    // Reserve the photo-lane row at the bottom so the hero never
+    // sits underneath it. 140 (lane height) + 16 (visual gap) = 156.
+    paddingBottom: 156,
   },
   heroSlot: {
     width: '100%',
@@ -250,8 +257,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   gridSlot: {
-    width: '100%',
-    minHeight: 96,
+    // Anchored to the bottom of the container via absolute positioning
+    // so the photo lane ALWAYS renders fully, regardless of how tall
+    // the hero is. Container reserves space via paddingBottom: 156.
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 16,
+    height: 140,
   },
   skeletonRow: {
     height: 96,
