@@ -2,6 +2,13 @@ import React, { useState } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SmsWorkspace } from '@/components/front-desk/SmsWorkspace';
+import { AllWorkspace } from '@/components/front-desk/AllWorkspace';
+import { MissedWorkspace } from '@/components/front-desk/MissedWorkspace';
+import { IncomingWorkspace } from '@/components/front-desk/IncomingWorkspace';
+import { OutgoingWorkspace } from '@/components/front-desk/OutgoingWorkspace';
+import { VoicemailWorkspace } from '@/components/front-desk/VoicemailWorkspace';
+import { ContactsWorkspace } from '@/components/front-desk/ContactsWorkspace';
+import { CallbackQueueWorkspace } from '@/components/front-desk/CallbackQueueWorkspace';
 
 /**
  * InboxRail — unified Front Desk Inbox card (right rail, top).
@@ -120,6 +127,27 @@ function SectionMode({
   // section header is hidden for SMS.
   if (section === 'sms') {
     return <SmsWorkspace onBackToMenu={onBack} />;
+  }
+  if (section === 'all') {
+    return <AllWorkspace onBackToMenu={onBack} />;
+  }
+  if (section === 'missed') {
+    return <MissedWorkspace onBackToMenu={onBack} />;
+  }
+  if (section === 'incoming') {
+    return <IncomingWorkspace onBackToMenu={onBack} />;
+  }
+  if (section === 'outgoing') {
+    return <OutgoingWorkspace onBackToMenu={onBack} />;
+  }
+  if (section === 'voicemail') {
+    return <VoicemailWorkspace onBackToMenu={onBack} />;
+  }
+  if (section === 'contacts') {
+    return <ContactsWorkspace onBackToMenu={onBack} />;
+  }
+  if (section === 'callback_queue') {
+    return <CallbackQueueWorkspace onBackToMenu={onBack} />;
   }
 
   const meta = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
