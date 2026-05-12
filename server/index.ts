@@ -467,7 +467,18 @@ app.use(helmet({
       // /vendor/anam/<version>/index.js (built by scripts/build-anam-sdk.mjs).
       // If any future feature needs esm.sh, prefer self-hosting via the same
       // /vendor pattern instead of widening CSP.
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:", "https://cdn.plaid.com", "https://elevenlabs.io", "https://unpkg.com", "https://cdn.jsdelivr.net", "https://source.zoom.us", "https://zoom.us", "https://*.zoom.us"],
+      scriptSrc: [
+        "'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:",
+        "https://cdn.plaid.com", "https://elevenlabs.io",
+        "https://unpkg.com", "https://cdn.jsdelivr.net",
+        "https://source.zoom.us", "https://zoom.us", "https://*.zoom.us",
+        // Google Maps JS API (Street View, Aerial 3D, Distance Matrix,
+        // Places, Cesium 3D tiles). Without these, the route map +
+        // hero map all fail to load on production with CSP violations.
+        "https://maps.googleapis.com",
+        "https://*.googleapis.com",
+        "https://*.gstatic.com",
+      ],
       styleSrc: ["'self'", "'unsafe-inline'", "https://source.zoom.us", "https://zoom.us", "https://cdn.jsdelivr.net"],
       imgSrc: ["'self'", "data:", "blob:", "https:"],
       connectSrc: [

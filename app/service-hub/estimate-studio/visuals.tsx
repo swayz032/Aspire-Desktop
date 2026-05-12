@@ -36,12 +36,17 @@ import { usePropertyData } from '@/hooks/usePropertyData';
 function useResponsiveSizes() {
   const { width, height } = useWindowDimensions();
   const isTablet = width < 1100;
+  // Laptop = wide enough for rail (>= 1100) but short viewport (< 900).
+  // 13–15" laptops sit here — same width as desktops, but ~720–810 inner
+  // height after browser chrome. Without a separate budget the fixed
+  // hero minHeight + gridSlot height overflow the canvas bottom.
+  const isLaptop = width >= 1100 && height < 900;
   const isShort = height < 800;
   return {
-    heroMinHeight: isTablet ? 260 : isShort ? 320 : 360,
-    gridSlotHeight: isTablet ? 108 : isShort ? 118 : 130,
-    containerPadding: isTablet ? 10 : 16,
-    containerGap: isTablet ? 10 : 16,
+    heroMinHeight: isTablet ? 260 : isLaptop ? 240 : isShort ? 320 : 360,
+    gridSlotHeight: isTablet ? 108 : isLaptop ? 104 : isShort ? 118 : 130,
+    containerPadding: isTablet ? 10 : isLaptop ? 10 : 16,
+    containerGap: isTablet ? 10 : isLaptop ? 10 : 16,
   };
 }
 
