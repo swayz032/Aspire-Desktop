@@ -27,6 +27,13 @@ export const ELEVENLABS_AGENTS: Record<AgentName, string> = {
   finn: process.env.EXPO_PUBLIC_ELEVENLABS_AGENT_FINN || '',
   nora: process.env.EXPO_PUBLIC_ELEVENLABS_AGENT_NORA || '',
   sarah: process.env.EXPO_PUBLIC_ELEVENLABS_AGENT_SARAH || '',
+  // Tiffany Front Desk persona (Pass D, 2026-05-12). Fallback to the
+  // production Tiffany-FrontDesk agent_id so dev environments work even
+  // without the EXPO_PUBLIC_ var wired.
+  tiffany:
+    process.env.EXPO_PUBLIC_ELEVENLABS_AGENT_TIFFANY_FRONTDESK ||
+    process.env.EXPO_PUBLIC_ELEVENLABS_AGENT_TIFFANY ||
+    'agent_3001krdqazc6fg4v85gbvbshzzzd',
 };
 
 /**

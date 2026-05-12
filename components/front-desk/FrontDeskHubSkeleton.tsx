@@ -1,11 +1,16 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Platform, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FrontDeskHeaderStrip } from '@/components/front-desk/FrontDeskHeaderStrip';
 import { DialPadArtwork } from '@/components/front-desk/DialPadArtwork';
 import { InboxRail } from '@/components/front-desk/InboxRail';
 import { TodayFeed } from '@/components/front-desk/TodayFeed';
+import { ErrorState } from '@/components/front-desk/states/ErrorState';
 import { fetchFrontDeskConfig } from '@/lib/api/frontDesk';
+import {
+  useTiffanyVoiceSession,
+  type VoiceSessionState,
+} from '@/hooks/useTiffanyVoiceSession';
 
 const CARD_BG = '#1C1C1E';
 const CARD_BORDER = 'rgba(255,255,255,0.07)';
@@ -88,8 +93,32 @@ function StageVideo({ personaName }: { personaName: string }) {
   );
 }
 
-function StageBlob() {
+function playbackRateForState(state: VoiceSessionState): number {
+  switch (state) {
+    case 'listening':
+      return 1.0;
+    case 'processing':
+      return 1.5;
+    case 'responding':
+      return 1.2;
+    case 'connecting':
+    case 'error':
+    case 'idle':
+    default:
+      return 0.85;
+  }
+}
+
+function StageBlob({ state = 'idle' as VoiceSessionState }: { state?: VoiceSessionState } = {}) {
   const ref = useRef<HTMLVideoElement>(null);
+
+  // React to state changes by adjusting playbackRate on the existing video.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const v = ref.current;
+    if (!v) return;
+    try { v.playbackRate = playbackRateForState(state); } catch {}
+  }, [state]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -98,7 +127,7 @@ function StageBlob() {
     v.muted = true;
     v.loop = false;
     v.playsInline = true;
-    try { v.playbackRate = 0.85; } catch {}
+    try { v.playbackRate = playbackRateForState(state); } catch {}
     v.play().catch(() => {});
 
     const SEEK_LEAD = 0.08;
@@ -163,18 +192,52 @@ function StageBlob() {
   );
 }
 
-function VoiceTapButton() {
+function VoiceTapButton({
+  state,
+  onClick,
+}: {
+  state: VoiceSessionState;
+  onClick: () => void;
+}) {
   if (Platform.OS !== 'web') {
     return (
-      <View style={voiceBtnStyles.nativeFallback}>
-        <Ionicons name="mic" size={24} color="#fff" />
-      </View>
+      <Pressable
+        accessibilityLabel="Voice tap — start or end session"
+        accessibilityRole="button"
+        onPress={onClick}
+        style={voiceBtnStyles.nativeFallback}
+      >
+        <Ionicons name={state === 'idle' || state === 'error' ? 'mic' : 'stop'} size={24} color="#fff" />
+      </Pressable>
     );
   }
+
+  const isActive =
+    state === 'connecting' ||
+    state === 'listening' ||
+    state === 'processing' ||
+    state === 'responding';
+
+  const activeBg =
+    'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)';
+  const idleBg =
+    'linear-gradient(135deg, #EF4444 0%, #DC2626 30%, #7C3AED 50%, #3B82F6 70%, #2563EB 100%)';
+  const errorBg =
+    'linear-gradient(135deg, #EF4444 0%, #B91C1C 70%, #7C3AED 100%)';
+
+  const bg = isActive ? activeBg : state === 'error' ? errorBg : idleBg;
+  const iconName: keyof typeof Ionicons.glyphMap = isActive ? 'stop' : 'mic';
+  const ariaLabel = isActive
+    ? 'End voice session with Tiffany'
+    : state === 'error'
+      ? 'Retry voice session with Tiffany'
+      : 'Start voice session with Tiffany';
+
   return (
     <button
       type="button"
-      aria-label="Voice tap — start or end session"
+      aria-label={ariaLabel}
+      onClick={onClick}
       style={{
         width: 72,
         height: 72,
@@ -184,11 +247,7 @@ function VoiceTapButton() {
         cursor: 'pointer',
         position: 'relative',
         padding: 0,
-        // Tri-stop conic-ish via linear-gradient at 135deg — red -> Aspire blue -> violet
-        backgroundImage:
-          // Heavy red on top-left, heavy Aspire blue on bottom-right,
-          // violet only as a thin transition smudge at the midpoint.
-          'linear-gradient(135deg, #EF4444 0%, #DC2626 30%, #7C3AED 50%, #3B82F6 70%, #2563EB 100%)',
+        backgroundImage: bg,
         // Neutral depth shadow only — no colored glow / light bleed.
         boxShadow: [
           '0 10px 22px rgba(0,0,0,0.55)',
@@ -196,7 +255,7 @@ function VoiceTapButton() {
           'inset 0 1px 0 rgba(255,255,255,0.25)',
           'inset 0 -2px 6px rgba(0,0,0,0.30)',
         ].join(', '),
-        transition: 'transform 0.15s ease, box-shadow 0.2s ease',
+        transition: 'transform 0.15s ease, box-shadow 0.2s ease, background-image 0.2s ease',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -226,7 +285,126 @@ function VoiceTapButton() {
         (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px) scale(1.04)';
       }}
     >
-      <Ionicons name="mic" size={28} color="#ffffff" />
+      <Ionicons name={iconName} size={28} color="#ffffff" />
+    </button>
+  );
+}
+
+function formatTimer(sec: number): string {
+  const m = Math.floor(sec / 60).toString().padStart(2, '0');
+  const s = (sec % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function LiveTimerChip({ personaName, elapsedSec }: { personaName: string; elapsedSec: number }) {
+  if (Platform.OS !== 'web') {
+    return (
+      <View style={timerChipStyles.native}>
+        <View style={timerChipStyles.dot} />
+        <Text style={timerChipStyles.text}>{`Live with ${personaName} · ${formatTimer(elapsedSec)}`}</Text>
+      </View>
+    );
+  }
+  return (
+    <div
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 8,
+        paddingTop: 6,
+        paddingBottom: 6,
+        paddingLeft: 12,
+        paddingRight: 14,
+        borderRadius: 999,
+        background: 'rgba(10,10,12,0.65)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        boxShadow: '0 6px 18px rgba(0,0,0,0.5)',
+        pointerEvents: 'none',
+      }}
+    >
+      <span
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: 4,
+          background: '#22c55e',
+          boxShadow: '0 0 0 3px rgba(34,197,94,0.18)',
+          animation: 'tiffanyPulse 1.4s ease-in-out infinite',
+          display: 'inline-block',
+        }}
+      />
+      <span
+        style={{
+          fontFamily: 'Inter, system-ui, sans-serif',
+          fontSize: 12,
+          fontWeight: 600,
+          color: 'rgba(255,255,255,0.9)',
+          letterSpacing: 0.1,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {`Live with ${personaName} · ${formatTimer(elapsedSec)}`}
+      </span>
+      <style>{`@keyframes tiffanyPulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.55; transform: scale(0.85); } }`}</style>
+    </div>
+  );
+}
+
+function VerifiedToast({ receiptId, onDismiss }: { receiptId: string; onDismiss: () => void }) {
+  useEffect(() => {
+    const id = setTimeout(onDismiss, 3000);
+    return () => clearTimeout(id);
+  }, [onDismiss]);
+
+  const shortId = receiptId.length > 12 ? `${receiptId.slice(0, 6)}…${receiptId.slice(-4)}` : receiptId;
+
+  if (Platform.OS !== 'web') {
+    return (
+      <Pressable onPress={onDismiss} style={toastStyles.native}>
+        <Ionicons name="checkmark-circle" size={14} color="#22c55e" />
+        <Text style={toastStyles.text}>{`Verified ✓ ${shortId}`}</Text>
+      </Pressable>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onDismiss}
+      aria-label="Dismiss receipt confirmation"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 8,
+        paddingTop: 8,
+        paddingBottom: 8,
+        paddingLeft: 14,
+        paddingRight: 16,
+        borderRadius: 999,
+        background: 'rgba(10,10,12,0.75)',
+        border: '1px solid rgba(255,255,255,0.10)',
+        backdropFilter: 'blur(10px)',
+        WebkitBackdropFilter: 'blur(10px)',
+        boxShadow: '0 10px 28px rgba(0,0,0,0.55)',
+        cursor: 'pointer',
+        animation: 'tiffanyToastIn 0.18s ease-out',
+      }}
+    >
+      <Ionicons name="checkmark-circle" size={14} color="#22c55e" />
+      <span
+        style={{
+          fontFamily: 'Inter, system-ui, sans-serif',
+          fontSize: 12,
+          fontWeight: 600,
+          color: 'rgba(255,255,255,0.92)',
+          letterSpacing: 0.1,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {`Verified ✓ ${shortId}`}
+      </span>
+      <style>{`@keyframes tiffanyToastIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }`}</style>
     </button>
   );
 }
@@ -288,6 +466,46 @@ export function FrontDeskHubSkeleton() {
   // override still wins if the user picks a different persona in Setup.
   const [persona, setPersona] = useState<Persona>('tiffany');
 
+  const voice = useTiffanyVoiceSession();
+  const [toastReceiptId, setToastReceiptId] = useState<string | null>(null);
+
+  // Surface a "Verified ✓ {receipt}" toast whenever a session ends.
+  useEffect(() => {
+    if (voice.lastReceiptId) {
+      setToastReceiptId(voice.lastReceiptId);
+    }
+  }, [voice.lastReceiptId]);
+
+  const sessionActive =
+    voice.state === 'connecting' ||
+    voice.state === 'listening' ||
+    voice.state === 'processing' ||
+    voice.state === 'responding';
+
+  const handleModeChange = useCallback(
+    (next: StageMode) => {
+      if (sessionActive && next === 'video') {
+        // End the live Tiffany voice session before switching to Video.
+        void voice.end();
+      }
+      setMode(next);
+    },
+    [sessionActive, voice],
+  );
+
+  const handleMicTap = useCallback(() => {
+    if (voice.state === 'idle') {
+      void voice.start();
+      return;
+    }
+    if (voice.state === 'error') {
+      void voice.start();
+      return;
+    }
+    // Any active state → end.
+    void voice.end();
+  }, [voice]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -311,16 +529,34 @@ export function FrontDeskHubSkeleton() {
         <View style={styles.mainCol}>
           <View style={[styles.card, styles.stageCard, { flex: 7 }]}>
             <View style={styles.toggleSlot}>
-              <StageToggle mode={mode} personaName={personaName} onChange={setMode} />
+              <StageToggle mode={mode} personaName={personaName} onChange={handleModeChange} />
             </View>
+            {/* Live session timer — centered at the top of the stage. */}
+            {mode === 'voice' && sessionActive ? (
+              <View style={styles.timerSlot} pointerEvents="none">
+                <LiveTimerChip personaName={personaName} elapsedSec={voice.elapsedSec} />
+              </View>
+            ) : null}
             <View style={styles.stageCenter}>
-              {mode === 'voice' ? <StageBlob /> : <StageVideo personaName={personaName} />}
+              {mode === 'voice' ? <StageBlob state={voice.state} /> : <StageVideo personaName={personaName} />}
             </View>
+            {/* Error overlay — only in Voice mode when the session failed. */}
+            {mode === 'voice' && voice.state === 'error' && voice.errorMessage ? (
+              <View style={styles.errorOverlay}>
+                <ErrorState message={voice.errorMessage} onRetry={() => void voice.start()} />
+              </View>
+            ) : null}
             {/* Voice tap mic only shows in Voice mode — Video has its own
                 Connect-to-{persona} CTA centered in the stage. */}
             {mode === 'voice' ? (
               <View style={styles.voiceBtnSlot}>
-                <VoiceTapButton />
+                <VoiceTapButton state={voice.state} onClick={handleMicTap} />
+              </View>
+            ) : null}
+            {/* Verified ✓ toast — bottom-center, auto-dismiss after 3s. */}
+            {toastReceiptId ? (
+              <View style={styles.toastSlot} pointerEvents="box-none">
+                <VerifiedToast receiptId={toastReceiptId} onDismiss={() => setToastReceiptId(null)} />
               </View>
             ) : null}
           </View>
@@ -399,6 +635,78 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  timerSlot: {
+    position: 'absolute',
+    top: 16,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 9,
+  },
+  errorOverlay: {
+    position: 'absolute',
+    inset: 0 as any,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    zIndex: 12,
+  },
+  toastSlot: {
+    position: 'absolute',
+    bottom: 24,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 13,
+  },
+});
+
+const timerChipStyles = StyleSheet.create({
+  native: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(10,10,12,0.65)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#22c55e',
+  },
+  text: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.9)',
+  },
+});
+
+const toastStyles = StyleSheet.create({
+  native: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: 'rgba(10,10,12,0.75)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  text: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.92)',
   },
 });
 

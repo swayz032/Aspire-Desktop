@@ -8097,7 +8097,7 @@ router.post('/api/elevenlabs/agent-session', async (req: Request, res: Response)
         message: 'Agent name is required',
       }));
     }
-    const validAgents = ['ava', 'eli', 'finn', 'nora', 'sarah'];
+    const validAgents = ['ava', 'eli', 'finn', 'nora', 'sarah', 'tiffany'];
     if (!validAgents.includes(agent)) {
       return res.status(400).json(voiceErrorPayload({
         correlationId,
@@ -8120,9 +8120,14 @@ router.post('/api/elevenlabs/agent-session', async (req: Request, res: Response)
       }));
     }
 
-    // Resolve the agent ID from environment variables
+    // Resolve the agent ID from environment variables. Tiffany maps to the
+    // Front Desk variant configured on Railway (Pass D, 2026-05-12) — also
+    // supports the plain ELEVENLABS_AGENT_TIFFANY var for local dev.
     const agentEnvKey = `ELEVENLABS_AGENT_${agent.toUpperCase()}`;
-    const agentId = process.env[agentEnvKey];
+    const agentId =
+      agent === 'tiffany'
+        ? (process.env.ELEVENLABS_AGENT_TIFFANY_FRONTDESK || process.env.ELEVENLABS_AGENT_TIFFANY)
+        : process.env[agentEnvKey];
     if (!agentId) {
       logger.warn(`[AgentSession] ${agentEnvKey} not configured for agent "${agent}"`);
       return res.status(500).json(voiceErrorPayload({
