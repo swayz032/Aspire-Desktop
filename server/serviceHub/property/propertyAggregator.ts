@@ -546,9 +546,15 @@ export async function aggregatePropertyData(
    */
   // Adam reports 'ok' when records were returned, 'partial' when some but
   // not all sources resolved, and 'missing'/'api_failure' when nothing
-  // useful came back. Only cache the first two.
-  const hasUsefulData =
+  // useful came back. ALSO require sqft+yearBuilt to be populated — those
+  // are the load-bearing fields the UI shows. Status='ok' with null sqft
+  // poisoned 2 rows on 2026-05-12 03:21; this belt-and-suspenders check
+  // prevents that exact regression.
+  const statusOk =
     adamResult?.status === 'ok' || adamResult?.status === 'partial';
+  const factsPopulated =
+    facts.sqft != null && facts.yearBuilt != null;
+  const hasUsefulData = statusOk && factsPopulated;
   if (hasUsefulData) {
     await writeCache(ctx.suiteId, cleanAddress, data);
     if (formattedAddress && formattedAddress !== cleanAddress) {
