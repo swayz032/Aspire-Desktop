@@ -206,6 +206,12 @@ export interface FetchSolarRoofAerialOptions {
   /** Radius in metres around coords to request imagery for. Default: 50. */
   radiusMeters?: number;
   timeoutMs?: number;
+  /**
+   * Quality tiers to attempt, in order. First tier returning a valid
+   * rgbUrl wins. Default walks HIGH → MEDIUM → LOW for max quality.
+   * Use ['LOW'] for fast coverage-existence preflights.
+   */
+  qualityTiers?: Array<'HIGH' | 'MEDIUM' | 'LOW'>;
 }
 
 /**
@@ -242,11 +248,15 @@ export async function fetchSolarRoofAerial(
   // available imagery to the user instead of falling all the way back to
   // Street View when ANY Solar tier is present.
   type TierTry = { quality: 'HIGH' | 'MEDIUM' | 'LOW'; pixelSize: string };
-  const tiers: TierTry[] = [
+  const ALL_TIERS: TierTry[] = [
     { quality: 'HIGH',   pixelSize: '0.1' },
     { quality: 'MEDIUM', pixelSize: '0.25' },
     { quality: 'LOW',    pixelSize: '0.5' },
   ];
+  const wanted = opts.qualityTiers && opts.qualityTiers.length > 0
+    ? opts.qualityTiers
+    : (['HIGH', 'MEDIUM', 'LOW'] as const);
+  const tiers: TierTry[] = ALL_TIERS.filter((t) => wanted.includes(t.quality));
 
   for (const tier of tiers) {
     const params = new URLSearchParams();

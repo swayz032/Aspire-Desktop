@@ -462,11 +462,20 @@ export async function aggregatePropertyData(
   // 'ok' for many rural addresses where dataLayers (the actual aerial imagery)
   // has no tiles. Pre-flight the dataLayers endpoint so the client gets an
   // accurate roofImagery flag and never tries to render a 404'd Solar image.
+  // Preflight: only check LOW tier (broadest Solar coverage) so we get a
+  // fast yes/no on aerial availability without walking all 3 tiers
+  // sequentially (which would blow past the 30s client timeout). The
+  // actual /api/property/roof-aerial endpoint walks HIGH→MEDIUM→LOW for
+  // best quality when the user opens the Roof card.
   let solarAerialAvailable = false;
   if (coords && solarResult?.status === 'ok') {
     const aerialProbe = await withTimeout(
-      fetchSolarRoofAerial(coords, { radiusMeters: 50, timeoutMs: 5_000 }),
-      6_000,
+      fetchSolarRoofAerial(coords, {
+        radiusMeters: 50,
+        timeoutMs: 4_000,
+        qualityTiers: ['LOW'],
+      }),
+      5_000,
     );
     solarAerialAvailable = aerialProbe?.status === 'ok';
   }
