@@ -75,7 +75,7 @@ export async function handleRoofAerial(req: Request, res: Response): Promise<voi
   const [aerial, footprint]: [SolarRoofAerial, Awaited<ReturnType<typeof fetchBuildingFootprint>>] =
     await Promise.all([
       fetchSolarRoofAerial({ lat, lng }, { radiusMeters: 50 }),
-      fetchBuildingFootprint({ lat, lng }),
+      fetchBuildingFootprint(lat, lng, rawAddress),
     ]);
 
   if (aerial.status !== 'ok' || !aerial.rgbUrl) {
