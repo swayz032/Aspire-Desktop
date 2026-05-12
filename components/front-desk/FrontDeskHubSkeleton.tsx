@@ -101,7 +101,7 @@ function VoiceTapButton() {
   if (Platform.OS !== 'web') {
     return (
       <View style={voiceBtnStyles.nativeFallback}>
-        <Ionicons name="call" size={24} color="#fff" />
+        <Ionicons name="mic" size={24} color="#fff" />
       </View>
     );
   }
@@ -160,7 +160,7 @@ function VoiceTapButton() {
         (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px) scale(1.04)';
       }}
     >
-      <Ionicons name="call" size={28} color="#ffffff" />
+      <Ionicons name="mic" size={28} color="#ffffff" />
     </button>
   );
 }
