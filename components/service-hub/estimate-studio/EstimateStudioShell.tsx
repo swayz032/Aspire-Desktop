@@ -207,20 +207,26 @@ const styles = StyleSheet.create({
   tabBarSlot: {
     paddingHorizontal: 18,
     paddingTop: 4,
-    paddingBottom: 4,
+    // Crisper hairline under the tab row + above the screen — line
+    // was faded/washed-out before. Amber tint matches the canvas's
+    // ambient glow language.
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(251,191,36,0.18)',
   },
   canvasArea: {
     flex: 1,
-    // Zero margins — inner canvas fully fills the space below the
-    // tab bar so the property hero (3D Aerial / Street View / etc.)
-    // has no visible gap between it and the outer canvas edge.
     margin: 0,
-    // Drop the inner border + radius too — they were the visible
-    // 'second frame' creating the gap effect. The hero owns the
-    // visual now; only the outer canvas defines the edge.
     borderRadius: 0,
     backgroundColor: 'rgba(0,0,0,0.18)',
-    borderWidth: 0,
+    // Top hairline mirrors the tab-row line on the screen side so the
+    // separator reads as ONE crisp gold-tinted divider instead of a
+    // washed-out edge.
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(251,191,36,0.10)',
+    borderLeftWidth: 0,
+    borderRightWidth: 0,
+    borderBottomWidth: 0,
     overflow: 'hidden',
   },
 });
