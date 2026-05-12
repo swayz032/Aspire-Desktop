@@ -21,6 +21,36 @@ import { LoadingSkeleton } from '@/components/front-desk/states/LoadingSkeleton'
 import { EmptyState } from '@/components/front-desk/states/EmptyState';
 import { ErrorState } from '@/components/front-desk/states/ErrorState';
 import { UnknownAvatar } from '@/components/front-desk/states/UnknownAvatar';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { useTenant } from '@/providers/TenantProvider';
+import { fetchInboxWindow } from '@/lib/api/frontDesk';
+import type { BackendInboxItem } from '@/lib/api/frontDeskAdapters';
+import { formatPhoneNumber, extractInitials, hashStringToColor } from '@/lib/formatters';
+
+/** Local mapper: unified inbox item (type='voicemail') → VoicemailVM.
+ * The merged feed endpoint does not include transcript/duration_seconds, so
+ * those VM fields fall back to safe defaults (preview drives display). */
+function inboxItemToVoicemail(b: BackendInboxItem): VoicemailVM {
+  const phone = b.phone ?? '';
+  const formatted = phone ? formatPhoneNumber(phone) : '';
+  const hasName = !!b.name && b.name !== 'Unknown' && b.name.trim() !== '';
+  const kind: 'known' | 'unknown' = hasName ? 'known' : 'unknown';
+  const name = hasName ? (b.name as string) : 'Unknown';
+  const preview = b.preview ?? '';
+  return {
+    id: b.id,
+    kind,
+    name,
+    initials: hasName ? extractInitials(name) : '??',
+    avatarColor: hasName ? hashStringToColor(name) : '#6B7280',
+    phone: formatted,
+    duration: b.meta ?? '',
+    time: b.time ?? '',
+    preview: preview || 'No transcript available',
+    transcript: preview,
+    unread: true,
+  };
+}
 
 /**
  * VoicemailWorkspace — list of voicemails with a mocked audio player.
@@ -38,7 +68,21 @@ export function VoicemailWorkspace({ onBackToMenu }: { onBackToMenu?: () => void
     ensureInvisibleScrollCss();
   }, []);
 
-  const fetcher = useCallback(() => Promise.resolve(MOCK_VOICEMAILS), []);
+  const { authenticatedFetch } = useAuthFetch();
+  const { tenant } = useTenant();
+  const officeId = tenant?.officeId ?? '';
+
+  const isMockMode =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('mock') === '1';
+
+  const fetcher = useCallback(async (): Promise<VoicemailVM[]> => {
+    if (isMockMode || !officeId) return MOCK_VOICEMAILS;
+    const resp = await fetchInboxWindow({ authenticatedFetch, officeId, sinceDays: 30 });
+    return (resp.items ?? [])
+      .filter((b) => b.type === 'voicemail')
+      .map(inboxItemToVoicemail);
+  }, [authenticatedFetch, officeId, isMockMode]);
   const { data, loading, error, refresh } = useFrontDeskSection<VoicemailVM>(fetcher, {
     mock: MOCK_VOICEMAILS,
   });

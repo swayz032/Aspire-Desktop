@@ -21,6 +21,31 @@ import { ErrorState } from '@/components/front-desk/states/ErrorState';
 import { UnknownAvatar } from '@/components/front-desk/states/UnknownAvatar';
 import { callBack, addToContacts } from '@/lib/actions/frontDeskActions';
 import { useAction } from '@/hooks/useAction';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { useTenant } from '@/providers/TenantProvider';
+import { fetchInboxWindow } from '@/lib/api/frontDesk';
+import type { BackendInboxItem } from '@/lib/api/frontDeskAdapters';
+import { formatPhoneNumber, extractInitials, hashStringToColor } from '@/lib/formatters';
+
+/** Local mapper: unified inbox item (type='missed_call') → MissedCallVM.
+ * Merged feed does not include call duration_seconds; `attempted` falls back
+ * to the `meta` field (e.g. "rang 28s") if provided, otherwise empty. */
+function inboxItemToMissed(b: BackendInboxItem): MissedCallVM {
+  const phone = b.phone ?? '';
+  const hasName = !!b.name && b.name !== 'Unknown' && b.name.trim() !== '';
+  const name = hasName ? (b.name as string) : 'Unknown';
+  return {
+    id: b.id,
+    kind: hasName ? 'known' : 'unknown',
+    name,
+    initials: hasName ? extractInitials(name) : '??',
+    avatarColor: hasName ? hashStringToColor(name) : '#6B7280',
+    phone: phone ? formatPhoneNumber(phone) : '',
+    attempted: b.meta ?? '',
+    time: b.time ?? '',
+    transcript: b.preview || undefined,
+  };
+}
 
 /**
  * MissedWorkspace — list of missed calls.
@@ -38,10 +63,21 @@ export function MissedWorkspace({ onBackToMenu }: { onBackToMenu?: () => void })
     ensureInvisibleScrollCss();
   }, []);
 
-  // Stable fetcher reference — returns the mock fixture in lieu of a real backend.
-  // useFrontDeskSection short-circuits to opts.mock when ?mock=1, but we still
-  // need a fetcher to satisfy the signature for the non-mock path.
-  const fetcher = useCallback(() => Promise.resolve(MOCK_MISSED_CALLS), []);
+  const { authenticatedFetch } = useAuthFetch();
+  const { tenant } = useTenant();
+  const officeId = tenant?.officeId ?? '';
+
+  const isMockMode =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('mock') === '1';
+
+  const fetcher = useCallback(async (): Promise<MissedCallVM[]> => {
+    if (isMockMode || !officeId) return MOCK_MISSED_CALLS;
+    const resp = await fetchInboxWindow({ authenticatedFetch, officeId, sinceDays: 30 });
+    return (resp.items ?? [])
+      .filter((b) => b.type === 'missed_call')
+      .map(inboxItemToMissed);
+  }, [authenticatedFetch, officeId, isMockMode]);
   const { data, loading, error, refresh } = useFrontDeskSection<MissedCallVM>(fetcher, {
     mock: MOCK_MISSED_CALLS,
   });

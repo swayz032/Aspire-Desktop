@@ -19,6 +19,10 @@ import { LoadingSkeleton } from '@/components/front-desk/states/LoadingSkeleton'
 import { EmptyState } from '@/components/front-desk/states/EmptyState';
 import { ErrorState } from '@/components/front-desk/states/ErrorState';
 import { UnknownAvatar } from '@/components/front-desk/states/UnknownAvatar';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { useTenant } from '@/providers/TenantProvider';
+import { fetchCallbacks } from '@/lib/api/frontDesk';
+import { mapToCallback } from '@/lib/api/frontDeskAdapters';
 
 /**
  * CallbackQueueWorkspace — bucket-grouped callback list (Due Today /
@@ -48,7 +52,31 @@ export function CallbackQueueWorkspace({ onBackToMenu }: { onBackToMenu?: () => 
     ensureInvisibleScrollCss();
   }, []);
 
-  const fetcher = useCallback(() => Promise.resolve(MOCK_CALLBACKS), []);
+  const { authenticatedFetch } = useAuthFetch();
+  const { tenant } = useTenant();
+  const officeId = tenant?.officeId ?? '';
+
+  const isMockMode =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('mock') === '1';
+
+  const fetcher = useCallback(async (): Promise<CallbackVM[]> => {
+    if (isMockMode || !officeId) return MOCK_CALLBACKS;
+    const resp = await fetchCallbacks({ authenticatedFetch, officeId, bucket: 'all' });
+    return (resp.callbacks ?? []).map((c) =>
+      // Bridge: /api/callbacks returns `promise_time`/`bucket` optional;
+      // mapToCallback's BackendCallback type requires both. Fill safe defaults.
+      mapToCallback({
+        id: c.id,
+        phone: c.phone,
+        name: c.name ?? null,
+        bucket: c.bucket ?? 'scheduled',
+        promise_time: c.promise_time ?? '',
+        due_label: c.due_label ?? undefined,
+        context: c.context ?? undefined,
+      }),
+    );
+  }, [authenticatedFetch, officeId, isMockMode]);
   const { data, loading, error, refresh } = useFrontDeskSection<CallbackVM>(fetcher, {
     mock: MOCK_CALLBACKS,
   });

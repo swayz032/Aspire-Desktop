@@ -21,6 +21,30 @@ import { LoadingSkeleton } from '@/components/front-desk/states/LoadingSkeleton'
 import { EmptyState } from '@/components/front-desk/states/EmptyState';
 import { ErrorState } from '@/components/front-desk/states/ErrorState';
 import { UnknownAvatar } from '@/components/front-desk/states/UnknownAvatar';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { useTenant } from '@/providers/TenantProvider';
+import { fetchInboxWindow } from '@/lib/api/frontDesk';
+import type { BackendInboxItem } from '@/lib/api/frontDeskAdapters';
+import { formatPhoneNumber, extractInitials, hashStringToColor } from '@/lib/formatters';
+
+/** Local mapper: unified inbox item (type='outgoing_call') → OutgoingCallVM.
+ * Merged feed does not surface transcript segments — defaults to []. */
+function inboxItemToOutgoing(b: BackendInboxItem): OutgoingCallVM {
+  const phone = b.phone ?? '';
+  const hasName = !!b.name && b.name !== 'Unknown' && b.name.trim() !== '';
+  const name = hasName ? (b.name as string) : 'Unknown';
+  return {
+    id: b.id,
+    kind: hasName ? 'known' : 'unknown',
+    name,
+    initials: hasName ? extractInitials(name) : '??',
+    avatarColor: hasName ? hashStringToColor(name) : '#6B7280',
+    phone: phone ? formatPhoneNumber(phone) : '',
+    duration: b.meta ?? '',
+    time: b.time ?? '',
+    transcript: [],
+  };
+}
 
 /**
  * OutgoingWorkspace — list of outbound calls placed from the dial pad
@@ -35,7 +59,21 @@ export function OutgoingWorkspace({ onBackToMenu }: { onBackToMenu?: () => void 
     ensureInvisibleScrollCss();
   }, []);
 
-  const fetcher = useCallback(() => Promise.resolve(MOCK_OUTGOING_CALLS), []);
+  const { authenticatedFetch } = useAuthFetch();
+  const { tenant } = useTenant();
+  const officeId = tenant?.officeId ?? '';
+
+  const isMockMode =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('mock') === '1';
+
+  const fetcher = useCallback(async (): Promise<OutgoingCallVM[]> => {
+    if (isMockMode || !officeId) return MOCK_OUTGOING_CALLS;
+    const resp = await fetchInboxWindow({ authenticatedFetch, officeId, sinceDays: 30 });
+    return (resp.items ?? [])
+      .filter((b) => b.type === 'outgoing_call')
+      .map(inboxItemToOutgoing);
+  }, [authenticatedFetch, officeId, isMockMode]);
   const { data, loading, error, refresh } = useFrontDeskSection<OutgoingCallVM>(fetcher, {
     mock: MOCK_OUTGOING_CALLS,
   });

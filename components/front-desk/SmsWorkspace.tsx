@@ -4,13 +4,86 @@ import { Ionicons } from '@expo/vector-icons';
 import { ensureInvisibleScrollCss, Avatar } from '@/components/front-desk/inboxShared';
 import { sendSms, sendNewSms, callBack } from '@/lib/actions/frontDeskActions';
 import { useAction } from '@/hooks/useAction';
-import type { SmsThreadVM } from '@/components/front-desk/types';
+import type { SmsThreadVM, SmsMessageVM } from '@/components/front-desk/types';
 import { MOCK_SMS_THREADS } from '@/lib/frontDeskMock';
 import { useFrontDeskSection } from '@/hooks/useFrontDeskSection';
 import { LoadingSkeleton } from '@/components/front-desk/states/LoadingSkeleton';
 import { EmptyState } from '@/components/front-desk/states/EmptyState';
 import { ErrorState } from '@/components/front-desk/states/ErrorState';
 import { UnknownAvatar } from '@/components/front-desk/states/UnknownAvatar';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { useTenant } from '@/providers/TenantProvider';
+import { fetchInboxWindow } from '@/lib/api/frontDesk';
+import type { BackendInboxItem } from '@/lib/api/frontDeskAdapters';
+import { formatPhoneNumber, extractInitials, hashStringToColor } from '@/lib/formatters';
+
+/**
+ * Group a flat list of SMS inbox items into per-phone threads.
+ * The unified `/api/front-desk/inbox` feed returns individual messages
+ * (type='sms'); the SMS workspace expects threads. We bucket by E.164
+ * phone, keep the most recent message as the thread preview, and order
+ * threads/bubbles by created_at DESC / ASC respectively.
+ */
+function groupSmsItemsIntoThreads(items: BackendInboxItem[]): SmsThreadVM[] {
+  // Group items by phone (keep raw inbox items so we can sort by created_at).
+  const byPhone = new Map<string, BackendInboxItem[]>();
+  for (const b of items) {
+    if (b.type !== 'sms') continue;
+    const key = b.phone || '__unknown__';
+    const bucket = byPhone.get(key) ?? [];
+    bucket.push(b);
+    byPhone.set(key, bucket);
+  }
+
+  const threads: SmsThreadVM[] = [];
+  for (const [phone, msgs] of byPhone) {
+    // Sort messages ASC by created_at (oldest first) for bubble display.
+    const sorted = [...msgs].sort((a, b) => {
+      const ta = a.created_at ? Date.parse(a.created_at) : 0;
+      const tb = b.created_at ? Date.parse(b.created_at) : 0;
+      return ta - tb;
+    });
+    const latest = sorted[sorted.length - 1];
+    const hasName = !!latest.name && latest.name !== 'Unknown' && latest.name.trim() !== '';
+    const name = hasName ? (latest.name as string) : 'Unknown';
+    const kind: 'known' | 'unknown' = hasName ? 'known' : 'unknown';
+    const bubbles: SmsMessageVM[] = sorted.map((m) => {
+      // meta carries direction marker when available ("inbound"/"outbound");
+      // fall back to "them" so a missing field never claims to be the user.
+      const side: 'them' | 'you' = m.meta === 'outbound' ? 'you' : 'them';
+      return {
+        id: m.id,
+        side,
+        text: m.preview ?? '',
+        time: m.time ?? '',
+        read: false,
+      };
+    });
+    threads.push({
+      id: phone,
+      kind,
+      name,
+      initials: hasName ? extractInitials(name) : '??',
+      avatarColor: hasName ? hashStringToColor(name) : '#6B7280',
+      phone: phone ? formatPhoneNumber(phone) : '',
+      preview: latest.preview ?? '',
+      time: latest.time ?? '',
+      unread: false,
+      bubbles,
+    });
+  }
+
+  // Sort threads by latest-message time DESC.
+  threads.sort((a, b) => {
+    const aLatest = byPhone.get(a.id)?.slice(-1)[0];
+    const bLatest = byPhone.get(b.id)?.slice(-1)[0];
+    const ta = aLatest?.created_at ? Date.parse(aLatest.created_at) : 0;
+    const tb = bLatest?.created_at ? Date.parse(bLatest.created_at) : 0;
+    return tb - ta;
+  });
+
+  return threads;
+}
 
 /**
  * SmsWorkspace — SMS section content for the Inbox Rail.
@@ -62,7 +135,19 @@ export function SmsWorkspace({
     }
   }, [prefillTo]);
 
-  const fetcher = useCallback(() => Promise.resolve(MOCK_SMS_THREADS), []);
+  const { authenticatedFetch } = useAuthFetch();
+  const { tenant } = useTenant();
+  const officeId = tenant?.officeId ?? '';
+
+  const isMockMode =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('mock') === '1';
+
+  const fetcher = useCallback(async (): Promise<Thread[]> => {
+    if (isMockMode || !officeId) return MOCK_SMS_THREADS;
+    const resp = await fetchInboxWindow({ authenticatedFetch, officeId, sinceDays: 30 });
+    return groupSmsItemsIntoThreads(resp.items ?? []);
+  }, [authenticatedFetch, officeId, isMockMode]);
   const { data, loading, error, refresh } = useFrontDeskSection<Thread>(fetcher, {
     mock: MOCK_SMS_THREADS,
   });

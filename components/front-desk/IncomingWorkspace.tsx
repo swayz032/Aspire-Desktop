@@ -21,6 +21,33 @@ import { LoadingSkeleton } from '@/components/front-desk/states/LoadingSkeleton'
 import { EmptyState } from '@/components/front-desk/states/EmptyState';
 import { ErrorState } from '@/components/front-desk/states/ErrorState';
 import { UnknownAvatar } from '@/components/front-desk/states/UnknownAvatar';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { useTenant } from '@/providers/TenantProvider';
+import { fetchInboxWindow } from '@/lib/api/frontDesk';
+import type { BackendInboxItem } from '@/lib/api/frontDeskAdapters';
+import { formatPhoneNumber, extractInitials, hashStringToColor } from '@/lib/formatters';
+
+/** Local mapper: unified inbox item (type='incoming_call') → IncomingCallVM.
+ * Merged feed does not surface AI summary lines or transcript segments —
+ * those VM fields default to empty arrays. The detail view degrades
+ * gracefully (renders zero rows) until per-call detail endpoints land. */
+function inboxItemToIncoming(b: BackendInboxItem): IncomingCallVM {
+  const phone = b.phone ?? '';
+  const hasName = !!b.name && b.name !== 'Unknown' && b.name.trim() !== '';
+  const name = hasName ? (b.name as string) : 'Unknown';
+  return {
+    id: b.id,
+    kind: hasName ? 'known' : 'unknown',
+    name,
+    initials: hasName ? extractInitials(name) : '??',
+    avatarColor: hasName ? hashStringToColor(name) : '#6B7280',
+    phone: phone ? formatPhoneNumber(phone) : '',
+    duration: b.meta ?? '',
+    time: b.time ?? '',
+    summary: b.preview ? [b.preview] : [],
+    transcript: [],
+  };
+}
 
 /**
  * IncomingWorkspace — list of inbound answered calls.
@@ -35,7 +62,21 @@ export function IncomingWorkspace({ onBackToMenu }: { onBackToMenu?: () => void 
     ensureInvisibleScrollCss();
   }, []);
 
-  const fetcher = useCallback(() => Promise.resolve(MOCK_INCOMING_CALLS), []);
+  const { authenticatedFetch } = useAuthFetch();
+  const { tenant } = useTenant();
+  const officeId = tenant?.officeId ?? '';
+
+  const isMockMode =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('mock') === '1';
+
+  const fetcher = useCallback(async (): Promise<IncomingCallVM[]> => {
+    if (isMockMode || !officeId) return MOCK_INCOMING_CALLS;
+    const resp = await fetchInboxWindow({ authenticatedFetch, officeId, sinceDays: 30 });
+    return (resp.items ?? [])
+      .filter((b) => b.type === 'incoming_call')
+      .map(inboxItemToIncoming);
+  }, [authenticatedFetch, officeId, isMockMode]);
   const { data, loading, error, refresh } = useFrontDeskSection<IncomingCallVM>(fetcher, {
     mock: MOCK_INCOMING_CALLS,
   });

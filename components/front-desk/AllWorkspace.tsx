@@ -18,6 +18,10 @@ import { LoadingSkeleton } from '@/components/front-desk/states/LoadingSkeleton'
 import { EmptyState } from '@/components/front-desk/states/EmptyState';
 import { ErrorState } from '@/components/front-desk/states/ErrorState';
 import { UnknownAvatar } from '@/components/front-desk/states/UnknownAvatar';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { useTenant } from '@/providers/TenantProvider';
+import { fetchInboxWindow } from '@/lib/api/frontDesk';
+import { mapToActivityEvent } from '@/lib/api/frontDeskAdapters';
 
 /**
  * AllWorkspace — chronological mixed feed of every event type.
@@ -41,7 +45,19 @@ export function AllWorkspace({ onBackToMenu }: { onBackToMenu?: () => void }) {
     ensureInvisibleScrollCss();
   }, []);
 
-  const fetcher = useCallback(() => Promise.resolve(MOCK_ACTIVITY_EVENTS), []);
+  const { authenticatedFetch } = useAuthFetch();
+  const { tenant } = useTenant();
+  const officeId = tenant?.officeId ?? '';
+
+  const isMockMode =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('mock') === '1';
+
+  const fetcher = useCallback(async (): Promise<ActivityEventVM[]> => {
+    if (isMockMode || !officeId) return MOCK_ACTIVITY_EVENTS;
+    const resp = await fetchInboxWindow({ authenticatedFetch, officeId, sinceDays: 7 });
+    return (resp.items ?? []).map(mapToActivityEvent);
+  }, [authenticatedFetch, officeId, isMockMode]);
   const { data, loading, error, refresh } = useFrontDeskSection<ActivityEventVM>(fetcher, {
     mock: MOCK_ACTIVITY_EVENTS,
   });
