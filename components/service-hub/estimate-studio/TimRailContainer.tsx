@@ -35,8 +35,16 @@ export function TimRailContainer() {
         )}
         {activeTab === 'activity' && <ActivityPlaceholder />}
       </View>
-      <TimRailFileDrop />
-      <TimRailVoiceButton />
+      {/* File drop + voice composer belong to the Assistant tab only.
+          Showing them on Context / Activity (a) was off-spec and
+          (b) squeezed the Context body so PROPERTY FACTS got clipped
+          at the bottom. */}
+      {activeTab === 'assistant' && (
+        <>
+          <TimRailFileDrop />
+          <TimRailVoiceButton />
+        </>
+      )}
     </View>
   );
 }
