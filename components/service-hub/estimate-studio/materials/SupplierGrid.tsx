@@ -13,11 +13,12 @@
  *   - Empty:   dashed-border premium message with subtle storefront icon.
  *   - Loaded:  grid of SupplierCard.
  */
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
+  Pressable,
   useWindowDimensions,
   Platform,
   Animated,
@@ -36,6 +37,9 @@ interface Props {
 }
 
 const GAP = 12;
+// Founder direction 2026-05-13: 6 cards per page — premium density beats
+// a long endless scroll. Backend returns up to 10; we show 6 + "Show more".
+const PAGE_SIZE = 6;
 
 function colsForWidth(w: number): number {
   if (w >= 768) return 2;
@@ -55,8 +59,9 @@ export function SupplierGrid({ suppliers, isLoading, onDraftRfq }: Props) {
   const { width } = useWindowDimensions();
   const cols = colsForWidth(width);
   const basis = basisFor(cols);
+  const [showAll, setShowAll] = useState(false);
 
-  // Loading skeleton: 4 placeholder cards
+  // Loading skeleton: 6 placeholder cards (matches new PAGE_SIZE)
   if (isLoading || suppliers === null) {
     return <SupplierGridSkeleton cols={cols} basis={basis} />;
   }
@@ -78,13 +83,30 @@ export function SupplierGrid({ suppliers, isLoading, onDraftRfq }: Props) {
     );
   }
 
+  const visible = showAll ? suppliers : suppliers.slice(0, PAGE_SIZE);
+  const remaining = Math.max(0, suppliers.length - PAGE_SIZE);
+
   return (
-    <View style={styles.grid} testID="materials-supplier-grid">
-      {suppliers.map((s) => (
-        <View key={s.id} style={[styles.cell, { flexBasis: basis }]}>
-          <SupplierCard supplier={s} onDraftRfq={onDraftRfq} />
-        </View>
-      ))}
+    <View testID="materials-supplier-grid">
+      <View style={styles.grid}>
+        {visible.map((s) => (
+          <View key={s.id} style={[styles.cell, { flexBasis: basis }]}>
+            <SupplierCard supplier={s} onDraftRfq={onDraftRfq} />
+          </View>
+        ))}
+      </View>
+
+      {!showAll && remaining > 0 && (
+        <Pressable
+          onPress={() => setShowAll(true)}
+          style={({ hovered }: any) => [styles.showMore, hovered && styles.showMoreHover]}
+          accessibilityRole="button"
+          accessibilityLabel={`Show ${remaining} more suppliers`}
+        >
+          <Text style={styles.showMoreText}>Show {remaining} more</Text>
+          <Ionicons name="chevron-down" size={12} color="rgba(251,191,36,0.85)" />
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -126,7 +148,7 @@ function SupplierGridSkeleton({ cols: _cols, basis }: SkeletonProps) {
 
   return (
     <View style={styles.grid} testID="materials-supplier-grid-skeleton">
-      {[0, 1, 2, 3].map((i) => (
+      {[0, 1, 2, 3, 4, 5].map((i) => (
         <View key={i} style={[styles.cell, { flexBasis: basis }]}>
           <View style={styles.skelCard}>
             <View style={styles.skelTopRow}>
@@ -267,5 +289,33 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: 8,
     backgroundColor: 'rgba(251,191,36,0.18)',
+  },
+
+  // Show-more affordance — premium pill, not a banner.
+  showMore: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.30)',
+    ...(Platform.OS === 'web'
+      ? (({ transition: 'all 180ms ease' } as unknown) as ViewStyle)
+      : {}),
+  },
+  showMoreHover: {
+    backgroundColor: 'rgba(251,191,36,0.06)',
+    borderColor: 'rgba(251,191,36,0.55)',
+  },
+  showMoreText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: 'rgba(251,191,36,0.92)',
+    letterSpacing: 0.3,
   },
 });

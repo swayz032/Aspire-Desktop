@@ -170,6 +170,8 @@ export interface BackendSupplier {
   phone?: string;
   email?: string;
   website?: string;
+  /** Yelp CDN thumbnail URL — surfaces as the supplier card photo. */
+  thumbnail?: string;
   distance_miles?: number;
   drive_minutes?: number;
   rating?: number;
@@ -350,6 +352,7 @@ function _mapSupplierFull(
     phone: s.phone,
     email: s.email,
     website: s.website,
+    thumbnail: s.thumbnail,
     distanceMiles: s.distance_miles ?? 0,
     driveMinutes: s.drive_minutes ?? 0,
     rating: s.rating,

@@ -112,6 +112,8 @@ export interface Supplier {
   phone?: string;
   email?: string;
   website?: string;
+  /** Yelp CDN thumbnail URL (public photo). Rendered at the top of the card. */
+  thumbnail?: string;
   distanceMiles: number;
   driveMinutes: number;
   /** 0-5 rating */
