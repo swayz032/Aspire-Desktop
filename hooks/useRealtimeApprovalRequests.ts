@@ -124,10 +124,14 @@ function rowToAuthorityItem(row: Record<string, unknown>): AuthorityItem {
   const payloadRedacted = row.payload_redacted as Record<string, unknown> | undefined;
   const execPayload = row.execution_payload as Record<string, unknown> | undefined;
   const hostedInvoiceUrl = (payloadRedacted?.hosted_invoice_url as string) || undefined;
-  // invoice_pdf is the raw PDF URL — used by DocumentPreviewModal to iframe
-  // the actual invoice inline. hostedInvoiceUrl is the payment landing page,
-  // which we keep as the "Open in Stripe" external action target.
-  const invoicePdfUrl = (payloadRedacted?.invoice_pdf as string) || undefined;
+  // invoice_pdf is the raw Stripe PDF URL but it sets X-Frame-Options: DENY,
+  // so we can't iframe it directly. Use our same-origin proxy endpoint
+  // instead, which fetches the PDF server-side and re-serves with SAMEORIGIN.
+  // Falls back to undefined if no stripe_invoice_id is captured.
+  const stripeInvoiceId = (payloadRedacted?.stripe_invoice_id as string) || (execPayload?.stripe_invoice_id as string) || undefined;
+  const invoicePdfUrl = stripeInvoiceId
+    ? `/api/stripe/invoices/${encodeURIComponent(stripeInvoiceId)}/pdf`
+    : undefined;
 
   const itemType = detectItemType(tool, operation);
   const customerName = (execPayload?.customer_name as string) || undefined;

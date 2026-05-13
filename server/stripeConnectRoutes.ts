@@ -580,6 +580,35 @@ router.post('/api/stripe/quotes/:id/cancel', async (req: Request, res: Response)
   }
 });
 
+// PDF preview proxy — Stripe's invoice_pdf URL sets X-Frame-Options: DENY,
+// so it can't be iframed directly in the approval queue's preview modal.
+// This endpoint fetches the PDF server-side and re-serves it with
+// frame-friendly headers (same-origin only via SAMEORIGIN).
+router.get('/api/stripe/invoices/:id/pdf', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const invoice = await stripe.invoices.retrieve(id);
+    const pdfUrl = invoice.invoice_pdf;
+    if (!pdfUrl) {
+      return res.status(404).json({ error: 'NO_PDF', message: 'Invoice has no PDF URL yet' });
+    }
+    const pdfResp = await fetch(pdfUrl);
+    if (!pdfResp.ok) {
+      logger.warn('Stripe invoice PDF fetch failed', { id, status: pdfResp.status });
+      return res.status(502).json({ error: 'PDF_FETCH_FAILED', status: pdfResp.status });
+    }
+    const buf = Buffer.from(await pdfResp.arrayBuffer());
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="invoice-${id}.pdf"`);
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Cache-Control', 'private, max-age=60');
+    res.send(buf);
+  } catch (error: unknown) {
+    logger.error('Stripe invoice PDF proxy error', { error: error instanceof Error ? error.message : 'unknown' });
+    res.status(500).json({ error: 'PDF_PROXY_FAILED' });
+  }
+});
+
 router.get('/api/stripe/quotes/:id/pdf', async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;

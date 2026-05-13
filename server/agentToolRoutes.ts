@@ -615,11 +615,35 @@ function inferLegacyInvokeSyncTarget(body: any): '/v1/tools/context' | '/v1/tool
 }
 
 function normalizeSuiteContext(body: any): { suiteId: string; officeId: string } {
-  const rawSuite = normalizeUuid(body?.suite_id) || normalizeUuid(body?.suiteId);
-  const fallbackSuite = normalizeUuid(getDefaultSuiteId()) || normalizeUuid(process.env.DEFAULT_SUITE_ID);
+  // Detect Anam's literal placeholder strings — the brain echoed the template
+  // syntax instead of substituting at runtime ("{{suiteId}}" reaches us as
+  // the literal text). Treat any value matching that pattern as "missing".
+  const looksLikePlaceholder = (v: any): boolean =>
+    typeof v === 'string' && /^\s*\{\{\s*[A-Za-z0-9_]+\s*\}\}\s*$/.test(v);
+
+  const rawBodySuite = body?.suite_id ?? body?.suiteId;
+  const rawSuite = !looksLikePlaceholder(rawBodySuite)
+    ? (normalizeUuid(rawBodySuite) || '')
+    : '';
+
+  // Founder lock 2026-05-13: ASPIRE_OWNER_SUITE_ID takes precedence over
+  // the startup-default ensure_suite('default-tenant') value, which auto-
+  // creates an orphan tenant the user never owns. Single-tenant mode for
+  // now; switch to per-session lookup when we onboard the second tenant.
+  const fallbackSuite =
+    normalizeUuid(process.env.ASPIRE_OWNER_SUITE_ID) ||
+    normalizeUuid(getDefaultSuiteId()) ||
+    normalizeUuid(process.env.DEFAULT_SUITE_ID);
   const suiteId = rawSuite || fallbackSuite;
-  const rawOffice = normalizeUuid(body?.office_id) || normalizeUuid(body?.officeId);
-  const officeId = rawOffice || suiteId;
+
+  const rawBodyOffice = body?.office_id ?? body?.officeId;
+  const rawOffice = !looksLikePlaceholder(rawBodyOffice)
+    ? (normalizeUuid(rawBodyOffice) || '')
+    : '';
+  const officeId =
+    rawOffice ||
+    normalizeUuid(process.env.ASPIRE_OWNER_OFFICE_ID) ||
+    suiteId;
   // Audit trail for body-supplied suite_ids (THREAT-005). Without per-secret
   // tenant binding (Round 6 work), body suite_id is the dispatch key — log its
   // origin so we can detect cross-tenant abuse if it happens. We log only the
@@ -1407,40 +1431,23 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
   // invocations.
   const correlationId = `corr-invoke-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-  // Founder lock 2026-05-13: state-changing Quinn calls (invoice.create /
-  // quote.create) MUST carry an explicit body suite_id. The startup-default
-  // fallback was silently writing approval rows under an orphan tenant
-  // (DEFAULT_SUITE_ID), which the desktop approve endpoint couldn't match
-  // against the user's authenticated suite — every Approve button errored.
-  // Fail closed here so Anam/EL tool configs are forced to substitute
-  // suite_id from session dynamic_variables. Lookup-shape calls (no task)
-  // and non-Quinn agents may still use the default fallback.
+  // Founder lock 2026-05-13: Anam can't substitute Anam template vars in
+  // tool body params (brain echoes the literal "{{suiteId}}" string). The
+  // earlier MISSING_SUITE_ID hard-fail blocked every Anam invoice. Resolved
+  // at normalizeSuiteContext layer instead: body value used when present
+  // and not a placeholder string; otherwise falls back to
+  // ASPIRE_OWNER_SUITE_ID (single-tenant prod mode), then to the legacy
+  // startup default. Single-tenant for now — re-introduce session-bound
+  // suite_id resolution when the second tenant onboards.
   const bodySuiteRaw = typeof suite_id === 'string' ? suite_id.trim() : '';
-  const isQuinnStateChange =
-    resolvedAgent === 'quinn' &&
-    /^(invoice|quote)$/i.test(normalizedTask || '');
-  if (isQuinnStateChange && !bodySuiteRaw) {
-    logger.error('[AgentTool] invoke rejected — quinn state-change missing body suite_id', {
-      correlation_id: correlationId,
-      agent: resolvedAgent,
-      task: normalizedTask,
-    });
-    return res.status(400).json({
-      success: false,
-      agent: resolvedAgent,
-      error: 'MISSING_SUITE_ID',
-      message:
-        'invoice/quote requests must include suite_id in the request body. ' +
-        'Configure your agent tool to substitute suite_id from the session dynamic_variables.',
-    });
-  }
-
+  const isPlaceholder = /^\s*\{\{\s*[A-Za-z0-9_]+\s*\}\}\s*$/.test(bodySuiteRaw);
   const safeSuiteId =
-    bodySuiteRaw ||
+    (isPlaceholder ? '' : bodySuiteRaw) ||
+    process.env.ASPIRE_OWNER_SUITE_ID ||
     getDefaultSuiteId() ||
     process.env.DEFAULT_SUITE_ID ||
     '';
-  const safeOfficeId = safeSuiteId;
+  const safeOfficeId = process.env.ASPIRE_OWNER_OFFICE_ID || safeSuiteId;
 
   // Helper: emit an early-exit receipt (denial or misconfig failure) so the
   // receipt chain stays complete even when we never call the orchestrator.
