@@ -43,10 +43,6 @@ function useResponsiveSizes() {
   const isLaptop = width >= 1100 && width < 2000;
   const isShort = height < 800;
   return {
-    // Laptop hero floor 240 → 520: with chrome hoisted the canvas has
-    // ~841px to play with (1080 viewport - 96 chrome - 143 photo lane +
-    // gaps). Bumping the hero floor here fills the gray gap user
-    // reported between Street View bottom and the photo cards.
     heroMinHeight: isTablet ? 260 : isLaptop ? 520 : isShort ? 320 : 360,
     gridSlotHeight: isTablet ? 108 : isLaptop ? 140 : isShort ? 118 : 140,
     containerPadding: isTablet ? 10 : isLaptop ? 10 : 16,
@@ -105,7 +101,15 @@ export default function VisualsTab() {
     <View
       style={[
         styles.container,
-        { padding: responsive.containerPadding, gap: responsive.containerGap },
+        {
+          paddingHorizontal: responsive.containerPadding,
+          paddingTop: responsive.containerPadding,
+          // Extra bottom padding (28 vs the 10 base) pulls the photo
+          // lane cards UP off the canvas bottom edge — fixes the cards
+          // being clipped at the bottom (user report 2026-05-13).
+          paddingBottom: responsive.containerPadding + 24,
+          gap: responsive.containerGap,
+        },
       ]}
       testID="estimate-studio-visuals-tab"
     >

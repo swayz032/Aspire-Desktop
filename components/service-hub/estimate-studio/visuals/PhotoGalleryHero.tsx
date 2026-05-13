@@ -164,7 +164,12 @@ export function PhotoGalleryHero({
           // shots into a blurry mess on the 12:5 hero). The dark wrap
           // letterboxes the empty space so the photo always reads as
           // intentional framing, not broken layout.
-          resizeMode="contain"
+          // 'cover' (was 'contain') — fills the heroSlot edge-to-edge so
+          // the photo expands into the empty vertical space below the
+          // image that contain-mode was leaving black. Crops slightly
+          // at top/bottom or sides depending on the source aspect, but
+          // makes the visual feel bigger inside the same screen size.
+          resizeMode="cover"
           accessibilityLabel={current.caption ?? `${title} photo ${index + 1} of ${total}`}
         />
 
