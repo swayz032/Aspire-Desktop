@@ -8221,6 +8221,11 @@ router.post('/api/elevenlabs/agent-session', async (req: Request, res: Response)
 
           dynamicVariables = {
             suite_id: suiteId,
+            // tenant_id == suite_id in this single-tenant-per-suite codebase.
+            // Exposed as its own variable so EL tools that need tenant scope
+            // (e.g. aspire_send_sms) can substitute it without overloading
+            // suite_id semantics.
+            tenant_id: suiteId,
             user_id: (req as any).authenticatedUserId || '',
             owner_name: ownerName,
             first_name: firstName,
@@ -9505,6 +9510,143 @@ for (const subpath of SARAH_TOOL_PATHS) {
     }
   });
 }
+
+// ---------------------------------------------------------------------------
+// Tiffany agent-side tools — /v1/tools/tiffany/*
+// ---------------------------------------------------------------------------
+// Unlike Sarah (inbound caller → tenant resolved from `called_number`),
+// Tiffany is the owner-facing internal Front Desk agent. The conversation
+// is started from the authenticated desktop app, which sets `suite_id`,
+// `office_id`, `tenant_id` as ElevenLabs dynamic_variables in the session
+// payload (see /api/agent-session above).
+//
+// EL substitutes those dynamic_variables into every tool body. So this
+// proxy reads tenant scope from the request body — NOT from headers — then
+// mints a capability token server-side and forwards to the orchestrator's
+// canonical /v1/sms/send-new endpoint. The orchestrator resolves the
+// correct From number from `tenant_phone_numbers` for that office, runs
+// the A2P 10DLC gate, sends via Twilio, and cuts the receipt.
+//
+// Replaces the EL-native `twilio_send_message` tool which bypassed every
+// Aspire governance layer (no receipt, no A2P gate, no tenant scope,
+// platform-wide Twilio token).
+// ---------------------------------------------------------------------------
+
+router.post('/v1/tools/tiffany/send-sms', async (req: Request, res: Response) => {
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr_${crypto.randomUUID()}`;
+  const traceId = (req.headers['x-trace-id'] as string) || correlationId;
+  const elSignature = (req.headers['elevenlabs-signature'] as string | undefined) ?? '';
+
+  const orchestratorUrl = resolveOrchestratorUrl();
+  if (!orchestratorUrl) {
+    return res.status(503).json({ success: false, error: 'ORCHESTRATOR_UNAVAILABLE' });
+  }
+
+  // EL injects suite_id / office_id / tenant_id via dynamic_variables.
+  const body = (req.body && typeof req.body === 'object') ? (req.body as Record<string, unknown>) : {};
+  const suiteId = typeof body.suite_id === 'string' ? body.suite_id.trim() : '';
+  const officeIdRaw = typeof body.office_id === 'string' ? body.office_id.trim() : '';
+  const tenantIdRaw = typeof body.tenant_id === 'string' ? body.tenant_id.trim() : '';
+  const toPhone = typeof body.to_phone === 'string' ? body.to_phone.trim() : '';
+  const msgBody = typeof body.body === 'string' ? body.body : '';
+
+  if (!suiteId || !toPhone || !msgBody) {
+    logger.warn('[TiffanySendSms] missing required fields', {
+      has_suite_id: !!suiteId,
+      has_to_phone: !!toPhone,
+      has_body: !!msgBody,
+    });
+    return res.status(400).json({
+      success: false,
+      error: 'MISSING_FIELDS',
+      message: 'suite_id, to_phone, body required (suite_id is injected via dynamic_variables)',
+    });
+  }
+
+  const officeId = officeIdRaw || suiteId;
+  const tenantId = tenantIdRaw || suiteId;
+  const idempotencyKey = `tiffany_sms_${crypto.randomUUID()}`;
+
+  // Mint capability token for telephony:sms_send (Law #5).
+  if (!resolveSigningKey()) {
+    logger.error('[TiffanySendSms] TOKEN_SIGNING_SECRET unavailable');
+    return res.status(503).json({ success: false, error: 'SIGNING_KEY_UNAVAILABLE' });
+  }
+  const minted = mintCapabilityToken({
+    scope: 'telephony:sms_send',
+    tenant_id: tenantId,
+    suite_id: suiteId,
+    office_id: officeId,
+    correlation_id: correlationId,
+  });
+  if (!minted) {
+    return res.status(503).json({ success: false, error: 'SIGNING_KEY_UNAVAILABLE' });
+  }
+
+  const orchBody = {
+    to_phone: toPhone,
+    body: msgBody,
+    idempotency_key: idempotencyKey,
+    capability_token: minted.token,
+  };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 45_000);
+  try {
+    const orchResp = await fetch(`${orchestratorUrl}/v1/sms/send-new`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Tenant-Id': tenantId,
+        'X-Suite-Id': suiteId,
+        'X-Office-Id': officeId,
+        'X-Actor-Id': `tiffany_agent:${suiteId}`,
+        'X-Correlation-Id': correlationId,
+        'X-Trace-Id': traceId,
+        ...(elSignature ? { 'ElevenLabs-Signature': elSignature } : {}),
+      },
+      body: JSON.stringify(orchBody),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    const text = await orchResp.text();
+    let data: any = null;
+    if (text) {
+      try { data = JSON.parse(text); } catch { data = { error: 'UPSTREAM_NON_JSON', message: text.slice(0, 200) }; }
+    }
+    if (!orchResp.ok) {
+      logger.warn('[TiffanySendSms] orchestrator returned non-2xx', {
+        status: orchResp.status,
+        correlation_id: correlationId,
+      });
+      return res.status(orchResp.status).json({
+        success: false,
+        error: data?.error || 'SEND_FAILED',
+        message: data?.message || data?.detail || 'Send failed',
+      });
+    }
+    logger.info('[TiffanySendSms] sent', { correlation_id: correlationId, suite_id: suiteId });
+    return res.status(200).json({
+      success: true,
+      message_sid: data?.message_sid,
+      receipt_id: data?.receipt_id,
+      thread_memory_id: data?.thread_memory_id,
+    });
+  } catch (err) {
+    clearTimeout(timer);
+    const isTimeout = err instanceof Error && err.name === 'AbortError';
+    logger.error('[TiffanySendSms] proxy_failed', {
+      reason: err instanceof Error ? err.name : 'unknown',
+      is_timeout: isTimeout,
+      correlation_id: correlationId,
+    });
+    return res.status(isTimeout ? 504 : 502).json({
+      success: false,
+      error: isTimeout ? 'ORCHESTRATOR_TIMEOUT' : 'ORCHESTRATOR_UNREACHABLE',
+      correlation_id: correlationId,
+    });
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Pass C: GET /api/v1/materials/search
