@@ -631,6 +631,10 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: Spacing.xxl,
     flexGrow: 1,
+    // Founder lock 2026-05-13: vertically center home content when the
+    // viewport is taller than the content — eliminates the big gap below
+    // the calendar / Today's Plan on tall monitors.
+    justifyContent: 'center',
   },
   grid: {
     flexDirection: 'column',
