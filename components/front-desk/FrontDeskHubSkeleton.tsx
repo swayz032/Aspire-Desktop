@@ -576,11 +576,10 @@ export function FrontDeskHubSkeleton() {
 
   const personaName = PERSONA_DISPLAY[persona];
 
-  // Laptop-only width cap (Pass D 2026-05-12 founder feedback v2):
-  // - Desktop (>=1440px viewport) stretches wider — desktop was already big
-  // - Laptop (1024–1440) caps at 1280 so cards have breathing room
-  // - Below 1024 stays width:100% (rootStack handles single-column)
-  const outerMaxWidth = width >= 1440 ? 1620 : 1280;
+  // Founder lock 2026-05-12 v3: desktop 1440 (was 1620 — too long/stretched).
+  // Laptop stays 1280 so cards have breathing room.
+  // Below 1024 = width 100% (rootStack handles single-column).
+  const outerMaxWidth = width >= 1440 ? 1440 : 1280;
 
   return (
     <FrontDeskProvider personaName={personaName}>
