@@ -9548,8 +9548,21 @@ router.get('/api/v1/materials/search', async (req: Request, res: Response) => {
     return;
   }
 
-  // Build orchestrator URL: forward allowed query params + inject cap token
-  const allowedParams = ['q', 'zip_code', 'store_id', 'include_shopping', 'idempotency_key'];
+  // Build orchestrator URL: forward allowed query params + inject cap token.
+  // `address` and `mode` added 2026-05-12 — without them the proxy silently
+  // dropped the project address + Tool/Supplier mode the frontend sent, and
+  // the backend fell back to default (Austin TX) store / Tool mode. That's
+  // what was making 'no tool found' and 'supplier doesn't search' look like
+  // wiring bugs.
+  const allowedParams = [
+    'q',
+    'address',
+    'mode',
+    'zip_code',
+    'store_id',
+    'include_shopping',
+    'idempotency_key',
+  ];
   const qs = new URLSearchParams();
   for (const param of allowedParams) {
     const val = req.query[param];
