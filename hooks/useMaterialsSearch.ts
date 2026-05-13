@@ -252,6 +252,15 @@ export function useMaterialsSearch(
   const [filters, setFilters] = useState<MaterialsFilter[]>([]);
   const [isCachedOnlyMode, setIsCachedOnlyMode] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Closest store resolved by the backend from the project address (PR #58).
+  // Drives the Tim Rail's TODAY'S ROUTE card AND the MaterialsRouteHero map.
+  // Was historically never populated in live mode — the response field was
+  // returned but never mapped or stored. Fix shipped 2026-05-13.
+  const [closestStore, setClosestStore] = useState<ClosestStore | null>(null);
+  // Pass E supplier-mode results (Yelp). Same problem as closestStore — the
+  // return type was declared but the state + mapper were never wired. Null
+  // until the first supplier search resolves.
+  const [suppliers, setSuppliers] = useState<Supplier[] | null>(null);
 
   // Auth + tenant context
   const { authenticatedFetch } = useAuthFetch();
@@ -313,6 +322,8 @@ export function useMaterialsSearch(
         const mapped = mapServerResponse(resp);
         setResults(mapped.products);
         setSpecialtySuppliers(mapped.specialtySuppliers);
+        setSuppliers(mapped.suppliers);
+        setClosestStore(mapped.closestStore);
         setFilters(mapped.filters);
         setIsCachedOnlyMode(mapped.isCachedOnlyMode);
       } catch (err: unknown) {
@@ -348,12 +359,14 @@ export function useMaterialsSearch(
     submitSearch,
     clearSearch,
     results,
-    closestStore: MOCK_STORE,
+    // Real closest store from backend PR #58, or null until first search.
+    // Was previously hardcoded to MOCK_STORE (Austin TX) — that's what put
+    // the wrong address on every route map and ClosestStoreCard.
+    closestStore,
     specialtySuppliers,
-    // Pass E: backend wiring (mode=supplier) is owned by the parallel
-    // mcp-toolsmith agent. Until that ships, expose `null` so the UI knows
-    // no supplier-mode search has been submitted yet.
-    suppliers: null,
+    // Real Yelp suppliers from backend PR #57 supplier mode, or null until
+    // first supplier search submits. Was hardcoded null.
+    suppliers,
     filters,
     isLoading,
     isCachedOnlyMode,

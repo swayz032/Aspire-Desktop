@@ -112,16 +112,70 @@ export interface BackendAddon {
   reason?: string;
 }
 
+/**
+ * Backend Yelp supplier shape (snake_case). Returned when mode=supplier
+ * (Pass E PR #57). Frontend maps this to the Supplier type defined in
+ * hooks/useMaterialsSearch.ts.
+ */
+export interface BackendSupplier {
+  id?: string;
+  business_id?: string;
+  name: string;
+  category?: string;
+  categories?: string[];
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  distance_miles?: number;
+  drive_minutes?: number;
+  rating?: number;
+  review_count?: number;
+  hours?: string;
+  hours_open_now?: boolean;
+}
+
+/**
+ * Backend closest-store shape (snake_case). Returned by PR #58 on every
+ * code path (cache hit, success, budget exhausted). Frontend maps this to
+ * the ClosestStore type defined in hooks/useMaterialsSearch.ts.
+ */
+export interface BackendClosestStore {
+  id?: string;
+  store_id?: string;
+  name?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  phone?: string;
+  lat?: number;
+  lng?: number;
+  drive_minutes?: number;
+  in_traffic?: boolean;
+}
+
 export interface MaterialsSearchResponse {
   success: boolean;
+  /** Home Depot products — populated when mode='tool'. */
   products: BackendProduct[];
+  /** Inline specialty fallback rail (mode='tool' only). */
   specialty_suppliers: BackendSpecialtySupplier[];
+  /** Yelp suppliers — populated when mode='supplier' (PR #57). */
+  suppliers?: BackendSupplier[];
   filters: BackendFilters;
   addon_suggestions: BackendAddon[];
+  /** Real closest Home Depot resolved via address ZIP (PR #58). */
+  closest_store?: BackendClosestStore | null;
   is_cached_only_mode: boolean;
   from_cache: boolean;
   receipt_id: string;
   query_normalized: string;
+  mode?: 'tool' | 'supplier';
+  suggested_mode?: 'tool' | 'supplier' | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -214,19 +268,68 @@ function _mapFilters(f: BackendFilters): MaterialsFilter[] {
   return filters;
 }
 
+function _mapSupplierFull(
+  s: BackendSupplier,
+  idx: number,
+): import('../../hooks/useMaterialsSearch').Supplier {
+  return {
+    id: s.business_id ?? s.id ?? `supplier-${idx}`,
+    name: s.name,
+    category: s.category ?? s.categories?.[0] ?? 'SUPPLIER',
+    tags: s.categories ?? undefined,
+    address: s.address ?? '',
+    city: s.city,
+    state: s.state,
+    phone: s.phone,
+    email: s.email,
+    website: s.website,
+    distanceMiles: s.distance_miles ?? 0,
+    driveMinutes: s.drive_minutes ?? 0,
+    rating: s.rating,
+    reviewCount: s.review_count,
+    hours: s.hours,
+  };
+}
+
+function _mapClosestStore(
+  s: BackendClosestStore | null | undefined,
+): import('../../hooks/useMaterialsSearch').ClosestStore | null {
+  if (!s) return null;
+  if (!s.address && !s.name) return null;
+  return {
+    id: s.store_id ?? s.id ?? '',
+    name: s.name ?? 'Home Depot',
+    address: s.address ?? '',
+    driveMinutes: s.drive_minutes ?? 0,
+    inTraffic: Boolean(s.in_traffic),
+    city: s.city,
+    state: s.state,
+    phone: s.phone,
+  };
+}
+
 export function mapServerResponse(
   resp: MaterialsSearchResponse,
 ): {
   products: Product[];
   specialtySuppliers: SpecialtySupplier[];
+  suppliers: import('../../hooks/useMaterialsSearch').Supplier[] | null;
   filters: MaterialsFilter[];
   isCachedOnlyMode: boolean;
+  closestStore: import('../../hooks/useMaterialsSearch').ClosestStore | null;
 } {
   return {
     products: resp.products.map(_mapProduct),
     specialtySuppliers: resp.specialty_suppliers.map(_mapSupplier),
+    // Pass E Supplier-mode results (Yelp). Null when mode='tool' so the UI
+    // can distinguish 'never searched in supplier mode' from 'searched but
+    // got zero results'.
+    suppliers: Array.isArray(resp.suppliers)
+      ? resp.suppliers.map(_mapSupplierFull)
+      : null,
     filters: _mapFilters(resp.filters),
     isCachedOnlyMode: resp.is_cached_only_mode,
+    closestStore: _mapClosestStore(resp.closest_store),
   };
 }
 
