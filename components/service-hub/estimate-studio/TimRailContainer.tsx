@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet, useWindowDimensions } from 'react-native';
 import {
   TimRailTabSwitcher,
   type TimRailTabId,
@@ -13,6 +13,12 @@ import { TimRailControlsTab } from './tim-rail/TimRailControlsTab';
 import { useProjectAddress } from '@/hooks/useProjectAddress';
 import { usePropertyData } from '@/hooks/usePropertyData';
 
+// At/below this width the in-canvas chrome (Estimate Studio title, address
+// bar, studio tabs) is hoisted into the Tim Rail's Controls tab. The rail
+// MUST default to Controls there or the user lands on Assistant with no
+// search bar / address bar visible anywhere = the 'nothing works' bug.
+const LAPTOP_OR_TABLET_BREAKPOINT = 1280;
+
 // Tim Rail tabs: Assistant | Context | Controls.
 // The Controls tab owns the studio chrome (address bar + studio tabs +
 // quick actions) on laptops + tablets — see TimRailControlsTab.tsx and
@@ -22,7 +28,24 @@ import { usePropertyData } from '@/hooks/usePropertyData';
 // or state mutations beyond UI state.
 
 export function TimRailContainer() {
-  const [activeTab, setActiveTab] = useState<TimRailTabId>('assistant');
+  const { width } = useWindowDimensions();
+  const isLaptopOrTablet = width < LAPTOP_OR_TABLET_BREAKPOINT;
+  // Default to Controls on laptop/tablet (chrome is hoisted there, the
+  // user MUST land on it or there's no search/address bar visible) and
+  // Assistant on desktop (chrome stays in-canvas, Assistant is the home).
+  const [activeTab, setActiveTab] = useState<TimRailTabId>(
+    isLaptopOrTablet ? 'controls' : 'assistant',
+  );
+  // If the viewport crosses the breakpoint mid-session (rare, but happens
+  // on resize / window-snap), re-anchor to the appropriate default UNLESS
+  // the user has already navigated elsewhere intentionally.
+  useEffect(() => {
+    setActiveTab((prev) => {
+      if (isLaptopOrTablet && prev === 'assistant') return 'controls';
+      if (!isLaptopOrTablet && prev === 'controls') return 'assistant';
+      return prev;
+    });
+  }, [isLaptopOrTablet]);
   const { address } = useProjectAddress();
   const propertyData = usePropertyData(address);
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform, ScrollView, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform, ScrollView, Modal, ActivityIndicator, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
 import { useSupabase, useTenant } from '@/providers';
@@ -16,6 +16,13 @@ interface DocumentPreviewModalProps {
   customerName?: string;
   currency?: string;
   draftSummary?: string;
+  /**
+   * Direct PDF / hosted-document URL (e.g. Stripe `invoice_pdf` or
+   * `hosted_invoice_url`). When provided AND no pandadocDocumentId is
+   * present, the modal renders the live document inline via iframe on web.
+   * Native falls back to opening externally.
+   */
+  livePreviewUrl?: string;
 }
 
 /** Identity fields derived from intake form (suite_profiles via useTenant) */
@@ -370,7 +377,7 @@ function GenericDocContent({ businessName }: IdentityProps) {
   );
 }
 
-function DocumentPreviewModalInner({ visible, onClose, type, documentName, pandadocDocumentId, amount, customerName, currency, draftSummary }: DocumentPreviewModalProps) {
+function DocumentPreviewModalInner({ visible, onClose, type, documentName, pandadocDocumentId, amount, customerName, currency, draftSummary, livePreviewUrl }: DocumentPreviewModalProps) {
   const meta = TYPE_META[type] || TYPE_META.document;
   const { session } = useSupabase();
   const { tenant } = useTenant();
@@ -379,6 +386,7 @@ function DocumentPreviewModalInner({ visible, onClose, type, documentName, panda
   const [pdLoading, setPdLoading] = useState(false);
   const [pdSessionUrl, setPdSessionUrl] = useState<string | null>(null);
   const [pdError, setPdError] = useState<string | null>(null);
+
 
   // When modal opens with a pandadocDocumentId, fetch a preview session
   useEffect(() => {
@@ -488,12 +496,15 @@ function DocumentPreviewModalInner({ visible, onClose, type, documentName, panda
 
   // PandaDoc iframe preview (real document)
   const hasPandaDoc = !!pandadocDocumentId;
+  // Direct live document URL (Stripe invoice PDF / hosted invoice). Only used
+  // when there's no PandaDoc session, to avoid double iframe load.
+  const hasLiveUrl = !hasPandaDoc && !!livePreviewUrl;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={p.backdrop} onPress={onClose}>
         <Pressable
-          style={[p.modalContainer, hasPandaDoc && p.modalContainerWide]}
+          style={[p.modalContainer, (hasPandaDoc || hasLiveUrl) && p.modalContainerWide]}
           onPress={(e) => e.stopPropagation()}
         >
           <View style={p.modalHeader}>
@@ -504,12 +515,21 @@ function DocumentPreviewModalInner({ visible, onClose, type, documentName, panda
               <View>
                 <Text style={p.modalTitle}>{documentName || meta.title}</Text>
                 <Text style={p.modalSubtitle}>
-                  {hasPandaDoc ? 'PandaDoc Document' : `${meta.title} Preview`}
+                  {hasPandaDoc ? 'PandaDoc Document' : hasLiveUrl ? `Live ${meta.title}` : `${meta.title} Preview`}
                 </Text>
               </View>
             </View>
             <View style={p.modalHeaderRight}>
-              {!hasPandaDoc && (
+              {hasLiveUrl && (
+                <Pressable
+                  onPress={() => livePreviewUrl && Linking.openURL(livePreviewUrl)}
+                  style={({ hovered }: any) => [p.modalActionBtn, hovered && p.modalActionBtnHover]}
+                  accessibilityLabel="Open in new tab"
+                >
+                  <Ionicons name="open-outline" size={16} color="#a1a1a6" />
+                </Pressable>
+              )}
+              {!hasPandaDoc && !hasLiveUrl && (
                 <>
                   <Pressable style={({ hovered }: any) => [p.modalActionBtn, hovered && p.modalActionBtnHover]}>
                     <Ionicons name="download-outline" size={16} color="#a1a1a6" />
@@ -525,7 +545,34 @@ function DocumentPreviewModalInner({ visible, onClose, type, documentName, panda
             </View>
           </View>
 
-          {hasPandaDoc ? (
+          {hasLiveUrl ? (
+            <View style={p.pandadocBody}>
+              {Platform.OS === 'web' ? (
+                <iframe
+                  src={livePreviewUrl}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    border: 'none',
+                    backgroundColor: '#ffffff',
+                  }}
+                  title="Document Preview"
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+                />
+              ) : (
+                <View style={p.pandadocLoadingContainer}>
+                  <Ionicons name="open-outline" size={32} color="#6e6e73" />
+                  <Text style={p.pandadocLoadingText}>Tap to open the document in your browser.</Text>
+                  <Pressable
+                    onPress={() => livePreviewUrl && Linking.openURL(livePreviewUrl)}
+                    style={p.openExternalBtn}
+                  >
+                    <Text style={p.openExternalBtnText}>Open document</Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
+          ) : hasPandaDoc ? (
             <View style={p.pandadocBody}>
               {pdLoading && (
                 <View style={p.pandadocLoadingContainer}>
@@ -720,6 +767,18 @@ const p = StyleSheet.create({
     textAlign: 'center',
     marginTop: 6,
   },
+  openExternalBtn: {
+    marginTop: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#3B82F6',
+  },
+  openExternalBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '600',
+  } as any,
   pandadocFooter: {
     flexDirection: 'row',
     alignItems: 'center',

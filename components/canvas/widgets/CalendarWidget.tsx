@@ -195,9 +195,9 @@ const s = StyleSheet.create({
     flexDirection: 'column',
     overflow: 'hidden',
     borderRadius: 12,
-    backgroundColor: Colors.background.elevated, // #141414 — darker INNER fill; outer frame
-                                                 // (lighter #1C1C1E) lives on the parent
-                                                 // calendarContainer in DesktopHome.
+    backgroundColor: Colors.background.secondary, // #0d0d0d — matches Today's Plan inner fill;
+                                                  // outer frame (lighter #1C1C1E) lives on the parent
+                                                  // calendarContainer in DesktopHome.
   },
 
   // ── Month nav ─────────────────────────────────────────────────────
@@ -206,8 +206,8 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 10,
+    paddingTop: 12,
+    paddingBottom: 8,
   },
   navBtn: {
     width: 32,
@@ -255,7 +255,7 @@ const s = StyleSheet.create({
   dayCell: {
     width: `${100 / 7}%` as any,
     alignItems: 'center',
-    paddingVertical: 4,
+    paddingVertical: 2,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
   dayInner: {
@@ -307,8 +307,8 @@ const s = StyleSheet.create({
     minHeight: 12,
   },
   openButton: {
-    marginHorizontal: 16,
-    marginBottom: 16,
+    marginHorizontal: 12,
+    marginBottom: 12,
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: 'rgba(59, 130, 246, 0.1)',
@@ -320,8 +320,8 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
     gap: 8,
   },
   openButtonText: {

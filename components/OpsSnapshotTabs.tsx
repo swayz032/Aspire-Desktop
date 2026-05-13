@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ImageBackground } from 'react-native';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -193,64 +193,53 @@ function ServiceHubContent() {
   const router = useRouter();
 
   return (
-    <View style={styles.hubContainer}>
-      <View style={[styles.premiumCardWrapper, { borderColor: 'rgba(251, 191, 36, 0.30)' }]}>
-        <LinearGradient
-          colors={['#1a1208', '#241810', '#2e2014', '#241810', '#1a1208']}
-          locations={[0, 0.2, 0.5, 0.8, 1]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.cashHero}
+    <View style={styles.serviceHubContainer}>
+      <TouchableOpacity
+        activeOpacity={0.92}
+        onPress={() => router.push('/service-hub/estimate-studio' as any)}
+        testID="enter-service-hub-card"
+        style={styles.serviceHubCard}
+      >
+        <ImageBackground
+          source={require('../assets/images/service-hub-hero.png')}
+          style={styles.serviceHubImage}
+          imageStyle={styles.serviceHubImageInner}
+          resizeMode="cover"
         >
-          <View style={[styles.heroGlowPrimary, { backgroundColor: 'rgba(251, 191, 36, 0.14)' }]} />
-          <View style={[styles.heroGlowSecondary, { backgroundColor: 'rgba(251, 146, 60, 0.10)' }]} />
-          <View style={[styles.heroGlowAccent, { backgroundColor: 'rgba(244, 63, 94, 0.05)' }]} />
+          {/* Top gradient — readability for the pill badge */}
+          <LinearGradient
+            colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0)']}
+            locations={[0, 1]}
+            style={styles.serviceHubTopScrim}
+            pointerEvents="none"
+          />
+          <View style={styles.serviceHubTopRow}>
+            <View style={styles.serviceHubBrandPill}>
+              <Ionicons name="construct" size={11} color="#fff" />
+              <Text style={styles.serviceHubBrandPillText}>Service Hub</Text>
+            </View>
+          </View>
 
-          <View style={styles.cashHeroHeader}>
-            <View style={[styles.walletIconOuter, { backgroundColor: 'rgba(251, 191, 36, 0.10)' }]}>
-              <View style={[styles.walletIconGlow, { borderColor: 'rgba(251, 191, 36, 0.35)' }]} />
-              <View style={[styles.walletIconInner, { backgroundColor: 'rgba(251, 191, 36, 0.25)' }]}>
-                <Ionicons name="construct" size={16} color="#fbbf24" />
+          {/* Bottom gradient — premium fade for the CTA */}
+          <LinearGradient
+            colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.35)', 'rgba(0,0,0,0.85)']}
+            locations={[0, 0.55, 1]}
+            style={styles.serviceHubBottomScrim}
+            pointerEvents="none"
+          />
+
+          <View style={styles.serviceHubBottomRow}>
+            <Text style={styles.serviceHubHeadline}>Your office, run end-to-end</Text>
+            <Text style={styles.serviceHubSubtitle}>Estimate, schedule, dispatch — Tim runs your service line.</Text>
+
+            <View style={styles.serviceHubCta} testID="enter-service-hub-button">
+              <Text style={styles.serviceHubCtaText}>Enter Service Hub</Text>
+              <View style={styles.serviceHubCtaIcon}>
+                <Ionicons name="arrow-forward" size={14} color="#ffffff" />
               </View>
             </View>
-            <View style={[styles.trendBadge, { backgroundColor: 'rgba(251, 191, 36, 0.15)', borderColor: 'rgba(251, 191, 36, 0.35)' }]}>
-              <Ionicons name="flash" size={11} color="#fbbf24" />
-              <Text style={[styles.trendText, { color: '#fbbf24' }]}>Service Hub</Text>
-            </View>
           </View>
-
-          <Text style={styles.hubHeadline}>Your office, run end-to-end</Text>
-          <Text style={styles.hubSubtitle}>Estimate, schedule, dispatch — Tim runs your service line.</Text>
-
-          <View style={styles.hubPillarsRow}>
-            <View style={[styles.hubPillarChip, { backgroundColor: 'rgba(251, 191, 36, 0.10)', borderColor: 'rgba(251, 191, 36, 0.25)' }]}>
-              <Ionicons name="analytics" size={12} color="#fbbf24" />
-              <Text style={[styles.hubPillarLabel, { color: '#fbbf24' }]}>Estimate Studio</Text>
-            </View>
-            <View style={[styles.hubPillarChip, { backgroundColor: 'rgba(129, 140, 248, 0.10)', borderColor: 'rgba(129, 140, 248, 0.25)' }]}>
-              <Ionicons name="flask" size={12} color="#818cf8" />
-              <Text style={[styles.hubPillarLabel, { color: '#818cf8' }]}>Service Lab</Text>
-            </View>
-            <View style={[styles.hubPillarChip, { backgroundColor: 'rgba(52, 211, 153, 0.10)', borderColor: 'rgba(52, 211, 153, 0.25)' }]}>
-              <Ionicons name="briefcase" size={12} color="#34d399" />
-              <Text style={[styles.hubPillarLabel, { color: '#34d399' }]}>Jobs</Text>
-            </View>
-          </View>
-        </LinearGradient>
-      </View>
-
-      <TouchableOpacity
-        style={[styles.dashboardButton, { backgroundColor: 'rgba(251, 191, 36, 0.14)', borderColor: 'rgba(251, 191, 36, 0.32)' }]}
-        onPress={() => router.push('/service-hub/estimate-studio' as any)}
-        activeOpacity={0.8}
-        testID="enter-service-hub-button"
-      >
-        <View style={styles.dashboardButtonInner}>
-          <Text style={[styles.dashboardButtonText, { color: 'rgba(255,255,255,0.95)' }]}>Enter Service Hub</Text>
-          <View style={[styles.dashboardButtonIcon, { backgroundColor: 'rgba(251, 191, 36, 0.25)' }]}>
-            <Ionicons name="arrow-forward" size={14} color="#fbbf24" />
-          </View>
-        </View>
+        </ImageBackground>
       </TouchableOpacity>
     </View>
   );
@@ -928,6 +917,112 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 11,
     backgroundColor: 'rgba(167, 139, 250, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ── Service Hub full-bleed image hero ──────────────────────────────
+  serviceHubContainer: {
+    flex: 1,
+    padding: Spacing.md,
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  serviceHubCard: {
+    flex: 1,
+    borderRadius: BorderRadius.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.30)',
+  },
+  serviceHubImage: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'space-between',
+  },
+  serviceHubImageInner: {
+    borderRadius: BorderRadius.lg - 1,
+  },
+  serviceHubTopScrim: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 72,
+  },
+  serviceHubTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    padding: 12,
+  },
+  serviceHubBrandPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(59, 130, 246, 0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  serviceHubBrandPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#ffffff',
+    letterSpacing: 0.3,
+  } as any,
+  serviceHubBottomScrim: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '60%',
+  } as any,
+  serviceHubBottomRow: {
+    padding: 14,
+    gap: 8,
+  },
+  serviceHubHeadline: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#ffffff',
+    letterSpacing: -0.3,
+    lineHeight: 22,
+  } as any,
+  serviceHubSubtitle: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.85)',
+    lineHeight: 17,
+    marginBottom: 4,
+  },
+  serviceHubCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#3B82F6',
+    borderRadius: BorderRadius.md,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    shadowColor: '#3B82F6',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 14,
+  },
+  serviceHubCtaText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#ffffff',
+    letterSpacing: 0.2,
+  } as any,
+  serviceHubCtaIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(255,255,255,0.22)',
     alignItems: 'center',
     justifyContent: 'center',
   },

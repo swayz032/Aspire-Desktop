@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Platform, Pressable, Linking } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Platform, Pressable } from 'react-native';
 import { DesktopShell } from './DesktopShell';
 import { AvaDeskPanel } from './AvaDeskPanel';
 import { InteractionModePanel } from '@/components/InteractionModePanel';
@@ -7,7 +7,7 @@ import { OpsSnapshotTabs } from '@/components/OpsSnapshotTabs';
 import { TodayPlanTabs } from '@/components/TodayPlanTabs';
 import { CalendarCard } from '@/components/CalendarCard';
 import { CalendarWidget } from '@/components/canvas/widgets/CalendarWidget';
-import { AuthorityQueueCard } from '@/components/AuthorityQueueCard';
+import { AuthorityQueueDrawer } from '@/components/AuthorityQueueDrawer';
 import { DocumentPreviewModal } from '@/components/DocumentPreviewModal';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,7 +29,6 @@ import { useBreakpoint } from '@/lib/useDesktop';
 import { playSound } from '@/lib/soundManager';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 import { getAuthorityQueue, getCalendarEvents } from '@/lib/api';
-import { useDynamicAuthorityQueue, removeAuthorityItem } from '@/lib/authorityQueueStore';
 import { isLocalSyntheticAuthBypass } from '@/lib/supabaseRuntime';
 import { supabase as supabaseClient } from '@/lib/supabase';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
@@ -124,8 +123,6 @@ function DesktopHomeInner() {
     customerName?: string;
     currency?: string;
   }>({ visible: false, type: 'document' });
-
-  const allAuthorityItems = useDynamicAuthorityQueue();
 
   // ── Canvas interaction state ──
   const [hoveredTile, setHoveredTile] = useState<string | null>(null);
@@ -563,92 +560,11 @@ function DesktopHomeInner() {
               </View>
               </ImmersionLayer>
 
-              <ImmersionLayer depth={2}>
-              <CanvasTileWrapper
-                tileId="authority_queue"
-                mode={mode}
-                onPress={handleTilePress}
-                onHoverIn={handleTileHoverIn}
-                onHoverOut={handleTileHoverOut}
-                onContextMenu={handleContextMenu}
-              >
-              <View style={styles.authoritySection}>
-                <SectionHeader
-                  title="Authority Queue"
-                  actionLabel="View all"
-                  onAction={() => router.push('/inbox' as any)}
-                />
-                {allAuthorityItems.length > 0 ? (
-                  <View style={styles.authorityScrollRow}>
-                    {allAuthorityItems.map((item) => (
-                      <View key={item.id} style={styles.authorityCardWrapper}>
-                        <AuthorityQueueCard
-                          item={item}
-                          onAction={async (action) => {
-                            if (action === 'join') {
-                              router.push('/session/conference-live' as any);
-                            } else if (action === 'approve') {
-                              // W6: Approve chains into orchestrator resume via Desktop server
-                              try {
-                                const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-                                if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-                                const res = await fetch(`/api/authority-queue/${item.id}/approve`, { method: 'POST', headers });
-                                if (res.ok) {
-                                  // Remove from store — approval is done
-                                  removeAuthorityItem(item.id);
-                                }
-                              } catch (e) { /* approve failed — user can retry */ }
-                            } else if (action === 'deny') {
-                              try {
-                                const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-                                if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-                                const denyRes = await fetch(`/api/authority-queue/${item.id}/deny`, { method: 'POST', headers });
-                                if (denyRes.ok) {
-                                  removeAuthorityItem(item.id);
-                                }
-                              } catch (e) { /* deny failed — user can retry */ }
-                            } else if (action === 'review') {
-                              // Open real Stripe invoice for invoices/quotes with hosted URL
-                              if (item.hostedInvoiceUrl && (item.type === 'invoice' || item.type === 'quote')) {
-                                Linking.openURL(item.hostedInvoiceUrl);
-                              } else {
-                                // Open preview modal with real data when available
-                                const docType = item.type === 'invoice' ? 'invoice' as const
-                                  : item.type === 'quote' ? 'quote' as const
-                                  : item.type === 'contract' ? 'contract' as const
-                                  : 'document' as const;
-                                const meta = item.documentPreview?.metadata;
-                                setReviewPreview({
-                                  visible: true,
-                                  type: docType,
-                                  documentName: item.title,
-                                  pandadocDocumentId: item.pandadocDocumentId,
-                                  draftSummary: item.draftSummary,
-                                  amount: meta?.amount ? parseFloat(meta.amount.replace(/[^0-9.-]/g, '')) : undefined,
-                                  customerName: meta?.counterparty,
-                                  currency: 'USD',
-                                });
-                              }
-                            }
-                          }}
-                        />
-                      </View>
-                    ))}
-                  </View>
-                ) : (
-                  <View style={styles.authorityEmpty}>
-                    <Ionicons name="shield-checkmark-outline" size={24} color={Colors.accent.cyan} style={styles.authorityEmptyIcon} />
-                    <Text style={styles.authorityEmptyHeadline}>Your approval queue is clear</Text>
-                    <Text style={styles.authorityEmptyBody}>
-                      When agents need your sign-off — invoices over $500, contracts, payments — they land here. Every action leaves a receipt.
-                    </Text>
-                  </View>
-                )}
-              </View>
-              </CanvasTileWrapper>
-              </ImmersionLayer>
+              {/* Authority Queue is now a right-edge slide-out — see <AuthorityQueueDrawer /> mounted outside the scroll view. */}
             </View>
           </ScrollView>
+
+          <AuthorityQueueDrawer />
 
           {/* ── Canvas overlay components — rendered outside ScrollView ── */}
           {mode !== 'off' && (
@@ -762,14 +678,15 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface.card,
   },
   calendarContainer: {
-    height: 410,
+    height: 388,
     flexShrink: 0,
     // Outer frame matches the section pattern (lighter gray edges around
     // the darker calendar inside) — same shell as Founder/Finance Hub +
-    // Today's Plan + Interaction Mode. Restored Spacing.lg outer padding
-    // so the light-gray frame reads as thick like Founder Hub does.
+    // Today's Plan + Interaction Mode. Tightened outer padding so the
+    // frame is still visible while the inner calendar + "Open Calendar"
+    // button both fit without the button being cut off.
     borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
+    padding: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.surface.cardBorder,
     backgroundColor: Colors.surface.card,
