@@ -9071,17 +9071,17 @@ router.post('/api/v1/sms/send', async (req: Request, res: Response) => {
 });
 
 router.post('/api/v1/sms/send-new', async (req: Request, res: Response) => {
-  // 25s timeout: send_sms_new does A2P check → from_number lookup →
-  // memory_objects insert → delegates to send_sms (which does its own A2P
-  // check + Twilio Messages API call). On a cold Supabase + cold Twilio,
-  // the full chain can exceed 8s. 25s mirrors purchase-number proxy timing.
+  // 45s timeout: cold-container path can hit Twilio /Messages.json which
+  // itself takes 5-20s on first request. Backend duplicate-work fix in
+  // sms_io.send_sms_new shaves ~1s. 45s gives Twilio breathing room without
+  // letting truly broken requests hang the UI.
   await proxyForward({
     orchestratorPath: '/v1/sms/send-new',
     method: 'POST',
     body: typeof req.body === 'object' && req.body !== null ? (req.body as Record<string, unknown>) : {},
     scope: 'telephony:sms_send',
     logTag: 'SmsSendNew',
-    timeoutMs: 25_000,
+    timeoutMs: 45_000,
     req,
     res,
   });
