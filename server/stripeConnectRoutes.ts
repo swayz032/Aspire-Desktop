@@ -110,13 +110,16 @@ router.post('/api/stripe-connect/create-account', async (req: Request, res: Resp
     );
     res.json({ accountId: account.id });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Stripe create account error', { error: msg });
+    const stripeErr = error as any;
+    const msg = stripeErr?.raw?.message || stripeErr?.message || 'Unknown error';
+    const code = stripeErr?.raw?.code || stripeErr?.code || null;
+    const status = typeof stripeErr?.statusCode === 'number' ? stripeErr.statusCode : 500;
+    logger.error('Stripe create account error', { error: msg, code, status });
     await emitReceipt(req, 'stripe.account.create', 'FAILED',
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
-      { error: msg },
+      { error: msg, code },
     );
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(status).json({ error: msg, code });
   }
 });
 
@@ -138,13 +141,16 @@ router.post('/api/stripe-connect/account-link', async (req: Request, res: Respon
     );
     res.json({ url: accountLink.url });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Stripe account link error', { error: msg });
+    const stripeErr = error as any;
+    const msg = stripeErr?.raw?.message || stripeErr?.message || 'Unknown error';
+    const code = stripeErr?.raw?.code || stripeErr?.code || null;
+    const status = typeof stripeErr?.statusCode === 'number' ? stripeErr.statusCode : 500;
+    logger.error('Stripe account link error', { error: msg, code, status });
     await emitReceipt(req, 'stripe.account_link.create', 'FAILED',
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
-      { error: msg },
+      { error: msg, code },
     );
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(status).json({ error: msg, code });
   }
 });
 
@@ -172,13 +178,16 @@ router.get('/api/stripe-connect/authorize', async (req: Request, res: Response) 
     );
     res.json({ url: accountLink.url });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Stripe Connect authorize error', { error: msg });
+    const stripeErr = error as any;
+    const msg = stripeErr?.raw?.message || stripeErr?.message || 'Unknown error';
+    const code = stripeErr?.raw?.code || stripeErr?.code || null;
+    const status = typeof stripeErr?.statusCode === 'number' ? stripeErr.statusCode : 500;
+    logger.error('Stripe Connect authorize error', { error: msg, code, status });
     await emitReceipt(req, 'stripe.authorize', 'FAILED',
       { method: 'GET', path: req.path, risk_tier: 'YELLOW' },
-      { error: msg },
+      { error: msg, code },
     );
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(status).json({ error: msg, code });
   }
 });
 
