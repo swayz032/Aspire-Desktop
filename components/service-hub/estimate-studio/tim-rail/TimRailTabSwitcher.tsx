@@ -1,10 +1,10 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 
-export type TimRailTabId = 'activity' | 'context' | 'assistant';
+export type TimRailTabId = 'controls' | 'context' | 'assistant';
 
 const tabs: { id: TimRailTabId; label: string }[] = [
-  { id: 'activity',  label: 'Activity' },
+  { id: 'controls',  label: 'Controls' },
   { id: 'context',   label: 'Context' },
   { id: 'assistant', label: 'Assistant' },
 ];

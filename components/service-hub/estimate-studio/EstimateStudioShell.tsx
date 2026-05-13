@@ -10,12 +10,17 @@ import { MaterialsSearchProvider } from './materials/MaterialsSearchContext';
 import { useProjectAddress } from '@/hooks/useProjectAddress';
 
 // Breakpoint ladder (responsive Estimate Studio):
-//   Desktop  : >= 1400  — canvas capped at 1400 + centered
-//   Laptop   : 1100–1399 — canvas full width, rail right
-//   Tablet   : 768–1099  — canvas full width, rail STACKED below
-//   Mobile   : <  768    — canvas full width, rail stacked, tighter chrome
+//   Desktop          : >= 1400  — canvas capped at 1400 + centered, full chrome
+//   Laptop/Tablet UX : 768–1279 — canvas-level chrome HOISTED into Tim Rail
+//                                 Controls tab. Canvas shows ONLY hero/photos.
+//                                 Outer canvas slimmed to maxWidth 880.
+//   Workspace        : >= 1100 (within laptop/tablet range) — rail side-by-side
+//   Stacked          : 768–1099 — rail stacked below canvas
+//   Mobile           : <  768   — chrome stays in canvas (rail tabs unusable
+//                                 at this width); tighter chrome.
 const DESKTOP_BREAKPOINT = 1400;
-const WORKSPACE_BREAKPOINT = 1100;        // Tim rail collapses below this
+const LAPTOP_OR_TABLET_BREAKPOINT = 1280;  // chrome hoist applies below this
+const WORKSPACE_BREAKPOINT = 1100;         // Tim rail stacks below this
 const TABLET_BREAKPOINT = 768;
 
 // Estimate Studio workspace — ONE BIG CANVAS.
@@ -54,28 +59,32 @@ interface EstimateStudioShellProps {
 }
 
 export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
-  const { width, height } = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const isDesktop = width >= DESKTOP_BREAKPOINT;
   const isWide = width >= WORKSPACE_BREAKPOINT;
   const isTablet = width < WORKSPACE_BREAKPOINT && width >= TABLET_BREAKPOINT;
   const isMobile = width < TABLET_BREAKPOINT;
-  // Laptop heuristic: wide enough for the rail (>=1100) but short viewport
-  // (<860 inner height after browser chrome). This is what makes 13–15"
-  // laptops look 'stretched out' on the same code that fits on a 1080p+
-  // desktop — fixed calc(100vh - 118px) leaves no room for the full hero
-  // photo + photo lane row, content overflows the canvas at the bottom.
-  const isLaptop = isWide && !isDesktop && height < 900;
+  // Chrome hoist: ANY width in the laptop/tablet band (768 ≤ w < 1280) moves
+  // the in-canvas chrome (header + slot + tab bar) into the Tim Rail's
+  // Controls tab. Replaces the prior height-dependent isLaptop heuristic —
+  // the user's 958×937 viewport didn't trip it because the trigger was
+  // gated on width >= 1100 AND height < 900.
+  const isLaptopOrTablet =
+    width >= TABLET_BREAKPOINT && width < LAPTOP_OR_TABLET_BREAKPOINT;
 
-  // Responsive canvas width: cap on big desktops, slim cap on laptop, full
-  // width on tablet/mobile.
-  // Laptop cap (1280) leaves a small page-bg gutter on each side so the
-  // workspace doesn't feel poster-wide on a 13–15" screen — user reported
-  // 'a little less wide'.
-  const canvasMaxWidth = isDesktop ? 1400 : isLaptop ? 1280 : undefined;
+  // Responsive canvas width:
+  //   Desktop (>=1400)        → 1400 cap
+  //   Laptop/Tablet (768..1279)→ 880 cap (slim, leaves page-bg gutter)
+  //   Mobile (<768)           → full width
+  const canvasMaxWidth = isDesktop
+    ? 1400
+    : isLaptopOrTablet
+      ? 880
+      : undefined;
 
-  // Laptop-specific dynamic height: subtract more so the canvas leaves
-  // breathing room for the photo lane at the bottom. Desktop unchanged.
-  const canvasHeightCalc = isLaptop
+  // With chrome hoisted out, the canvas reclaims the ~22px the chrome was
+  // taking, so the calc subtracts less of the viewport. Desktop unchanged.
+  const canvasHeightCalc = isLaptopOrTablet
     ? 'calc(100vh - 96px)'
     : 'calc(100vh - 118px)';
   const pathname = usePathname() ?? '';
@@ -97,7 +106,7 @@ export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
         canvasMaxWidth ? { maxWidth: canvasMaxWidth } : null,
         // Laptop-specific height override (short viewports only). Desktop
         // keeps the existing calc(100vh - 118px) baked into outerCanvas.
-        Platform.OS === 'web' && isLaptop
+        Platform.OS === 'web' && isLaptopOrTablet
           ? (({
               height: canvasHeightCalc,
               maxHeight: canvasHeightCalc,
@@ -109,41 +118,41 @@ export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
       <View style={[styles.row, !isWide && styles.rowStacked]}>
         {/* MAIN ZONE */}
         <View style={styles.mainZone} testID="estimate-studio-main-zone">
-          <View
-            style={[
-              styles.mainZonePadded,
-              // Laptop: compress header padding so the canvas screen +
-              // property cards get the vertical space they need.
-              isLaptop ? { paddingTop: 8, paddingBottom: 0 } : null,
-            ]}
-          >
-            <EstimateStudioHeader />
-          </View>
+          {/* Canvas-level chrome is HIDDEN on laptop + tablet — the Tim
+              Rail's Controls tab owns header/slot/tab bar there so the
+              canvas can be pure visual content. Mobile keeps it because
+              the rail isn't reachable below 768px. */}
+          {!isLaptopOrTablet && (
+            <>
+              <View style={styles.mainZonePadded}>
+                <EstimateStudioHeader />
+              </View>
 
-          {/* Contextual slot. Phase 1 default = Visuals address search. Phase 2+
-              swaps based on active tab. On Materials, the slot is hidden —
-              the Materials tab renders its own warehouse-search bar. */}
-          <View
-            style={[
-              styles.contextualSlot,
-              isLaptop ? { paddingTop: 4, paddingBottom: 4 } : null,
-            ]}
-          >
-            {isMaterialsTab ? <MaterialsSlotBar /> : <ProjectAddressBar />}
-          </View>
+              {/* Contextual slot. Phase 1 default = Visuals address search.
+                  Phase 2+ swaps based on active tab. On Materials, the
+                  slot is hidden — the Materials tab renders its own
+                  warehouse-search bar. */}
+              <View style={styles.contextualSlot}>
+                {isMaterialsTab ? <MaterialsSlotBar /> : <ProjectAddressBar />}
+              </View>
 
-          {/* Tab bar — Phase 2 */}
-          <View
-            style={[
-              styles.tabBarSlot,
-              isLaptop ? { paddingTop: 2, paddingBottom: 4 } : null,
-            ]}
-          >
-            <EstimateStudioTabBar />
-          </View>
+              {/* Tab bar — Phase 2 */}
+              <View style={styles.tabBarSlot}>
+                <EstimateStudioTabBar />
+              </View>
+            </>
+          )}
 
           {/* Active tab content (rendered via expo-router Slot in _layout.tsx). */}
-          <View style={styles.canvasArea} testID="estimate-studio-canvas-content">
+          <View
+            style={[
+              styles.canvasArea,
+              // When chrome is hoisted, the canvas has no tab-bar above it
+              // — drop the top hairline (it would float against nothing).
+              isLaptopOrTablet ? styles.canvasAreaFlush : null,
+            ]}
+            testID="estimate-studio-canvas-content"
+          >
             {children}
           </View>
         </View>
@@ -269,5 +278,11 @@ const styles = StyleSheet.create({
     borderRightWidth: 0,
     borderBottomWidth: 0,
     overflow: 'hidden',
+  },
+  // Chrome-hoisted variant: no chrome above the canvas, so drop the
+  // top hairline that would otherwise float against the bare gutter.
+  canvasAreaFlush: {
+    borderTopWidth: 0,
+    backgroundColor: 'transparent',
   },
 });
