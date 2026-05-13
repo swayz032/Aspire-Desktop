@@ -18,12 +18,12 @@ import { useProjectAddress } from '@/hooks/useProjectAddress';
 //   Stacked          : 768–1099 — rail stacked below canvas
 //   Mobile           : <  768   — chrome stays in canvas (rail tabs unusable
 //                                 at this width); tighter chrome.
-const DESKTOP_BREAKPOINT = 1500;
+const DESKTOP_BREAKPOINT = 2000;
 // Chrome hoist applies below this. Bumped 1280 → 1500 so common laptops
 // (1366x768, 1440x900) get the hoist UX, not desktop chrome. User report:
 // 'only Upload button shows in Controls tab' meant 1366/1440 laptops were
 // hitting the desktop branch where PROJECT + NAVIGATE are suppressed.
-const LAPTOP_OR_TABLET_BREAKPOINT = 1500;
+const LAPTOP_OR_TABLET_BREAKPOINT = 2000;
 const WORKSPACE_BREAKPOINT = 1100;         // Tim rail stacks below this
 const TABLET_BREAKPOINT = 768;
 

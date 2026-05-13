@@ -18,7 +18,7 @@ import { usePropertyData } from '@/hooks/usePropertyData';
 // MUST default to Controls there or the user lands on Assistant with no
 // search bar / address bar visible anywhere = the 'nothing works' bug.
 // Bumped 1280 → 1500 so 1366/1440 laptops get Controls-first UX.
-const LAPTOP_OR_TABLET_BREAKPOINT = 1500;
+const LAPTOP_OR_TABLET_BREAKPOINT = 2000;
 
 // Tim Rail tabs: Assistant | Context | Controls.
 // The Controls tab owns the studio chrome (address bar + studio tabs +
