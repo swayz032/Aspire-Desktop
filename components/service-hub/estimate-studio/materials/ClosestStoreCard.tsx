@@ -2,6 +2,10 @@
  * ClosestStoreCard — surfaces the closest Home Depot inline above the grid.
  * Used inside the Materials tab when results are present.
  *
+ * Bug B fix (2026-05-13): drive_minutes is now an int from the backend
+ * (resolved via Distance Matrix). When null (Distance Matrix failed or not
+ * yet resolved), render "—" instead of "0" so the user is not misled.
+ *
  * Premium card with hairline border, gold drive-time, action chip to open
  * RouteMapModal.
  */
@@ -21,6 +25,13 @@ const WEB_TRANSITION: ViewStyle =
     : {};
 
 export function ClosestStoreCard({ store, onRoutePress }: Props) {
+  // Bug B fix: driveMinutes may be null when Distance Matrix did not resolve.
+  // Display "—" rather than "0" to avoid showing a false zero.
+  const driveDisplay =
+    typeof store.driveMinutes === 'number' && store.driveMinutes > 0
+      ? String(store.driveMinutes)
+      : '—';
+
   return (
     <View style={styles.card} testID="materials-closest-store-card">
       <View style={styles.iconWrap}>
@@ -41,10 +52,12 @@ export function ClosestStoreCard({ store, onRoutePress }: Props) {
         <View style={styles.statTile}>
           <Text style={styles.statLabel}>Drive</Text>
           <View style={styles.statValueRow}>
-            <Text style={styles.statValue}>{store.driveMinutes}</Text>
-            <Text style={styles.statUnit}>min</Text>
+            <Text style={styles.statValue}>{driveDisplay}</Text>
+            {driveDisplay !== '—' && <Text style={styles.statUnit}>min</Text>}
           </View>
-          {store.inTraffic && <Text style={styles.statSub}>w/ traffic</Text>}
+          {store.inTraffic && driveDisplay !== '—' && (
+            <Text style={styles.statSub}>w/ traffic</Text>
+          )}
         </View>
 
         <Pressable

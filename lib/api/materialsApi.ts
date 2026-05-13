@@ -10,6 +10,11 @@
  *   Law #3 — empty/PII queries rejected server-side before any budget is spent;
  *             client surfaces the rejection code to the hook.
  *   Law #9 — no raw secrets or PII in error messages surfaced to the client.
+ *
+ * Bug A/B/C fix (2026-05-13): _mapProduct now reads p.pickup.in_stock
+ * (boolean) and p.pickup.drive_minutes (int|null) from the backend's new
+ * pickup wrapper. _mapClosestStore now reads drive_minutes from the
+ * backend's enriched closest_store object.
  */
 
 import { API_BASE } from './officeMemory';
@@ -61,6 +66,14 @@ export interface MaterialsSearchParams {
   officeId: string;
 }
 
+/**
+ * BackendProduct — raw wire shape from the Python orchestrator.
+ *
+ * Bug A fix (2026-05-13): The backend now emits a top-level `pickup` object
+ * with `in_stock` (boolean), `store_id`, `store_name`, `quantity`, and
+ * `drive_minutes` (int|null, filled by Distance Matrix). Before this fix,
+ * `pickup` was always absent and `in_stock` defaulted to false.
+ */
 export interface BackendProduct {
   title: string;
   brand?: string | null;
@@ -71,7 +84,20 @@ export interface BackendProduct {
   sku?: string | null;
   link?: string | null;
   thumbnail?: string | null;
-  pickup?: { in_stock?: boolean; store_id?: string; store_name?: string; quantity?: number } | null;
+  /**
+   * Bug A fix: pickup object now emitted by normalize_from_serpapi_homedepot.
+   * drive_minutes is null until Distance Matrix resolves (Bug C fix).
+   */
+  pickup?: {
+    in_stock?: boolean;
+    store_id?: string | null;
+    store_name?: string | null;
+    quantity?: number | null;
+    /** Null when Distance Matrix did not resolve (fail-soft). */
+    drive_minutes?: number | null;
+    store_address?: string | null;
+    delivery_zip?: string | null;
+  } | null;
   delivery?: boolean | null;
   description?: string | null;
   specifications?: Record<string, string | number | boolean | null> | null;
@@ -142,6 +168,9 @@ export interface BackendSupplier {
  * Backend closest-store shape (snake_case). Returned by PR #58 on every
  * code path (cache hit, success, budget exhausted). Frontend maps this to
  * the ClosestStore type defined in hooks/useMaterialsSearch.ts.
+ *
+ * Bug B fix (2026-05-13): drive_minutes is now populated by the Distance
+ * Matrix call in routes/materials.py. When null, the UI renders "—".
  */
 export interface BackendClosestStore {
   id?: string;
@@ -154,7 +183,8 @@ export interface BackendClosestStore {
   phone?: string;
   lat?: number;
   lng?: number;
-  drive_minutes?: number;
+  /** Bug B fix: populated by Distance Matrix. Null = not yet resolved. */
+  drive_minutes?: number | null;
   in_traffic?: boolean;
 }
 
@@ -183,12 +213,24 @@ export interface MaterialsSearchResponse {
 // ---------------------------------------------------------------------------
 
 function _mapProduct(p: BackendProduct, idx: number): Product {
+  // Bug A fix: pickup is now a real object from the backend normalizer.
+  // Before this fix pickup was always undefined → in_stock=false, driveMinutes=0.
   const pickup = p.pickup ?? {};
+  const inStock = pickup.in_stock === true;
+
+  // Bug C fix: drive_minutes may be null (Distance Matrix not resolved).
+  // Map null → 0 at the domain boundary so ProductStore.driveMinutes stays
+  // typed as number, but ProductCard handles 0 as "not resolved" (shows "— MIN").
+  // We use null-coalescing so explicit 0 from backend is preserved.
+  const driveMinutes: number = typeof pickup.drive_minutes === 'number'
+    ? pickup.drive_minutes
+    : 0;
+
   const store: import('../../hooks/useMaterialsSearch').ProductStore = {
     id: pickup.store_id ?? 'hd',
     name: pickup.store_name ?? 'Home Depot',
-    driveMinutes: 0,
-    inStock: pickup.in_stock ?? false,
+    driveMinutes,
+    inStock,
   };
   return {
     id: p.product_id ?? p.sku ?? `mat-${idx}`,
@@ -300,7 +342,11 @@ function _mapClosestStore(
     id: s.store_id ?? s.id ?? '',
     name: s.name ?? 'Home Depot',
     address: s.address ?? '',
-    driveMinutes: s.drive_minutes ?? 0,
+    // Bug B fix: drive_minutes is now populated by Distance Matrix.
+    // When null (fail-soft path), pass 0 so ProductStore.driveMinutes
+    // stays typed as number; ClosestStoreCard treats 0 as "not resolved"
+    // and shows "—" instead.
+    driveMinutes: typeof s.drive_minutes === 'number' ? s.drive_minutes : 0,
     inTraffic: Boolean(s.in_traffic),
     city: s.city,
     state: s.state,

@@ -11,6 +11,11 @@
  *   │ $218.00                      │
  *   │ [Add to bundle] [Compare]    │
  *   └──────────────────────────────┘
+ *
+ * Bug A/C fix (2026-05-13):
+ *   - inStock is now a real boolean from backend pickup.in_stock.
+ *   - driveMinutes is now an int|null from backend pickup.drive_minutes
+ *     (filled by Distance Matrix). When null, show "— MIN" instead of "0 MIN".
  */
 import React, { useState } from 'react';
 import {
@@ -56,6 +61,20 @@ export function ProductCard({ product, onAdd, onCompare, isInBundle = false }: P
           onMouseLeave: () => setHover(false),
         }
       : {};
+
+  // Bug A fix: inStock is now a real boolean from backend pickup.in_stock.
+  // The materialsApi mapper reads p.pickup?.in_stock ?? false, which now
+  // returns the actual boolean emitted by normalize_from_serpapi_homedepot.
+  const inStock = product.store.inStock;
+
+  // Bug C fix: driveMinutes is null when Distance Matrix hasn't resolved yet.
+  // Show "— MIN" instead of "0 MIN" to avoid misleading the user.
+  const driveMinutes = product.store.driveMinutes;
+  const driveDisplay =
+    typeof driveMinutes === 'number' && driveMinutes > 0
+      ? `${driveMinutes} MIN`
+      : '— MIN';
+
   return (
     <View
       {...(webHoverHandlers as any)}
@@ -74,16 +93,20 @@ export function ProductCard({ product, onAdd, onCompare, isInBundle = false }: P
         />
 
         <View style={styles.imageOverlay}>
-          <View style={[styles.chip, product.store.inStock ? styles.chipStock : styles.chipStockOut]}>
-            <View style={[styles.dot, product.store.inStock ? styles.dotStock : styles.dotStockOut]} />
-            <Text style={[styles.chipText, product.store.inStock ? styles.chipTextStock : styles.chipTextStockOut]}>
-              {product.store.inStock ? 'IN STOCK' : 'OUT'}
+          <View style={[styles.chip, inStock ? styles.chipStock : styles.chipStockOut]}>
+            <View style={[styles.dot, inStock ? styles.dotStock : styles.dotStockOut]} />
+            <Text style={[styles.chipText, inStock ? styles.chipTextStock : styles.chipTextStockOut]}
+              testID={`materials-stock-chip-${product.id}`}
+            >
+              {inStock ? 'IN STOCK' : 'OUT'}
             </Text>
           </View>
 
           <View style={styles.chip}>
             <Ionicons name="time-outline" size={9} color="rgba(255,255,255,0.75)" />
-            <Text style={styles.chipText}>{product.store.driveMinutes} MIN</Text>
+            <Text style={styles.chipText} testID={`materials-drive-chip-${product.id}`}>
+              {driveDisplay}
+            </Text>
           </View>
         </View>
       </View>
