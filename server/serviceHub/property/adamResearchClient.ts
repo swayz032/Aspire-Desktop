@@ -310,8 +310,13 @@ function normalizePhotos(record: AdamRecordRaw): AdamPropertyResult['photos'] {
     if (!rawUrl) return;
     // Zillow photo URLs: https://photos.zillowstatic.com/fp/<hash>-p_<size>.jpg
     // Sizes: p_a(96) p_b(192) p_c(384) p_d(768) p_e(1536) p_f(2048).
-    // Apify default = p_d (blurry). Rewrite to p_e for 2× resolution.
-    const url = rawUrl.replace(/-p_[a-f]\.jpg$/i, '-p_e.jpg');
+    // Apify default = p_d (blurry). p_e (1536) was crisp on a smaller hero
+    // but after the HeroSwitcher dropped aspectRatio:12/5 the hero stretches
+    // to ~520px tall on laptop and the rendered photo width hits ~1100px;
+    // with `resizeMode:cover` the source then upscales past 1× and softens.
+    // p_f (2048) is the max Zillow ships and gives us headroom for any
+    // viewport up to 2048-wide without upscaling.
+    const url = rawUrl.replace(/-p_[a-f]\.jpg$/i, '-p_f.jpg');
     const caption = toTrimmedString(p.caption);
     const item: PhotoItem = caption ? { url, caption } : { url };
 

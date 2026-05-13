@@ -38,6 +38,12 @@ export function LiveStreetViewHero({ coords, loading, onAerialPress, onEarthPres
   const containerRef = useRef<any>(null);
   const insetRef = useRef<any>(null);
   const earthInsetRef = useRef<any>(null);
+  // Keep a handle to the live panorama so we can fire google.maps.event
+  // resize when the container size changes — without this the panorama
+  // canvas stays at its init dimensions and gets upscaled (blurry) when
+  // the parent heroSlot grows past the init size.
+  const panoramaRef = useRef<any>(null);
+  const googleRef = useRef<any>(null);
   const [status, setStatus] = useState<LoadStatus>('idle');
   const [earthAvailable, setEarthAvailable] = useState<boolean>(false);
 
@@ -97,7 +103,7 @@ export function LiveStreetViewHero({ coords, loading, onAerialPress, onEarthPres
             // soft. Zoom 2 frames the house tight + serves the higher-res
             // tile, so the house renders crisp without the user having to
             // pinch-in manually. They can still zoom out via the +/- ctrl.
-            new google.maps.StreetViewPanorama(containerRef.current, {
+            const panorama = new google.maps.StreetViewPanorama(containerRef.current, {
               position: panoLatLng ?? coords,
               pov: { heading, pitch: 8 },
               zoom: 2,
@@ -110,6 +116,11 @@ export function LiveStreetViewHero({ coords, loading, onAerialPress, onEarthPres
               panControl: true,
               enableCloseButton: false,
             });
+            // Stash for the ResizeObserver below — fires resize on container
+            // size change so the canvas re-renders at the new dimensions
+            // (not upscaled / blurry from the init-time size).
+            panoramaRef.current = panorama;
+            googleRef.current = google;
             // Mount a small inset map (top-down satellite) for an aerial preview.
             if (insetRef.current) {
               const insetMap = new google.maps.Map(insetRef.current, {
@@ -162,6 +173,28 @@ export function LiveStreetViewHero({ coords, loading, onAerialPress, onEarthPres
     // parent passes a structurally-equal but reference-different coords obj.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coords?.lat, coords?.lng]);
+
+  // ResizeObserver — keeps the Panorama crisp when the parent heroSlot grows
+  // or shrinks. Without this, the Maps JS Panorama caches the container
+  // dimensions at init time and the browser upscales the cached canvas →
+  // blurry pano. Firing `google.maps.event.trigger(pano, 'resize')` forces
+  // the SDK to re-fetch tiles at the new container dimensions (matches the
+  // canonical Maps JS pattern for size changes).
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    if (!containerRef.current || typeof ResizeObserver === 'undefined') return;
+    const el = containerRef.current;
+    const observer = new ResizeObserver(() => {
+      const pano = panoramaRef.current;
+      const google = googleRef.current;
+      if (!pano || !google?.maps?.event?.trigger) return;
+      // Trigger Maps JS resize → re-renders at the new container size.
+      // Cheap (no network) when the size hasn't actually changed.
+      google.maps.event.trigger(pano, 'resize');
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   // ---- Render -------------------------------------------------------------
   // CRITICAL: the panorama mount <div> MUST be in the DOM before the effect's

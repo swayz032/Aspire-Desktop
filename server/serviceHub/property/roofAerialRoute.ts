@@ -149,10 +149,15 @@ export async function handleRoofAerial(req: Request, res: Response): Promise<voi
     const w = maxX - minX;
     const h = maxY - minY;
     if (w > 32 && h > 32) {
-      // 50% padding around the footprint so the roof reads as the subject
-      // with context, not a tight crop.
-      const padX = w * 0.5;
-      const padY = h * 0.5;
+      // Padding around the footprint. Was 50% — gave a 243×294 crop on a
+      // 996×999 Solar source, which then upscaled 5.3× to fill the 1280px
+      // output → blurry. 100% padding (2× the roof bbox) keeps the roof as
+      // the subject AND retains enough source pixels to render crisply.
+      // We also enforce a 600px minimum crop dimension so we never feed
+      // the Sharp upscaler an image smaller than half our output target.
+      const MIN_CROP = 600;
+      const padX = Math.max(w * 1.0, (MIN_CROP - w) / 2);
+      const padY = Math.max(h * 1.0, (MIN_CROP - h) / 2);
       const left = Math.max(0, Math.floor(minX - padX));
       const top = Math.max(0, Math.floor(minY - padY));
       const width = Math.min(srcW - left, Math.ceil(w + padX * 2));
