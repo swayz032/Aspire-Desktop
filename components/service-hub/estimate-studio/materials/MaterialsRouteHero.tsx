@@ -57,6 +57,7 @@ export function MaterialsRouteHero() {
   const mapRef = useRef<any | null>(null);
   const markersRef = useRef<any[]>([]);
   const polylineRef = useRef<any | null>(null);
+  const directionsRendererRef = useRef<any | null>(null);
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [bgReady, setBgReady] = useState(false);
@@ -152,31 +153,67 @@ export function MaterialsRouteHero() {
         });
         markersRef.current = [originMarker, destMarker];
 
-        // Straight-line stub polyline. Server-side Directions API swap is a
-        // single-line replacement here.
-        polylineRef.current = new g.maps.Polyline({
-          map,
-          path: [origin, dest],
-          strokeColor: '#fbbf24',
-          strokeOpacity: 0.9,
-          strokeWeight: 3,
-          icons: [
-            {
-              icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 2 },
-              offset: '0',
-              repeat: '14px',
+        // Real Google Directions API call — replaces the prior straight-line
+        // stub. Renders the actual driving polyline that follows roads.
+        // Falls back to a dashed straight-line if Directions service fails
+        // (e.g. no road connection between origin/dest).
+        const ds = new g.maps.DirectionsService();
+        ds.route(
+          {
+            origin,
+            destination: dest,
+            travelMode: g.maps.TravelMode.DRIVING,
+            drivingOptions: {
+              departureTime: new Date(),
+              trafficModel: g.maps.TrafficModel?.BEST_GUESS,
             },
-          ],
-        });
-
-        const bounds = new g.maps.LatLngBounds();
-        bounds.extend(origin);
-        bounds.extend(dest);
-        map.fitBounds(bounds, 80);
-
-        setStatus('ready');
-        // 200ms cross-fade in — per premium-seamless rule.
-        requestAnimationFrame(() => setBgReady(true));
+            provideRouteAlternatives: false,
+          },
+          (result: any, dsStatus: any) => {
+            if (cancelled) return;
+            if (dsStatus === g.maps.DirectionsStatus.OK && result) {
+              directionsRendererRef.current = new g.maps.DirectionsRenderer({
+                map,
+                directions: result,
+                // Keep our custom gold/green pins by suppressing the
+                // default A/B markers DirectionsRenderer would add.
+                suppressMarkers: true,
+                suppressInfoWindows: true,
+                polylineOptions: {
+                  strokeColor: '#fbbf24',
+                  strokeOpacity: 0.92,
+                  strokeWeight: 4,
+                  zIndex: 5,
+                },
+              });
+              // Fit bounds to the real route geometry, not just A→B straight.
+              const routeBounds = result.routes?.[0]?.bounds;
+              if (routeBounds) map.fitBounds(routeBounds, 80);
+            } else {
+              // Fallback: dashed straight line so the user still sees SOMETHING.
+              polylineRef.current = new g.maps.Polyline({
+                map,
+                path: [origin, dest],
+                strokeColor: '#fbbf24',
+                strokeOpacity: 0.85,
+                strokeWeight: 3,
+                icons: [
+                  {
+                    icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 2 },
+                    offset: '0',
+                    repeat: '14px',
+                  },
+                ],
+              });
+              const bounds = new g.maps.LatLngBounds();
+              bounds.extend(origin);
+              bounds.extend(dest);
+              map.fitBounds(bounds, 80);
+            }
+            setStatus('ready');
+            requestAnimationFrame(() => setBgReady(true));
+          },
+        );
       } catch (err: unknown) {
         if (cancelled) return;
         setStatus('error');
@@ -200,6 +237,12 @@ export function MaterialsRouteHero() {
         /* swallow */
       }
       polylineRef.current = null;
+      try {
+        directionsRendererRef.current?.setMap?.(null);
+      } catch {
+        /* swallow */
+      }
+      directionsRendererRef.current = null;
       mapRef.current = null;
     };
   }, [projectAddress, store]);
