@@ -204,6 +204,7 @@ function AuthorityQueueCardInner({ item, onAction }: AuthorityQueueCardProps) {
               context="authorityqueue"
               pandadocDocumentId={item.pandadocDocumentId}
               hostedInvoiceUrl={item.hostedInvoiceUrl}
+              invoicePdfUrl={item.invoicePdfUrl}
             />
             <View style={styles.docMeta}>
               {item.documentPreview.metadata?.amount && (

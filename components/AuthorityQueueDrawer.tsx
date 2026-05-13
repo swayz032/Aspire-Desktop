@@ -151,7 +151,9 @@ export function AuthorityQueueDrawer() {
         amount: meta?.amount ? parseFloat(String(meta.amount).replace(/[^0-9.-]/g, '')) : undefined,
         customerName: meta?.counterparty,
         currency: 'USD',
-        livePreviewUrl: item.hostedInvoiceUrl,
+        // Prefer raw PDF URL for inline iframe preview; fall back to the
+        // Stripe hosted webpage if no PDF URL was captured.
+        livePreviewUrl: item.invoicePdfUrl || item.hostedInvoiceUrl,
       });
     }
   }, [router, session?.access_token, inFlight, callDecision, flashToast]);

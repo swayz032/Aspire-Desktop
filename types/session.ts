@@ -36,6 +36,7 @@ export interface SessionAuthorityItem {
   createdAt: Date;
   pandadocDocumentId?: string;
   hostedInvoiceUrl?: string;
+  invoicePdfUrl?: string;
 }
 
 export interface SessionStaffMember {

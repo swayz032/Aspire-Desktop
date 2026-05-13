@@ -4931,12 +4931,25 @@ router.post('/api/authority-queue/:id/approve', async (req: Request, res: Respon
   const userId = (req as any).authenticatedUserId;
   const { id } = req.params;
   try {
-    // Update approval request status — scoped by tenant_id (Law #6)
+    // Update approval request status — scoped by tenant_id (Law #6).
+    // Match if EITHER the row's tenant_id equals the authenticated suite_id
+    // OR the user has an owner/admin membership in the row's tenant. The
+    // membership branch protects against orphan-tenant approvals (e.g. when
+    // an unauthenticated Anam Ava session wrote the row under a stale
+    // DEFAULT_SUITE_ID) AND covers platform admins who legitimately have
+    // membership in many suites.
     const updateResult = await db.execute(sql`
       UPDATE approval_requests
       SET status = 'approved', decided_at = NOW(), decided_by_user_id = ${userId || null},
           decision_surface = 'desktop_authority_queue', decision_reason = 'user_approved'
-      WHERE approval_id = ${id} AND tenant_id = ${suiteId}
+      WHERE approval_id = ${id}
+        AND (
+          tenant_id = ${suiteId}
+          OR tenant_id IN (
+            SELECT tenant_id FROM tenant_memberships
+            WHERE user_id = ${userId || null}::uuid
+          )
+        )
     `);
 
     // Law #3: Fail Closed — verify the update actually matched a row
@@ -5007,13 +5020,22 @@ router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response)
   const { id } = req.params;
   const { reason } = req.body;
   try {
-    // Update approval request status — scoped by tenant_id (Law #6)
+    // Update approval request status — scoped by tenant_id (Law #6).
+    // Same tenant_id-OR-membership match as approve: protects against orphan
+    // tenants AND lets platform admins act across their suite memberships.
     const denyResult = await db.execute(sql`
       UPDATE approval_requests
       SET status = 'denied', decided_at = NOW(), decided_by_user_id = ${userId || null},
           decision_surface = 'desktop_authority_queue',
           decision_reason = ${reason || 'No reason provided'}
-      WHERE approval_id = ${id} AND tenant_id = ${suiteId}
+      WHERE approval_id = ${id}
+        AND (
+          tenant_id = ${suiteId}
+          OR tenant_id IN (
+            SELECT tenant_id FROM tenant_memberships
+            WHERE user_id = ${userId || null}::uuid
+          )
+        )
     `);
 
     // Law #3: Fail Closed — verify the update actually matched a row

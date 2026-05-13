@@ -1406,8 +1406,37 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
   // emit a receipt. Law #2 demands receipt coverage even on denied/failed
   // invocations.
   const correlationId = `corr-invoke-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  // Founder lock 2026-05-13: state-changing Quinn calls (invoice.create /
+  // quote.create) MUST carry an explicit body suite_id. The startup-default
+  // fallback was silently writing approval rows under an orphan tenant
+  // (DEFAULT_SUITE_ID), which the desktop approve endpoint couldn't match
+  // against the user's authenticated suite — every Approve button errored.
+  // Fail closed here so Anam/EL tool configs are forced to substitute
+  // suite_id from session dynamic_variables. Lookup-shape calls (no task)
+  // and non-Quinn agents may still use the default fallback.
+  const bodySuiteRaw = typeof suite_id === 'string' ? suite_id.trim() : '';
+  const isQuinnStateChange =
+    resolvedAgent === 'quinn' &&
+    /^(invoice|quote)$/i.test(normalizedTask || '');
+  if (isQuinnStateChange && !bodySuiteRaw) {
+    logger.error('[AgentTool] invoke rejected — quinn state-change missing body suite_id', {
+      correlation_id: correlationId,
+      agent: resolvedAgent,
+      task: normalizedTask,
+    });
+    return res.status(400).json({
+      success: false,
+      agent: resolvedAgent,
+      error: 'MISSING_SUITE_ID',
+      message:
+        'invoice/quote requests must include suite_id in the request body. ' +
+        'Configure your agent tool to substitute suite_id from the session dynamic_variables.',
+    });
+  }
+
   const safeSuiteId =
-    (typeof suite_id === 'string' && suite_id.trim()) ||
+    bodySuiteRaw ||
     getDefaultSuiteId() ||
     process.env.DEFAULT_SUITE_ID ||
     '';

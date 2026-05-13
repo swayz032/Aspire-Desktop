@@ -58,8 +58,14 @@ export interface AuthorityItem {
   expiresAt?: string;
   // PandaDoc document ID for real preview (contracts)
   pandadocDocumentId?: string;
-  // Stripe hosted invoice URL for preview (invoices)
+  // Stripe hosted invoice URL — the payment WEBPAGE (customer pays here).
+  // Used as the "Open in Stripe" action target, NOT for in-app preview.
   hostedInvoiceUrl?: string;
+  // Stripe invoice_pdf — direct PDF URL used by DocumentPreviewModal to
+  // iframe the actual invoice document inline. Preferred over
+  // hostedInvoiceUrl for preview because it renders as a PDF, not the
+  // payment landing page.
+  invoicePdfUrl?: string;
 }
 
 export interface DocumentPreview {

@@ -124,6 +124,10 @@ function rowToAuthorityItem(row: Record<string, unknown>): AuthorityItem {
   const payloadRedacted = row.payload_redacted as Record<string, unknown> | undefined;
   const execPayload = row.execution_payload as Record<string, unknown> | undefined;
   const hostedInvoiceUrl = (payloadRedacted?.hosted_invoice_url as string) || undefined;
+  // invoice_pdf is the raw PDF URL — used by DocumentPreviewModal to iframe
+  // the actual invoice inline. hostedInvoiceUrl is the payment landing page,
+  // which we keep as the "Open in Stripe" external action target.
+  const invoicePdfUrl = (payloadRedacted?.invoice_pdf as string) || undefined;
 
   const itemType = detectItemType(tool, operation);
   const customerName = (execPayload?.customer_name as string) || undefined;
@@ -163,6 +167,7 @@ function rowToAuthorityItem(row: Record<string, unknown>): AuthorityItem {
     draftSummary,
     pandadocDocumentId: (row.pandadoc_document_id as string) || undefined,
     hostedInvoiceUrl,
+    invoicePdfUrl,
     documentPreview,
   };
 }
@@ -210,6 +215,7 @@ function apiRowToAuthorityItem(r: Record<string, unknown>): AuthorityItem {
     draftSummary,
     pandadocDocumentId: (r.pandadocDocumentId as string) || undefined,
     hostedInvoiceUrl: (r.hostedInvoiceUrl as string) || undefined,
+    invoicePdfUrl: (r.invoicePdfUrl as string) || undefined,
     documentPreview,
   };
 }

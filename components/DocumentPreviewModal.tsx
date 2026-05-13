@@ -646,6 +646,7 @@ const p = StyleSheet.create({
     width: '90%',
     maxWidth: 720,
     maxHeight: '88%',
+    minHeight: 480,
     backgroundColor: '#111113',
     borderRadius: 20,
     borderWidth: 1,
@@ -726,9 +727,16 @@ const p = StyleSheet.create({
     borderColor: 'rgba(239, 68, 68, 0.2)',
   },
   modalContainerWide: {
-    maxWidth: 920,
-    maxHeight: '92%',
-  },
+    // Founder lock 2026-05-13: when previewing a real PDF or PandaDoc
+    // document, the modal should feel like a full overlay — not a small
+    // dialog. 96% × 96% with a min-height floor so the iframe has room
+    // to render the actual invoice at full scale instead of cramping it.
+    width: '96%',
+    maxWidth: 1400,
+    height: '96%',
+    maxHeight: '96%',
+    minHeight: 720,
+  } as any,
   pandadocBody: {
     flex: 1,
     backgroundColor: '#ffffff',

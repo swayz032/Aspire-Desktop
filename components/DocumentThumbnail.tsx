@@ -14,6 +14,7 @@ interface DocumentThumbnailProps {
   previewEnabled?: boolean;
   pandadocDocumentId?: string;
   hostedInvoiceUrl?: string;
+  invoicePdfUrl?: string;
 }
 
 const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
@@ -208,6 +209,7 @@ function DocumentThumbnailInner({
   previewEnabled = true,
   pandadocDocumentId,
   hostedInvoiceUrl,
+  invoicePdfUrl,
 }: DocumentThumbnailProps) {
   const [hovered, setHovered] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -291,11 +293,13 @@ function DocumentThumbnailInner({
     <>
       <Pressable
         onPress={() => {
-          if (hostedInvoiceUrl) {
-            Linking.openURL(hostedInvoiceUrl);
-          } else {
-            setPreviewOpen(true);
-          }
+          // Founder lock 2026-05-13: ALWAYS open the in-app preview modal.
+          // Previously this redirected to the Stripe hosted webpage when
+          // hostedInvoiceUrl was set, which yanked the user out of the
+          // approval flow and showed the payment landing page (not the
+          // invoice PDF). The modal now iframes the real PDF inline via
+          // livePreviewUrl, preferring invoice_pdf over hosted_invoice_url.
+          setPreviewOpen(true);
         }}
         onHoverIn={() => setHovered(true)}
         onHoverOut={() => setHovered(false)}
@@ -313,6 +317,7 @@ function DocumentThumbnailInner({
         type={type}
         documentName={documentName}
         pandadocDocumentId={pandadocDocumentId}
+        livePreviewUrl={invoicePdfUrl || hostedInvoiceUrl}
       />
     </>
   );
