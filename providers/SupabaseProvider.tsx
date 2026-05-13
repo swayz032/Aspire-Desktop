@@ -41,10 +41,6 @@ export function SupabaseProvider({ children }: { children: ReactNode }) {
   const deliberateSignOutRef = useRef(false);
   const stableSetSession = (s: Session | null) => {
     if (s) {
-      // A new authenticated session ALWAYS supersedes a prior deliberate sign-out.
-      // Without this reset, signOut() leaves deliberateSignOutRef.current=true
-      // forever and the next signIn's auth event is silently dropped — user has
-      // to click "Sign In" twice (or refresh to reset the ref).
       deliberateSignOutRef.current = false;
       lastValidSessionRef.current = Date.now();
       setSession(s);
@@ -52,23 +48,37 @@ export function SupabaseProvider({ children }: { children: ReactNode }) {
       // Deliberate sign-out — accept null immediately, no refresh attempt.
       if (deliberateSignOutRef.current) {
         setSession(null);
-        // Reset after one cycle so a subsequent signIn isn't blocked.
         deliberateSignOutRef.current = false;
         return;
       }
+      // Pass D 2026-05-13: do NOT drop session on transient nulls if the
+      // current access_token is still valid (founder feedback "keeps
+      // signing me out — timer not working"). Anti-oscillation grace
+      // widened: keep the previous session until the refresh token genuinely
+      // fails AND the access_token is past expiry. Otherwise pin to current.
+      const currentToken = (session as Session | null)?.access_token;
+      const currentExpiresAt = (session as any)?.expires_at as number | undefined;
+      const tokenNotExpired =
+        typeof currentExpiresAt === 'number' && currentExpiresAt * 1000 > Date.now();
+      if (currentToken && tokenNotExpired) {
+        // Current token is still good — ignore the null event entirely.
+        // Auto-refresh + the 60s interval will mint a new one before expiry.
+        return;
+      }
       const timeSinceValid = Date.now() - lastValidSessionRef.current;
-      if (timeSinceValid < 2000 && lastValidSessionRef.current > 0) {
-        // Session was valid very recently — likely a token refresh race, not a real signout.
-        // Attempt refresh before accepting null.
+      if (timeSinceValid < 10_000 && lastValidSessionRef.current > 0) {
+        // Recently valid — attempt one refresh before accepting null.
         supabase.auth.refreshSession().then(({ data }) => {
           if (data.session) {
             lastValidSessionRef.current = Date.now();
             setSession(data.session);
           } else {
+            // Truly expired — accept null.
             setSession(null);
           }
         }).catch(() => {
-          setSession(null);
+          // Network failure — keep prior session in state, do NOT signout.
+          // Next auto-refresh tick or visibility-change will recover.
         });
         return;
       }
