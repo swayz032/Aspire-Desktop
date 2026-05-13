@@ -25,6 +25,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { useSupabase } from '@/providers/SupabaseProvider';
+import { useTenant } from '@/providers/TenantProvider';
 import { CallRoom } from '@/components/call-room/CallRoom';
 import { PortalReveal, type PortalOrigin } from '@/components/call-room/PortalReveal';
 import type { CallState, ClientContext, VoiceState } from '@/components/call-room/types';
@@ -108,18 +109,24 @@ export default function CallRoomRoute(): React.ReactElement {
   // pad followed by a black screen. Now the CallRoom shell + connecting UI
   // appear immediately, and the token resolves in parallel behind it.
   const { authenticatedFetch } = useAuthFetch();
+  const { tenant } = useTenant();
+  // Pass D fix 2026-05-12: when /call-room is reached from the Front Desk
+  // dial pad before tenant has hydrated in the dial-pad render, params.officeId
+  // is missing from the URL. Fall back to the current tenant's officeId so the
+  // voice-token fetch isn't skipped and the call actually initiates.
+  const resolvedOfficeId = params.officeId || tenant?.officeId;
   const [voiceToken, setVoiceToken] = useState<string | null>(null);
   const [tokenError, setTokenError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!params.phone || !params.officeId) return;
+    if (!params.phone || !resolvedOfficeId) return;
     let cancelled = false;
     setTokenError(null);
     setVoiceToken(null);
 
     fetchVoiceToken({
       authenticatedFetch,
-      officeId: params.officeId,
+      officeId: resolvedOfficeId,
     })
       .then((tok) => {
         if (cancelled) return;
@@ -145,7 +152,7 @@ export default function CallRoomRoute(): React.ReactElement {
     return () => {
       cancelled = true;
     };
-  }, [params.phone, params.officeId, authenticatedFetch]);
+  }, [params.phone, resolvedOfficeId, authenticatedFetch]);
 
   // Parse the source-button rect for the portal-reveal morph. If any of the
   // four values is missing or non-numeric, drop the rect entirely — the

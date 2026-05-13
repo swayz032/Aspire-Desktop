@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { playDTMFTone, resumeAudioContextFromGesture } from '@/app/session/calls';
 import { callBack } from '@/lib/actions/frontDeskActions';
 import { useAction } from '@/hooks/useAction';
+import { useTenant } from '@/providers/TenantProvider';
 
 /**
  * DialPadArtwork — black glassy keypad card.
@@ -85,6 +86,8 @@ export function DialPadArtwork() {
   const audioPrimed = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const [runCall, callPending] = useAction('Call back');
+  const { tenant } = useTenant();
+  const officeId = tenant?.officeId;
 
   const primeAudio = useCallback(() => {
     if (audioPrimed.current) return;
@@ -125,7 +128,7 @@ export function DialPadArtwork() {
       if (k === 'Enter') {
         e.preventDefault();
         if (callable && !callPending) {
-          void runCall(() => callBack(typed));
+          void runCall(() => callBack(typed, { officeId }));
         }
         return;
       }
@@ -209,7 +212,7 @@ export function DialPadArtwork() {
       <button
         onClick={() => {
           if (callable && !callPending) {
-            void runCall(() => callBack(typed));
+            void runCall(() => callBack(typed, { officeId }));
           }
         }}
         disabled={!callable || callPending}
