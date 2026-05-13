@@ -549,7 +549,22 @@ function DocumentPreviewModalInner({ visible, onClose, type, documentName, panda
             <View style={p.pandadocBody}>
               {Platform.OS === 'web' ? (
                 <iframe
-                  src={livePreviewUrl}
+                  // Client-side rewrite: any Stripe-hosted URL gets routed
+                  // through our same-origin proxy. Stripe sets X-Frame-Options:
+                  // DENY on invoice.stripe.com AND pay.stripe.com, so direct
+                  // iframing always shows "refused to connect". The proxy
+                  // endpoint /api/stripe/invoices/{id}/pdf fetches server-side
+                  // and re-serves with SAMEORIGIN. Match either domain and
+                  // extract the Stripe invoice id (in_*) from anywhere in the
+                  // URL path.
+                  src={(() => {
+                    const u = livePreviewUrl || '';
+                    if (/invoice\.stripe\.com|pay\.stripe\.com/.test(u)) {
+                      const m = u.match(/in_[A-Za-z0-9]+/);
+                      if (m) return `/api/stripe/invoices/${m[0]}/pdf`;
+                    }
+                    return u;
+                  })()}
                   style={{
                     width: '100%',
                     height: '100%',
