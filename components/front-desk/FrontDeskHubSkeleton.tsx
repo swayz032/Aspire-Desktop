@@ -636,7 +636,12 @@ const styles = StyleSheet.create({
   outer: {
     flex: 1,
     width: '100%',
-    maxWidth: 1440,
+    // Laptop-optimized: matches DesktopShell.maxWidth=1280 + DesktopHome
+    // Canvas.layout.wideMaxWidth so the Front Desk Hub sits at the same
+    // content width as Home / Inbox / Office Memory. Founder feedback
+    // 2026-05-12: 1440 stretched content edge-to-edge on a 1366 laptop and
+    // made stage + rail + dial pad feel "wide and compact".
+    maxWidth: 1280,
     alignSelf: 'center',
     paddingHorizontal: 16,
     paddingTop: 12,
