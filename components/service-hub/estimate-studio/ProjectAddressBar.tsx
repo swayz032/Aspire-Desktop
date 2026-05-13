@@ -43,6 +43,13 @@ interface ProjectAddressBarProps {
   initialAddress?: string;
   onAddressChange?: (address: string) => void;
   onNewProject?: () => void;
+  /**
+   * Compact mode hides the inline Upload + New Project buttons. Set true when
+   * rendering inside the Tim Rail Controls tab's PROJECT section — Controls
+   * has its own QUICK ACTIONS row, so duplicating the buttons here caused
+   * them to overlap the address input on laptops (reported 2026-05-13).
+   */
+  compact?: boolean;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -51,6 +58,7 @@ export function ProjectAddressBar({
   initialAddress,
   onAddressChange,
   onNewProject,
+  compact = false,
 }: ProjectAddressBarProps) {
   const { address: storedAddress } = useProjectAddress();
 
@@ -321,24 +329,28 @@ export function ProjectAddressBar({
         })()}
       </View>
 
-      <TouchableOpacity
-        style={styles.uploadButton}
-        activeOpacity={0.85}
-        testID="estimate-studio-upload-evidence"
-      >
-        <Ionicons name="cloud-upload-outline" size={16} color="rgba(255,255,255,0.85)" />
-        <Text style={styles.uploadButtonText}>Upload</Text>
-      </TouchableOpacity>
+      {!compact && (
+        <>
+          <TouchableOpacity
+            style={styles.uploadButton}
+            activeOpacity={0.85}
+            testID="estimate-studio-upload-evidence"
+          >
+            <Ionicons name="cloud-upload-outline" size={16} color="rgba(255,255,255,0.85)" />
+            <Text style={styles.uploadButtonText}>Upload</Text>
+          </TouchableOpacity>
 
-      <TouchableOpacity
-        style={styles.newProjectButton}
-        activeOpacity={0.85}
-        onPress={onNewProject}
-        testID="estimate-studio-new-project"
-      >
-        <Ionicons name="add" size={16} color="#0A0A0F" />
-        <Text style={styles.newProjectButtonText}>New Project</Text>
-      </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.newProjectButton}
+            activeOpacity={0.85}
+            onPress={onNewProject}
+            testID="estimate-studio-new-project"
+          >
+            <Ionicons name="add" size={16} color="#0A0A0F" />
+            <Text style={styles.newProjectButtonText}>New Project</Text>
+          </TouchableOpacity>
+        </>
+      )}
     </View>
   );
 }

@@ -99,7 +99,10 @@ export function TimRailControlsTab() {
     >
       {showChromeSections && (
         <Section title="PROJECT" testID="tim-rail-controls-project">
-          {isMaterialsTab ? <MaterialsSlotBar /> : <ProjectAddressBar />}
+          {/* compact={true} hides ProjectAddressBar's inline Upload + New
+              Project buttons that were overlapping the address input. The
+              QUICK ACTIONS section below owns those buttons. */}
+          {isMaterialsTab ? <MaterialsSlotBar /> : <ProjectAddressBar compact />}
         </Section>
       )}
 

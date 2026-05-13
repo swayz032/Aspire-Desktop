@@ -156,7 +156,11 @@ export function PhotoLaneCard({
 const styles = StyleSheet.create({
   card: {
     flex: 1,
-    minWidth: 180,
+    // 180 → 140: 5 cards × 180 + 4 gaps × 12 = 948px which just barely
+    // overflows the laptop canvas content area, forcing Aerial 3D to
+    // wrap to a second row. 140 floor leaves headroom for all 5 cards
+    // to share the row evenly (5 × 140 + 48 = 748).
+    minWidth: 140,
     height: 140,
     borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.02)',
