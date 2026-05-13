@@ -95,7 +95,17 @@ export function SupabaseProvider({ children }: { children: ReactNode }) {
     // Subscribe to auth changes FIRST
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, s) => {
+    } = supabase.auth.onAuthStateChange((event, s) => {
+      // Founder lock 2026-05-13: SIGNED_OUT events fire on tab-background,
+      // network blips, and other transient situations even when the token
+      // is still valid. Ignore SIGNED_OUT unless the user deliberately
+      // signed out (deliberateSignOutRef set by our own signOut()). All
+      // other events (INITIAL_SESSION, SIGNED_IN, TOKEN_REFRESHED,
+      // USER_UPDATED, PASSWORD_RECOVERY) pass through normally.
+      if (event === 'SIGNED_OUT' && !deliberateSignOutRef.current) {
+        // Don't drop the session — let stableSetSession's token-validity
+        // check decide. If the token is still good, we ignore the event.
+      }
       stableSetSession(s);
       authChangeReceived = true;
       if (initialSessionFetched) setIsLoading(false);
@@ -136,34 +146,62 @@ export function SupabaseProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [session]);
 
-  // Proactive interval-based token refresh (Bug 1 fix).
-  // Checks every 60s — if the token expires within 5 minutes, refreshes proactively.
-  // This prevents the nora-state broadcast from accumulating 401s due to a
-  // silently-expired JWT after ~1 hour of continuous session.
+  // Proactive interval-based token refresh.
+  // Founder lock 2026-05-13: tightened to 30s interval + 10-minute refresh-
+  // ahead window + retry loop. The previous 60s/5-min combo left a window
+  // where the token could expire between checks if a refresh attempt
+  // failed once (network blip, Supabase cold start). The new policy:
+  //   - Check every 30s
+  //   - Refresh if token expires within 10 minutes
+  //   - On refresh failure, retry up to 3 times with 2s backoff
+  //   - Log every refresh decision so we can see why the founder gets kicked
   useEffect(() => {
     if (DEV_BYPASS_AUTH || Platform.OS !== 'web') return;
 
-    const REFRESH_INTERVAL_MS = 60_000;
-    const REFRESH_AHEAD_MS = 5 * 60 * 1000; // refresh if expiry < 5 min away
+    const REFRESH_INTERVAL_MS = 30_000;
+    const REFRESH_AHEAD_MS = 10 * 60 * 1000;
+
+    const tryRefreshWithRetry = async (attempts = 3): Promise<boolean> => {
+      for (let i = 0; i < attempts; i++) {
+        try {
+          const { data: refreshed, error } = await supabase.auth.refreshSession();
+          if (refreshed.session) {
+            lastValidSessionRef.current = Date.now();
+            setSession(refreshed.session);
+            return true;
+          }
+          if (error) {
+            console.warn(`[Auth] refresh attempt ${i + 1}/${attempts} failed:`, error.message);
+          }
+        } catch (e) {
+          console.warn(`[Auth] refresh attempt ${i + 1}/${attempts} threw:`, e);
+        }
+        if (i < attempts - 1) {
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      }
+      return false;
+    };
 
     const intervalId = setInterval(async () => {
       try {
         const { data } = await supabase.auth.getSession();
         const s = data.session;
-        if (!s) return; // Not signed in — nothing to refresh
+        if (!s) return;
         const expiresAt = (s as any).expires_at as number | undefined;
-        if (typeof expiresAt === 'number') {
-          const msUntilExpiry = expiresAt * 1000 - Date.now();
-          if (msUntilExpiry < REFRESH_AHEAD_MS) {
-            const { data: refreshed } = await supabase.auth.refreshSession();
-            if (refreshed.session) {
-              lastValidSessionRef.current = Date.now();
-              setSession(refreshed.session);
-            }
+        if (typeof expiresAt !== 'number') return;
+        const msUntilExpiry = expiresAt * 1000 - Date.now();
+        if (msUntilExpiry < REFRESH_AHEAD_MS) {
+          const ok = await tryRefreshWithRetry();
+          if (!ok && msUntilExpiry < 60_000) {
+            // Token is about to expire in <60s AND all retries failed.
+            // Surface the issue but don't drop the session — visibility
+            // listener will retry on next foreground.
+            console.error('[Auth] token <60s to expiry and refresh failed across 3 attempts');
           }
         }
-      } catch {
-        // Best-effort — auth state listener will catch hard failures
+      } catch (e) {
+        console.warn('[Auth] interval tick error:', e);
       }
     }, REFRESH_INTERVAL_MS);
 

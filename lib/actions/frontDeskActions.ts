@@ -286,11 +286,14 @@ export async function sendNewSms(toPhone: string, body: string): Promise<ActionR
       receipt_id: crypto.randomUUID(),
     };
   }
+  // Cold-path Twilio /Messages.json can take 5-20s on first request.
+  // Server-side proxy budgets 45s; client budget needs to be larger than
+  // the slowest happy path or we abort before the send completes.
   return apiPost('/api/v1/sms/send-new', {
     to_phone: e164,
     body,
     idempotency_key: crypto.randomUUID(),
-  }, 8_000);
+  }, 50_000);
 }
 
 /**
