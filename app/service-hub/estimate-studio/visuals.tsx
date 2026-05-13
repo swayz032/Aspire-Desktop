@@ -43,8 +43,12 @@ function useResponsiveSizes() {
   const isLaptop = width >= 1100 && width < 2000;
   const isShort = height < 800;
   return {
-    heroMinHeight: isTablet ? 260 : isLaptop ? 240 : isShort ? 320 : 360,
-    gridSlotHeight: isTablet ? 108 : isLaptop ? 104 : isShort ? 118 : 130,
+    // Laptop hero floor 240 → 520: with chrome hoisted the canvas has
+    // ~841px to play with (1080 viewport - 96 chrome - 143 photo lane +
+    // gaps). Bumping the hero floor here fills the gray gap user
+    // reported between Street View bottom and the photo cards.
+    heroMinHeight: isTablet ? 260 : isLaptop ? 520 : isShort ? 320 : 360,
+    gridSlotHeight: isTablet ? 108 : isLaptop ? 140 : isShort ? 118 : 140,
     containerPadding: isTablet ? 10 : isLaptop ? 10 : 16,
     containerGap: isTablet ? 10 : isLaptop ? 10 : 16,
   };
