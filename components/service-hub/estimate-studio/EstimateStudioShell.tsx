@@ -66,8 +66,12 @@ export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
   // photo + photo lane row, content overflows the canvas at the bottom.
   const isLaptop = isWide && !isDesktop && height < 900;
 
-  // Responsive canvas width: cap on big desktops, full-width below 1400.
-  const canvasMaxWidth = isDesktop ? 1400 : undefined;
+  // Responsive canvas width: cap on big desktops, slim cap on laptop, full
+  // width on tablet/mobile.
+  // Laptop cap (1280) leaves a small page-bg gutter on each side so the
+  // workspace doesn't feel poster-wide on a 13–15" screen — user reported
+  // 'a little less wide'.
+  const canvasMaxWidth = isDesktop ? 1400 : isLaptop ? 1280 : undefined;
 
   // Laptop-specific dynamic height: subtract more so the canvas leaves
   // breathing room for the photo lane at the bottom. Desktop unchanged.
@@ -105,19 +109,36 @@ export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
       <View style={[styles.row, !isWide && styles.rowStacked]}>
         {/* MAIN ZONE */}
         <View style={styles.mainZone} testID="estimate-studio-main-zone">
-          <View style={styles.mainZonePadded}>
+          <View
+            style={[
+              styles.mainZonePadded,
+              // Laptop: compress header padding so the canvas screen +
+              // property cards get the vertical space they need.
+              isLaptop ? { paddingTop: 8, paddingBottom: 0 } : null,
+            ]}
+          >
             <EstimateStudioHeader />
           </View>
 
           {/* Contextual slot. Phase 1 default = Visuals address search. Phase 2+
               swaps based on active tab. On Materials, the slot is hidden —
               the Materials tab renders its own warehouse-search bar. */}
-          <View style={styles.contextualSlot}>
+          <View
+            style={[
+              styles.contextualSlot,
+              isLaptop ? { paddingTop: 4, paddingBottom: 4 } : null,
+            ]}
+          >
             {isMaterialsTab ? <MaterialsSlotBar /> : <ProjectAddressBar />}
           </View>
 
           {/* Tab bar — Phase 2 */}
-          <View style={styles.tabBarSlot}>
+          <View
+            style={[
+              styles.tabBarSlot,
+              isLaptop ? { paddingTop: 2, paddingBottom: 4 } : null,
+            ]}
+          >
             <EstimateStudioTabBar />
           </View>
 
