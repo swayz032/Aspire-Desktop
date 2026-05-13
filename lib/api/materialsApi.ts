@@ -170,7 +170,19 @@ export interface BackendSupplier {
   phone?: string;
   email?: string;
   website?: string;
-  /** Yelp CDN thumbnail URL — surfaces as the supplier card photo. */
+  /**
+   * Supplier card photo URL.
+   *
+   * Pass E (Google Places primary): value is a server-side proxy path of the
+   * form `/v1/places/photo?ref=<encoded_resource_name>&maxHeightPx=400&maxWidthPx=600`.
+   * The orchestrator resolves this against the Google Maps API key server-side
+   * (THREAT-004: API key never embedded in client-visible URLs).
+   *
+   * Yelp fallback: value is a Yelp CDN URL (public CDN, safe for direct use).
+   *
+   * Callers should treat this as an opaque URL string — both forms are valid
+   * `<Image source={{ uri: thumbnail }}` targets.
+   */
   thumbnail?: string;
   distance_miles?: number;
   drive_minutes?: number;
