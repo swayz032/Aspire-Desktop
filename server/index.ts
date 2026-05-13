@@ -255,21 +255,53 @@ app.use(async (req, res, next) => {
       || '';
     let user: { id: string; email?: string; user_metadata?: Record<string, unknown> } | null = null;
     let validationError: string | null = null;
-    try {
-      const userResp = await fetch(`${supabaseUrl}/auth/v1/user`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          apikey: supabaseApiKey,
-        },
-      });
-      if (userResp.ok) {
-        user = (await userResp.json()) as typeof user;
-      } else {
-        validationError = `${userResp.status} ${userResp.statusText}`;
+
+    // Founder lock 2026-05-13: 5s timeout + 60s in-memory cache.
+    //
+    // Root cause of "504 on SMS / inbox rail / etc": this auth middleware
+    // fetched /auth/v1/user on EVERY request with NO timeout. If Supabase
+    // Auth was slow for any reason (cold start, rate limit, transient
+    // 5xx) the request hung until Railway's edge proxy gave up — every
+    // authenticated route appeared as a 504 even though the actual
+    // route handler was never invoked. Fail-closed under 5s instead.
+    //
+    // The 60s cache amortizes the auth lookup so a tight UI burst (drawer
+    // open → 5 simultaneous fetches) hits Supabase once, not 5 times.
+    const _authCache = (global as any).__aspireAuthCache ||= new Map<string, { user: any; expiresAt: number }>();
+    const cacheKey = token.slice(-32); // last 32 chars uniquely identifies a JWT well enough
+    const cached = _authCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      user = cached.user;
+    } else {
+      try {
+        const authCtl = new AbortController();
+        const authTimer = setTimeout(() => authCtl.abort(), 5_000);
+        const userResp = await fetch(`${supabaseUrl}/auth/v1/user`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            apikey: supabaseApiKey,
+          },
+          signal: authCtl.signal,
+        });
+        clearTimeout(authTimer);
+        if (userResp.ok) {
+          user = (await userResp.json()) as typeof user;
+          _authCache.set(cacheKey, { user, expiresAt: Date.now() + 60_000 });
+          // Bound the cache so it never grows unbounded — drop oldest if >500 keys.
+          if (_authCache.size > 500) {
+            const firstKey = _authCache.keys().next().value;
+            _authCache.delete(firstKey);
+          }
+        } else {
+          validationError = `${userResp.status} ${userResp.statusText}`;
+        }
+      } catch (fetchErr) {
+        const isAbort = fetchErr instanceof Error && fetchErr.name === 'AbortError';
+        validationError = isAbort
+          ? 'supabase_auth_timeout_5s'
+          : (fetchErr instanceof Error ? fetchErr.message : 'fetch_failed');
       }
-    } catch (fetchErr) {
-      validationError = fetchErr instanceof Error ? fetchErr.message : 'fetch_failed';
     }
     if (!user) {
       // Decode JWT payload (no verification) for diagnostic purposes only — the token is already rejected.
