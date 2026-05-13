@@ -576,14 +576,20 @@ export function FrontDeskHubSkeleton() {
 
   const personaName = PERSONA_DISPLAY[persona];
 
-  // Founder lock 2026-05-12 v3: desktop 1440 (was 1620 — too long/stretched).
-  // Laptop stays 1280 so cards have breathing room.
-  // Below 1024 = width 100% (rootStack handles single-column).
-  const outerMaxWidth = width >= 1440 ? 1440 : 1280;
+  // Founder lock 2026-05-13:
+  // - Desktop (≥1440) → 1280 (was 1620/1440 — DesktopShell already caps at
+  //   1280 so anything ≥1280 here was a no-op; the page only LOOKED tall
+  //   because flex:1 + tall monitors. maxHeight cap below handles vertical.)
+  // - Laptop (1024–1440) → 1080 — previous 1280 cap matched the shell so
+  //   it didn't visibly inset. 1080 actually makes the page feel narrower.
+  const outerMaxWidth = width >= 1440 ? 1280 : 1080;
+  // Page height cap — keep the hub compact on tall monitors instead of
+  // filling the entire viewport (the "real tall" complaint).
+  const outerMaxHeight = width >= 1440 ? 780 : 700;
 
   return (
     <FrontDeskProvider personaName={personaName}>
-    <View style={[styles.outer, { maxWidth: outerMaxWidth }]}>
+    <View style={[styles.outer, { maxWidth: outerMaxWidth, maxHeight: outerMaxHeight }]}>
       <View style={[styles.root, twoCol ? styles.rootRow : styles.rootStack]}>
         <View style={styles.mainCol}>
           <View style={[styles.card, styles.stageCard, { flex: 7 }]}>
