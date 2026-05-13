@@ -18,8 +18,12 @@ import { useProjectAddress } from '@/hooks/useProjectAddress';
 //   Stacked          : 768–1099 — rail stacked below canvas
 //   Mobile           : <  768   — chrome stays in canvas (rail tabs unusable
 //                                 at this width); tighter chrome.
-const DESKTOP_BREAKPOINT = 1400;
-const LAPTOP_OR_TABLET_BREAKPOINT = 1280;  // chrome hoist applies below this
+const DESKTOP_BREAKPOINT = 1500;
+// Chrome hoist applies below this. Bumped 1280 → 1500 so common laptops
+// (1366x768, 1440x900) get the hoist UX, not desktop chrome. User report:
+// 'only Upload button shows in Controls tab' meant 1366/1440 laptops were
+// hitting the desktop branch where PROJECT + NAVIGATE are suppressed.
+const LAPTOP_OR_TABLET_BREAKPOINT = 1500;
 const WORKSPACE_BREAKPOINT = 1100;         // Tim rail stacks below this
 const TABLET_BREAKPOINT = 768;
 
@@ -73,13 +77,15 @@ export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
     width >= TABLET_BREAKPOINT && width < LAPTOP_OR_TABLET_BREAKPOINT;
 
   // Responsive canvas width:
-  //   Desktop (>=1400)        → 1400 cap
-  //   Laptop/Tablet (768..1279)→ 880 cap (slim, leaves page-bg gutter)
-  //   Mobile (<768)           → full width
+  //   Desktop (>=1500)         → 1400 cap (centered with gutter)
+  //   Laptop/Tablet (768..1499) → 1280 cap (slim by ~80-160px each side on
+  //                              1366/1440 laptops — was 880 which left
+  //                              huge dead space).
+  //   Mobile (<768)            → full width
   const canvasMaxWidth = isDesktop
     ? 1400
     : isLaptopOrTablet
-      ? 880
+      ? 1280
       : undefined;
 
   // With chrome hoisted out, the canvas reclaims the ~22px the chrome was

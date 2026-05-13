@@ -52,8 +52,10 @@ const STUDIO_TABS: { id: string; label: string; icon: IoniconsName; route: Href 
 // Desktop threshold — at this width and above, the in-canvas chrome is
 // visible, so the Controls tab hides PROJECT + NAVIGATE sections to avoid
 // duplicating affordances. Mirrors the LAPTOP_OR_TABLET_BREAKPOINT in
-// EstimateStudioShell.
-const DESKTOP_BREAKPOINT = 1280;
+// EstimateStudioShell. Bumped 1280 → 1500 to catch 1366/1440 laptops which
+// otherwise saw 'only Upload button' in Controls because PROJECT+NAVIGATE
+// were suppressed for being 'desktop'.
+const DESKTOP_BREAKPOINT = 1500;
 
 // One-shot scrollbar-hide stylesheet (web only). Mirrors the pattern in
 // TimRailContextTab so the Controls tab scrolls without rendering a
