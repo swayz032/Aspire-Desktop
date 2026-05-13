@@ -238,8 +238,14 @@ export async function checkSettlementState(suiteId?: string, officeId?: string):
 
 const router = Router();
 
+// Mounted at both paths so the Stripe Dashboard endpoint URL
+// (/api/webhooks/stripe) and the legacy internal path
+// (/api/stripe/finance-webhook) both reach the same handler.
+// The live production webhook destination (we_1TAbZHHl4Bccs57AMlmAlr4V)
+// is configured to hit /api/webhooks/stripe — without this alias every
+// event 404s.
 router.post(
-  '/api/stripe/finance-webhook',
+  ['/api/stripe/finance-webhook', '/api/webhooks/stripe'],
   express.raw({ type: 'application/json' }),
   async (req: Request, res: Response) => {
     try {
