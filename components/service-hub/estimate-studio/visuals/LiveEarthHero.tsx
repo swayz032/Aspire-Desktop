@@ -342,8 +342,8 @@ function PresetButton({ label, icon, onPress, accent, flip }: PresetButtonProps)
 
 const styles = StyleSheet.create({
   shell: {
+    flex: 1,
     width: '100%',
-    aspectRatio: 12 / 5,
     minHeight: 360,
     borderRadius: 12,
     overflow: 'hidden',

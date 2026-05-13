@@ -387,7 +387,14 @@ function diffDirtyTabs(
 function FrontDeskSetupContent() {
   const { authenticatedFetch } = useAuthFetch();
   const { tenant } = useTenant();
+  const { width: windowWidth } = useWindowDimensions();
   const officeId = tenant?.officeId ?? null;
+
+  // Tablet optimization: reduce minWidths so the 2-column layout fits on 10" iPad Portrait (810px).
+  // Desktop behavior unchanged.
+  const isTabletWidth = windowWidth < 1000;
+  const mainColMinWidth = isTabletWidth ? 450 : 600;
+  const railColMinWidth = isTabletWidth ? 280 : 320;
 
   const [config, setConfig] = useState<FrontDeskConfig>(DEFAULT_CONFIG);
   const [originalConfig, setOriginalConfig] = useState<FrontDeskConfig>(DEFAULT_CONFIG);
@@ -758,7 +765,7 @@ function FrontDeskSetupContent() {
 
       {/* 2-column body — center stage + sticky right rail */}
       <View style={styles.bodyGrid}>
-        <View style={styles.mainCol}>
+        <View style={[styles.mainCol, { minWidth: mainColMinWidth }]}>
           <View
             style={styles.centerStage}
             key={`stage-${activeTab}`}
@@ -768,7 +775,7 @@ function FrontDeskSetupContent() {
           </View>
         </View>
 
-        <View style={styles.railCol}>
+        <View style={[styles.railCol, { minWidth: railColMinWidth }]}>
           <View style={styles.railSticky}>
             <SarahStatusRail
               sarah={selectedPersonaStatus}

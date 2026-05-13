@@ -370,17 +370,19 @@ export function LiveHouseInspectorHero({ coords, address, loading, onReturn }: P
           fullscreenButton: false,
           infoBox: false,
           selectionIndicator: false,
-          msaaSamples: 4,
-          contextOptions: { webgl: { alpha: false, antialias: true } },
+          msaaSamples: 8, // Maxed to 8 for 4K crispness
+          contextOptions: { webgl: { alpha: false, antialias: true, preserveDrawingBuffer: true } },
         } as unknown as ConstructorParameters<typeof Cesium.Viewer>[1]);
 
-        // Super-sample on lower-DPR screens (HiDPI already gets the resolution).
-        viewer.resolutionScale =
-          typeof window !== 'undefined' && window.devicePixelRatio >= 2 ? 1.0 : 2.0;
+        // Force 2.0 resolution scale for "Crisp 4K" super-sampling.
+        // On a Retina/4K display (DPR 2), this renders at 4.0 relative to 
+        // standard CSS pixels — extreme high fidelity.
+        viewer.resolutionScale = 2.0;
 
         // Premium look knobs.
         try {
           viewer.scene.postProcessStages.fxaa.enabled = true;
+          viewer.scene.postProcessStages.fxaa.uniforms.edgeThreshold = 0.1;
         } catch {
           /* swallow */
         }
@@ -608,8 +610,8 @@ export function LiveHouseInspectorHero({ coords, address, loading, onReturn }: P
 
 const styles = StyleSheet.create({
   shell: {
+    flex: 1,
     width: '100%',
-    aspectRatio: 12 / 5,
     minHeight: 360,
     borderRadius: 12,
     overflow: 'hidden',

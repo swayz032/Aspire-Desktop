@@ -444,8 +444,8 @@ function SectionLabel({ icon, label, color = '#555', ledDelay }: { icon: string;
 
 // FinanceHubErrorBoundary replaced by PageErrorBoundary with incident reporting.
 
-const BREAKPOINT_DESKTOP = 1280;
-const BREAKPOINT_LAPTOP = 960;
+const BREAKPOINT_DESKTOP = 1024;
+const BREAKPOINT_LAPTOP = 760;
 
 function FinanceHubContent() {
   const { authenticatedFetch } = useAuthFetch();

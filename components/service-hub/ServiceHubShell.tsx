@@ -4,8 +4,8 @@ import { ServiceHubTopNav } from './ServiceHubTopNav';
 import { Colors } from '@/constants/tokens';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-const RIGHT_RAIL_BREAKPOINT = 1100;
-const BREAKPOINT_LAPTOP = 960;
+const RIGHT_RAIL_BREAKPOINT = 768;
+const BREAKPOINT_LAPTOP = 760;
 
 type Props = {
   children: React.ReactNode;

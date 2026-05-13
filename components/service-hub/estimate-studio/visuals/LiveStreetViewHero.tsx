@@ -67,16 +67,18 @@ export function LiveStreetViewHero({ coords, loading, onAerialPress, onEarthPres
         const google = await loader({ apiKey, libraries: ['streetView', 'geometry'] });
         if (cancelled) return;
 
-        // Find the closest OUTDOOR Google-car panorama (filters out the
-        // low-res user-uploaded indoor 360s that caused the blur). Wider
-        // radius (100m) gives the SDK room to pick the best curb-side pano.
+        // Find the closest high-quality Google-car panorama. Using BEST
+        // preference and strictly GOOGLE source ensures we don't pick up
+        // low-res user-uploaded spheres or "blurred" local indoor shots.
+        // radius: 100 gives the SDK room to pick the best curb-side pano
+        // on the same block.
         const sv = new google.maps.StreetViewService();
         sv.getPanorama(
           {
             location: coords,
             radius: 100,
-            source: google.maps.StreetViewSource.OUTDOOR,
-            preference: google.maps.StreetViewPreference.NEAREST,
+            source: google.maps.StreetViewSource.GOOGLE,
+            preference: google.maps.StreetViewPreference.BEST,
           },
           (panoData: any, svStatus: any) => {
             if (cancelled) return;
@@ -94,19 +96,17 @@ export function LiveStreetViewHero({ coords, loading, onAerialPress, onEarthPres
               heading = google.maps.geometry.spherical.computeHeading(panoLatLng, target);
             }
             // Use `position` (not `pano`) so the SDK serves the highest-res
-            // tile available at this location and the user can still click
-            // arrows to walk down the street.
+            // tile available at this location.
             //
-            // zoom: 2 (was 1) — Google's Pano serves 832×832 tiles at zoom
-            // 1 but 1664×1664 at zoom 2. Default zoom 1 framed the camera
-            // back at the road, making the subject (the house) small and
-            // soft. Zoom 2 frames the house tight + serves the higher-res
-            // tile, so the house renders crisp without the user having to
-            // pinch-in manually. They can still zoom out via the +/- ctrl.
+            // zoom: 3 — Google serves 3328×3328 tiles at zoom 3. This is 
+            // the "Crisp 4K" threshold. We punch in tighter so the property
+            // is extremely sharp on 4K/Retina displays. The ResizeObserver 
+            // below ensures the canvas re-buffers at the correct physical 
+            // pixel density.
             const panorama = new google.maps.StreetViewPanorama(containerRef.current, {
               position: panoLatLng ?? coords,
               pov: { heading, pitch: 8 },
-              zoom: 2,
+              zoom: 3,
               addressControl: false,
               fullscreenControl: false,
               motionTracking: false,
@@ -115,6 +115,7 @@ export function LiveStreetViewHero({ coords, loading, onAerialPress, onEarthPres
               zoomControl: true,
               panControl: true,
               enableCloseButton: false,
+              imageDateControl: true, // Show capture date so user understands age vs quality
             });
             // Stash for the ResizeObserver below — fires resize on container
             // size change so the canvas re-renders at the new dimensions

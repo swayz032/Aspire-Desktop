@@ -169,13 +169,15 @@ export function LiveAerialHero({ coords, canonicalAddress, loading, onReturn }: 
   const showUnavailable = status === 'unavailable';
   const showError = status === 'error';
   const hasVideo = Boolean(videoUrl) && status === 'ready';
+  // Prefer H265 (HEVC) for "Crisp 4K" detail if the backend provided it.
+  const activeVideoUrl = (status === 'ready' && videoH265Url) ? videoH265Url : videoUrl;
 
   return (
     <View style={styles.shell} testID="live-aerial-hero">
       {/* Always-mount the video element once we have a URL — overlays sit on top */}
       {hasVideo &&
         React.createElement('video', {
-          src: videoUrl,
+          src: activeVideoUrl,
           poster: thumbnailUrl,
           autoPlay: true,
           loop: true,
@@ -256,8 +258,8 @@ export function LiveAerialHero({ coords, canonicalAddress, loading, onReturn }: 
 
 const styles = StyleSheet.create({
   shell: {
+    flex: 1,
     width: '100%',
-    aspectRatio: 12 / 5,
     minHeight: 360,
     borderRadius: 12,
     overflow: 'hidden',

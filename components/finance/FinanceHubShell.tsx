@@ -5,11 +5,11 @@ import { Colors } from '@/constants/tokens';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { useSafeAreaInsetsCompat } from '@/lib/safeArea';
 
-// Lowered from 1100 -> 1024 so iPad portrait (1024 CSS px) keeps the right rail
+// Lowered from 1024/1100 -> 768 so iPad portrait (768+ px) keeps the right rail
 // visible instead of stacking it inline. Desktop behavior (>=1280) unchanged.
-const RIGHT_RAIL_BREAKPOINT = 1024;
-const BREAKPOINT_LAPTOP = 960;
-const BREAKPOINT_TABLET = 768;
+const RIGHT_RAIL_BREAKPOINT = 768;
+const BREAKPOINT_LAPTOP = 760;
+const BREAKPOINT_TABLET = 640;
 
 type Props = {
   children: React.ReactNode;

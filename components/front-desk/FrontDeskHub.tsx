@@ -81,7 +81,7 @@ const WORKSTRIP_TABS: { id: WorkstripTab; label: string }[] = [
   { id: 'voicemail', label: 'Voice Messages' },
 ];
 
-const RIGHT_COLUMN_BREAKPOINT = 1100;
+const RIGHT_COLUMN_BREAKPOINT = 768;
 
 // ---------------------------------------------------------------------------
 // Component

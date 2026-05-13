@@ -145,9 +145,9 @@ function DesktopHeaderInner({
     const officePart = officeDisplayId ? `Office ${officeDisplayId}` : 'Office Pending';
     return `${suitePart} \u00b7 ${officePart}`;
   }, [suiteDisplayId, officeDisplayId]);
-  const isCompactHeader = viewportWidth < 1280;
-  const isTabletHeader = viewportWidth < 1100;
-  const showSuiteIdentity = viewportWidth >= 1180;
+  const isCompactHeader = viewportWidth < 1024;
+  const isTabletHeader = viewportWidth < 800;
+  const showSuiteIdentity = viewportWidth >= 1000;
   const suiteToggleMaxWidth = isTabletHeader ? 220 : isCompactHeader ? 280 : 360;
   const searchPlaceholderText = isTabletHeader ? 'Search' : 'Search or press ⌘K';
 

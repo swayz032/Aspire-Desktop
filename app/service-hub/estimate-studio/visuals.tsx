@@ -35,16 +35,12 @@ import { usePropertyData } from '@/hooks/usePropertyData';
 // viewports so the full hero + lane stay visible without scroll.
 function useResponsiveSizes() {
   const { width, height } = useWindowDimensions();
-  const isTablet = width < 1100;
-  // Laptop = wide enough for rail (>= 1100) but below desktop threshold
-  // (< 1500). Captures 1366x768, 1440x900, and any short-viewport >= 1100.
-  // Was width >= 1100 && height < 900 — too narrow a band, missed 1366
-  // laptops at 768 inner height after chrome.
-  const isLaptop = width >= 1100 && width < 2000;
+  const isTablet = width < 768;
+  const isLaptop = width >= 768 && width < 2000;
   const isShort = height < 800;
   return {
-    heroMinHeight: isTablet ? 260 : isLaptop ? 520 : isShort ? 320 : 360,
-    gridSlotHeight: isTablet ? 108 : isLaptop ? 140 : isShort ? 118 : 140,
+    heroMinHeight: isTablet ? 260 : isLaptop ? 420 : isShort ? 320 : 360,
+    gridSlotHeight: isTablet ? 108 : isLaptop ? 120 : isShort ? 118 : 140,
     containerPadding: isTablet ? 10 : isLaptop ? 10 : 16,
     containerGap: isTablet ? 10 : isLaptop ? 10 : 16,
   };
