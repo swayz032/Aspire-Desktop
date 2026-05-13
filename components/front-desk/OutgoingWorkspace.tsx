@@ -68,7 +68,8 @@ export function OutgoingWorkspace({ onBackToMenu }: { onBackToMenu?: () => void 
     new URLSearchParams(window.location.search).get('mock') === '1';
 
   const fetcher = useCallback(async (): Promise<OutgoingCallVM[]> => {
-    if (isMockMode || !officeId) return MOCK_OUTGOING_CALLS;
+    if (isMockMode) return MOCK_OUTGOING_CALLS;
+    if (!officeId) return [];
     const resp = await fetchInboxWindow({ authenticatedFetch, officeId, sinceDays: 30 });
     return (resp.items ?? [])
       .filter((b) => b.type === 'outgoing_call')

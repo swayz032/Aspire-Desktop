@@ -77,7 +77,8 @@ export function VoicemailWorkspace({ onBackToMenu }: { onBackToMenu?: () => void
     new URLSearchParams(window.location.search).get('mock') === '1';
 
   const fetcher = useCallback(async (): Promise<VoicemailVM[]> => {
-    if (isMockMode || !officeId) return MOCK_VOICEMAILS;
+    if (isMockMode) return MOCK_VOICEMAILS;
+    if (!officeId) return [];
     const resp = await fetchInboxWindow({ authenticatedFetch, officeId, sinceDays: 30 });
     return (resp.items ?? [])
       .filter((b) => b.type === 'voicemail')

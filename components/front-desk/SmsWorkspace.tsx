@@ -144,7 +144,8 @@ export function SmsWorkspace({
     new URLSearchParams(window.location.search).get('mock') === '1';
 
   const fetcher = useCallback(async (): Promise<Thread[]> => {
-    if (isMockMode || !officeId) return MOCK_SMS_THREADS;
+    if (isMockMode) return MOCK_SMS_THREADS;
+    if (!officeId) return [];
     const resp = await fetchInboxWindow({ authenticatedFetch, officeId, sinceDays: 30 });
     return groupSmsItemsIntoThreads(resp.items ?? []);
   }, [authenticatedFetch, officeId, isMockMode]);

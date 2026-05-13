@@ -61,7 +61,8 @@ export function CallbackQueueWorkspace({ onBackToMenu }: { onBackToMenu?: () => 
     new URLSearchParams(window.location.search).get('mock') === '1';
 
   const fetcher = useCallback(async (): Promise<CallbackVM[]> => {
-    if (isMockMode || !officeId) return MOCK_CALLBACKS;
+    if (isMockMode) return MOCK_CALLBACKS;
+    if (!officeId) return [];
     const resp = await fetchCallbacks({ authenticatedFetch, officeId, bucket: 'all' });
     return (resp.callbacks ?? []).map((c) =>
       // Bridge: /api/callbacks returns `promise_time`/`bucket` optional;

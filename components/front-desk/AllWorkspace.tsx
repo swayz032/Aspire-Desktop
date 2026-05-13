@@ -54,7 +54,8 @@ export function AllWorkspace({ onBackToMenu }: { onBackToMenu?: () => void }) {
     new URLSearchParams(window.location.search).get('mock') === '1';
 
   const fetcher = useCallback(async (): Promise<ActivityEventVM[]> => {
-    if (isMockMode || !officeId) return MOCK_ACTIVITY_EVENTS;
+    if (isMockMode) return MOCK_ACTIVITY_EVENTS;
+    if (!officeId) return [];
     const resp = await fetchInboxWindow({ authenticatedFetch, officeId, sinceDays: 7 });
     return (resp.items ?? []).map(mapToActivityEvent);
   }, [authenticatedFetch, officeId, isMockMode]);

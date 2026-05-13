@@ -72,7 +72,8 @@ export function MissedWorkspace({ onBackToMenu }: { onBackToMenu?: () => void })
     new URLSearchParams(window.location.search).get('mock') === '1';
 
   const fetcher = useCallback(async (): Promise<MissedCallVM[]> => {
-    if (isMockMode || !officeId) return MOCK_MISSED_CALLS;
+    if (isMockMode) return MOCK_MISSED_CALLS;
+    if (!officeId) return [];
     const resp = await fetchInboxWindow({ authenticatedFetch, officeId, sinceDays: 30 });
     return (resp.items ?? [])
       .filter((b) => b.type === 'missed_call')
