@@ -73,6 +73,7 @@ function DesktopSidebarInner({ expanded = true }: DesktopSidebarProps) {
   const widthAnim = useRef(new Animated.Value(expanded ? SIDEBAR_EXPANDED : SIDEBAR_COLLAPSED)).current;
   const opacityAnim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
   const [isLogoHovered, setIsLogoHovered] = useState(false);
+  const [flyoutFor, setFlyoutFor] = useState<string | null>(null);
 
   const filteredNavItems = useMemo(() => {
     // In production, team workspace is always visible for authenticated users
@@ -173,8 +174,17 @@ function DesktopSidebarInner({ expanded = true }: DesktopSidebarProps) {
           const isParentOfActive = hasSubItems && item.subItems!.some(sub => pathname.startsWith(sub.route));
           const showActive = active || isParentOfActive;
           const webProps = Platform.OS === 'web' && !expanded ? { title: item.label } : {};
+          // Collapsed-mode hover flyout: when sidebar is collapsed and this
+          // item has sub-pages (e.g. Front Desk → Setup), hovering the icon
+          // surfaces a small popover to the right with parent + sub-items.
+          // Without this, sub-items are completely invisible in collapsed mode.
+          const showFlyout = !expanded && hasSubItems && Platform.OS === 'web';
+          const hoverHandlers: any = showFlyout ? {
+            onMouseEnter: () => setFlyoutFor(item.id),
+            onMouseLeave: () => setFlyoutFor((cur) => (cur === item.id ? null : cur)),
+          } : {};
           return (
-            <View key={item.id}>
+            <View key={item.id} style={{ position: 'relative' }} {...hoverHandlers}>
               <Pressable
                 style={({ hovered, pressed }: any) => [
                   styles.navItem,
@@ -234,6 +244,43 @@ function DesktopSidebarInner({ expanded = true }: DesktopSidebarProps) {
                 )}
                 {showActive && expanded && <View style={styles.activeIndicator} />}
               </Pressable>
+              {/* Collapsed-mode flyout: hover the icon to reveal sub-pages */}
+              {showFlyout && flyoutFor === item.id && (
+                <View style={styles.flyout}>
+                  <Pressable
+                    style={({ hovered }: any) => [
+                      styles.flyoutHeaderRow,
+                      hovered && styles.flyoutItemHover,
+                    ]}
+                    onPress={() => { setFlyoutFor(null); router.push(item.route as any); }}
+                  >
+                    <Ionicons name={item.iconActive} size={16} color={Colors.accent.cyan} />
+                    <Text style={styles.flyoutHeaderText}>{item.label}</Text>
+                  </Pressable>
+                  <View style={styles.flyoutDivider} />
+                  {item.subItems!
+                    .filter((subItem) => !subItem.ownerOnly)
+                    .map((subItem) => {
+                      const subActive = pathname.startsWith(subItem.route);
+                      return (
+                        <Pressable
+                          key={subItem.id}
+                          style={({ hovered }: any) => [
+                            styles.flyoutItem,
+                            subActive && styles.flyoutItemActive,
+                            !subActive && hovered && styles.flyoutItemHover,
+                          ]}
+                          onPress={() => { setFlyoutFor(null); router.push(subItem.route as any); }}
+                        >
+                          <View style={styles.subNavDot} />
+                          <Text style={[styles.flyoutItemText, subActive && styles.flyoutItemTextActive]}>
+                            {subItem.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                </View>
+              )}
               {/* Sub-items */}
               {expanded && hasSubItems && (showActive || active) && (
                 <View style={styles.subNavList}>
@@ -629,6 +676,65 @@ const styles = StyleSheet.create({
     color: Colors.text.tertiary,
   },
   subNavLabelActive: {
+    color: Colors.accent.cyan,
+    fontWeight: '500',
+  },
+  flyout: {
+    position: 'absolute',
+    left: SIDEBAR_COLLAPSED - 4,
+    top: 0,
+    minWidth: 200,
+    backgroundColor: '#141416',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    zIndex: 1000,
+    ...(Platform.OS === 'web' ? {
+      boxShadow: '0 12px 28px rgba(0,0,0,0.55), 0 2px 6px rgba(0,0,0,0.4)',
+    } : {}),
+  } as any,
+  flyoutHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+  } as any,
+  flyoutHeaderText: {
+    fontSize: 13,
+    color: Colors.text.primary,
+    fontWeight: '600',
+  },
+  flyoutDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    marginVertical: 4,
+    marginHorizontal: 4,
+  },
+  flyoutItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+  } as any,
+  flyoutItemHover: {
+    backgroundColor: '#1C1C1E',
+  },
+  flyoutItemActive: {
+    backgroundColor: '#1a2a3a',
+  },
+  flyoutItemText: {
+    fontSize: 13,
+    color: Colors.text.secondary,
+  },
+  flyoutItemTextActive: {
     color: Colors.accent.cyan,
     fontWeight: '500',
   },
