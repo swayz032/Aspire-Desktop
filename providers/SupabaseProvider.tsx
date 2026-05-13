@@ -218,7 +218,14 @@ export function SupabaseProvider({ children }: { children: ReactNode }) {
     deliberateSignOutRef.current = true;
     lastValidSessionRef.current = 0;
     try {
-      await supabase.auth.signOut();
+      // Founder lock 2026-05-13: use 'local' scope to revoke ONLY this
+      // browser's session, not every session this user has across all
+      // devices. The default 'global' scope was the root cause of the
+      // "session timer kicks me out and I can't get back in" bug —
+      // every idle-timeout fire wiped auth.sessions + auth.refresh_tokens
+      // for the user globally, so even fresh sign-ins on other tabs/
+      // devices were retroactively poisoned.
+      await supabase.auth.signOut({ scope: 'local' });
     } catch (e) {
       console.error('[Auth] Sign out API error:', e);
     }

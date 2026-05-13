@@ -4,15 +4,21 @@ import { useRouter } from 'expo-router';
 import { useSupabase } from '@/providers';
 import { supabase } from '@/lib/supabase';
 
-const ACTIVITY_EVENTS = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click', 'wheel'] as const;
+const ACTIVITY_EVENTS = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click', 'wheel', 'mousemove'] as const;
 const WARNING_BEFORE_MS = 60_000; // Show warning 60s before timeout
 
 /**
  * Enterprise idle timeout hook.
  * Tracks user activity and auto-signs out after inactivity period.
  * Only active on web platform when user has a session.
+ *
+ * Founder lock 2026-05-13: default raised from 15 min -> 4 hours.
+ * 15-minute idle kicks were too aggressive for a Front Desk app where
+ * the user steps away to do a job site task and returns to the same
+ * window. mousemove added to ACTIVITY_EVENTS so any cursor motion in
+ * the window keeps the session alive.
  */
-export function useIdleTimeout(timeoutMs = 15 * 60_000) {
+export function useIdleTimeout(timeoutMs = 4 * 60 * 60_000) {
   const { session, signOut } = useSupabase();
   const router = useRouter();
   const [showWarning, setShowWarning] = useState(false);
