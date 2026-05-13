@@ -149,9 +149,14 @@ export function HeroSwitcher({ mode, onModeChange, data, loading }: Props) {
 
 const styles = StyleSheet.create({
   container: {
+    // flex:1 fills the parent heroSlot vertically. The fixed 12:5
+    // aspectRatio was locking the hero to a short band and leaving a
+    // huge black gap between the photo bottom and the photo lane cards
+    // on laptop viewports — the heroSlot's flex:1 + minHeight:520 was
+    // wasted because aspectRatio forced height = width * 5/12.
+    flex: 1,
     width: '100%',
     minHeight: 360,
-    aspectRatio: 12 / 5,
     position: 'relative',
   },
   layer: {
