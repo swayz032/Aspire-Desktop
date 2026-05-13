@@ -5057,11 +5057,20 @@ router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response)
     `);
 
     // Post-deny cleanup: void finalized invoices in Stripe
-    // Since invoice.create auto-finalizes (to generate preview URL), denial must void it
+    // Since invoice.create auto-finalizes (to generate preview URL), denial must void it.
+    // Must use the same tenant_memberships fallback as the main UPDATE — otherwise
+    // we silently skip void/cancel for rows in fallback-matched tenants.
     try {
       const approvalRows = await db.execute(sql`
         SELECT operation, execution_payload FROM approval_requests
-        WHERE approval_id = ${id} AND tenant_id = ${suiteId}
+        WHERE approval_id = ${id}
+          AND (
+            tenant_id = ${suiteId}
+            OR tenant_id IN (
+              SELECT tenant_id FROM tenant_memberships
+              WHERE user_id = ${userId || null}::uuid
+            )
+          )
       `);
       const approvalRow = (approvalRows as any).rows?.[0] || (approvalRows as any)[0];
       if (approvalRow?.operation === 'invoice.send') {
@@ -9092,13 +9101,17 @@ router.post('/api/v1/twilio/release-number/:id', async (req: Request, res: Respo
 // ─── SMS ──────────────────────────────────────────────────────────────────────
 
 router.post('/api/v1/sms/send', async (req: Request, res: Response) => {
+  // 45s timeout — same reasoning as /api/v1/sms/send-new below.
+  // Cold-container path can hit Twilio /Messages.json which takes 5-20s
+  // on first request; 10s was killing the request before Twilio responded
+  // and the founder saw 504s on every existing-thread reply.
   await proxyForward({
     orchestratorPath: '/v1/sms/send',
     method: 'POST',
     body: typeof req.body === 'object' && req.body !== null ? (req.body as Record<string, unknown>) : {},
     scope: 'telephony:sms_send',
     logTag: 'SmsSend',
-    timeoutMs: 10_000,
+    timeoutMs: 45_000,
     req,
     res,
   });

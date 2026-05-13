@@ -235,11 +235,15 @@ export async function callBack(
  * Previously sent { thread_id, body } which the backend rejected silently.
  */
 export async function sendSms(threadId: string, body: string): Promise<ActionResult> {
+  // 50s client timeout — same as sendNewSms. The default apiPost timeout
+  // is 5s, which aborts the request before Twilio's cold path (5-20s)
+  // completes and the founder sees a fake "504". Server-side proxy has
+  // a 45s budget so 50s here covers it cleanly.
   return apiPost('/api/v1/sms/send', {
     thread_memory_id: threadId,
     body,
     idempotency_key: crypto.randomUUID(),
-  });
+  }, 50_000);
 }
 
 /**
