@@ -455,84 +455,6 @@ function VerifiedToast({ receiptId, onDismiss }: { receiptId: string; onDismiss:
   );
 }
 
-/**
- * HubTitleStrip — slim premium glassy-black strip across the top of the Front
- * Desk Hub. Replaces the outer page header (FrontDeskHeaderStrip) and folds
- * the Voice/Video toggle inline (Pass D laptop layout 2026-05-12).
- *
- * Setup is now a sidebar nav sub-item only — no top-right button.
- */
-function HubTitleStrip({
-  mode,
-  personaName,
-  onModeChange,
-}: {
-  mode: StageMode;
-  personaName: string;
-  onModeChange: (m: StageMode) => void;
-}) {
-  return (
-    <View style={titleStripStyles.bar}>
-      <View style={titleStripStyles.titleCol}>
-        <Text style={titleStripStyles.title}>Front Desk</Text>
-        <Text style={titleStripStyles.subtitle}>
-          {`${personaName} is handling calls, voice messages, texts, and callback notes.`}
-        </Text>
-      </View>
-      <View style={titleStripStyles.toggleSlot}>
-        <StageToggle mode={mode} personaName={personaName} onChange={onModeChange} />
-      </View>
-    </View>
-  );
-}
-
-const titleStripStyles = StyleSheet.create({
-  bar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 16,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: '#0a0a0a',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-    marginBottom: 12,
-    ...(Platform.OS === 'web'
-      ? ({
-          backgroundImage:
-            'radial-gradient(120% 80% at 50% 0%, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0) 60%), linear-gradient(180deg, #050507 0%, #000000 100%)',
-          boxShadow: '0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 18px rgba(0,0,0,0.45)',
-        } as any)
-      : null),
-  },
-  titleCol: {
-    flex: 1,
-    minWidth: 0,
-    flexShrink: 1,
-    gap: 1,
-  },
-  title: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: -0.2,
-    ...(Platform.OS === 'web'
-      ? ({ fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' } as any)
-      : null),
-  },
-  subtitle: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 12,
-    fontWeight: '400',
-    lineHeight: 16,
-  },
-  toggleSlot: {
-    flexShrink: 0,
-  },
-});
-
 function StageToggle({
   mode,
   personaName,
@@ -654,21 +576,31 @@ export function FrontDeskHubSkeleton() {
 
   const personaName = PERSONA_DISPLAY[persona];
 
+  // Laptop-only width cap (Pass D 2026-05-12 founder feedback v2):
+  // - Desktop (>=1440px viewport) stretches wider — desktop was already big
+  // - Laptop (1024–1440) caps at 1280 so cards have breathing room
+  // - Below 1024 stays width:100% (rootStack handles single-column)
+  const outerMaxWidth = width >= 1440 ? 1620 : 1280;
+
   return (
     <FrontDeskProvider personaName={personaName}>
-    <View style={styles.outer}>
-      {/* Slim premium glassy-black title strip — replaces the outer page
-          header (Pass D 2026-05-12 founder feedback). Holds the "Front Desk"
-          title on the left and the Voice/Video stage toggle on the right.
-          Setup moves to the sidebar nav dropdown — no top-right button. */}
-      <HubTitleStrip
-        mode={mode}
-        personaName={personaName}
-        onModeChange={handleModeChange}
-      />
+    <View style={[styles.outer, { maxWidth: outerMaxWidth }]}>
       <View style={[styles.root, twoCol ? styles.rootRow : styles.rootStack]}>
         <View style={styles.mainCol}>
           <View style={[styles.card, styles.stageCard, { flex: 7 }]}>
+            {/* In-stage title strip — slim premium glassy bar at the top of
+                the stage card itself (founder lock: title lives in the same
+                surface as the 3D blob, NOT a separate strip above all the
+                cards). Holds "Front Desk" left, Voice/Video toggle right. */}
+            <View style={styles.stageTitleStrip}>
+              <View style={styles.stageTitleCol}>
+                <Text style={styles.stageTitleText}>Front Desk</Text>
+                <Text style={styles.stageTitleSub}>
+                  {`${personaName} is handling calls, voice messages, texts, and callback notes.`}
+                </Text>
+              </View>
+              <StageToggle mode={mode} personaName={personaName} onChange={handleModeChange} />
+            </View>
             {/* Live session timer — centered at the top of the stage. */}
             {mode === 'voice' && sessionActive ? (
               <View style={[styles.timerSlot, { pointerEvents: 'none' }]}>
@@ -718,21 +650,57 @@ const styles = StyleSheet.create({
   outer: {
     flex: 1,
     width: '100%',
-    // Laptop-optimized: matches DesktopShell.maxWidth=1280 + DesktopHome
-    // Canvas.layout.wideMaxWidth so the Front Desk Hub sits at the same
-    // content width as Home / Inbox / Office Memory. Founder feedback
-    // 2026-05-12: 1440 stretched content edge-to-edge on a 1366 laptop and
-    // made stage + rail + dial pad feel "wide and compact".
-    maxWidth: 1280,
+    // maxWidth set dynamically in render: 1620 on desktop (>=1440 viewport),
+    // 1280 on laptop. Desktop was already big — don't shrink it. Laptop
+    // gets the breathing room.
     alignSelf: 'center',
     paddingHorizontal: 16,
-    // Pass D laptop layout 2026-05-12: tighter top padding + no inner root
-    // gap. The old outer page header (FrontDeskHeaderStrip) is gone — the new
-    // in-hub HubTitleStrip carries its own marginBottom — so we want the
-    // cards to fill upward toward the nav pill without a stale gap.
     paddingTop: 8,
     paddingBottom: 16,
     minHeight: 0,
+  },
+  // In-stage title strip — slim glassy bar at the top of the stage card.
+  // Sits flush inside the dark stage surface so the 3D blob has its
+  // headline right above it (NOT a separate strip above the cards).
+  stageTitleStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
+    paddingLeft: 16,
+    paddingRight: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+    zIndex: 3,
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage:
+            'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0) 70%)',
+        } as any)
+      : null),
+  },
+  stageTitleCol: {
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+    gap: 1,
+  },
+  stageTitleText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+    ...(Platform.OS === 'web'
+      ? ({ fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' } as any)
+      : null),
+  },
+  stageTitleSub: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 11,
+    fontWeight: '400',
+    lineHeight: 14,
   },
   root: {
     flex: 1,
