@@ -19,6 +19,8 @@ import {
   useElevenLabsAgent,
   type VoiceStatus,
 } from '@/hooks/useElevenLabsAgent';
+import { useSupabase } from '@/providers/SupabaseProvider';
+import { useTenant } from '@/providers/TenantProvider';
 import { devLog, devWarn } from '@/lib/devLog';
 
 export type VoiceSessionState =
@@ -113,8 +115,31 @@ export function useTiffanyVoiceSession(): UseTiffanyVoiceSession {
   const startedAtRef = useRef<number | null>(null);
   const activeReceiptIdRef = useRef<string | null>(null);
 
+  // Pass D fix 2026-05-13: thread the live Supabase session token + tenant
+  // identity into useElevenLabsAgent. Without this, the agent-session POST
+  // had no Authorization header AND no userProfile fallback — so EL fell
+  // back to its dynamic_variable_placeholders, producing "Hey [empty]
+  // [empty]" or "Hey None" depending on the placeholder values.
+  const { session } = useSupabase();
+  const { tenant } = useTenant();
+  const accessToken = session?.access_token;
+  const ownerName = (tenant?.ownerName || '').trim();
+  const nameParts = ownerName.split(/\s+/).filter(Boolean);
+  const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+  const firstName = nameParts[0] || '';
+  const salutation = lastName ? 'Mr.' : '';
+
   const agent = useElevenLabsAgent({
     agent: 'tiffany' as any,
+    accessToken,
+    suiteId: tenant?.suiteId,
+    userId: session?.user?.id,
+    userProfile: {
+      ownerName,
+      businessName: tenant?.businessName,
+      salutation,
+      lastName,
+    },
     onError: (err) => {
       setErrorMessage(err.message || GENERIC_ERROR_MESSAGE);
     },
