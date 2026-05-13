@@ -20,10 +20,14 @@ export interface CardTilt {
  * canary testing on Safari — boosted across the board, not just for
  * Safari, since the under-amplitude was global.
  */
+// Pass D 2026-05-12 founder feedback: "moves too much" — ±14° was making
+// the card feel nausea-inducing on a stationary laptop. Pulled back to a
+// restrained ±5° (desktop/laptop) and ±4° (tablet). The card still feels
+// alive on cursor move but no longer reads as a swinging billboard.
 export const TILT_AMPLITUDE = {
-  desktop: 14,
-  laptop: 14,
-  tablet: 9,
+  desktop: 5,
+  laptop: 5,
+  tablet: 4,
   reducedMotion: 0,
 } as const;
 
@@ -131,18 +135,34 @@ export function useCardTiltRef(maxDeg: number = TILT_AMPLITUDE.desktop) {
     let frame: number | null = null;
     let lastX = 0;
     let lastY = 0;
+    // Smoothed values — lerped toward the target each frame for buttery
+    // glide (founder feedback "lags a lot" — root cause was the snap to
+    // raw target). 0.12 = ~150ms ease-out feel at 60fps.
+    let curX = 0;
+    let curY = 0;
+    const LERP = 0.12;
+
+    // Hint the compositor + add translateZ(0) so the browser keeps the
+    // card on its own GPU layer. Eliminates the CPU-layer flip jank that
+    // was reading as "lag".
+    const el0 = elementRef.current;
+    if (el0) {
+      el0.style.willChange = 'transform';
+      el0.style.backfaceVisibility = 'hidden';
+    }
 
     const tick = () => {
       const el = elementRef.current;
       if (el) {
         const { cursor, viewport } = cursorRef.current;
         const t = computeTilt(cursor, viewport, effectiveMax);
-        // Skip writes when the value hasn't moved enough to matter (≥0.1°).
-        // Saves a layout/paint when the cursor is stationary.
-        if (Math.abs(t.rotateX - lastX) > 0.1 || Math.abs(t.rotateY - lastY) > 0.1) {
-          lastX = t.rotateX;
-          lastY = t.rotateY;
-          el.style.transform = `rotateX(${t.rotateX.toFixed(2)}deg) rotateY(${t.rotateY.toFixed(2)}deg)`;
+        // Lerp current → target. Cursor jumps no longer snap the card.
+        curX += (t.rotateX - curX) * LERP;
+        curY += (t.rotateY - curY) * LERP;
+        if (Math.abs(curX - lastX) > 0.05 || Math.abs(curY - lastY) > 0.05) {
+          lastX = curX;
+          lastY = curY;
+          el.style.transform = `translateZ(0) rotateX(${curX.toFixed(2)}deg) rotateY(${curY.toFixed(2)}deg)`;
         }
       }
       frame = window.requestAnimationFrame(tick);
@@ -151,6 +171,8 @@ export function useCardTiltRef(maxDeg: number = TILT_AMPLITUDE.desktop) {
     frame = window.requestAnimationFrame(tick);
     return () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
+      const el = elementRef.current;
+      if (el) el.style.willChange = '';
     };
   }, [maxDeg, reducedMotion, cursorRef]);
 

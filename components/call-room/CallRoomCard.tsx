@@ -25,9 +25,13 @@ import type { TimeOfDayState } from './types';
  *   768  <= w<1024 -> tablet   (~28% shrink)
  *   < 768          -> out of scope (mobile permanently removed)
  */
+// Pass D 2026-05-12: laptop card sized down per founder feedback "needs to
+// be a little more smaller on laptop". Drops ~12% width + ~10% height so
+// it sits comfortably on a 1366×768 viewport without crowding edges.
+// Desktop + tablet unchanged.
 const CARD_SIZING = {
   desktop: { maxWidth: 1200, minHeight: 640, tilt: TILT_AMPLITUDE.desktop },
-  laptop: { maxWidth: 1000, minHeight: 560, tilt: TILT_AMPLITUDE.laptop },
+  laptop: { maxWidth: 880, minHeight: 500, tilt: TILT_AMPLITUDE.laptop },
   tablet: { maxWidth: 860, minHeight: 520, tilt: TILT_AMPLITUDE.tablet },
 } as const;
 
