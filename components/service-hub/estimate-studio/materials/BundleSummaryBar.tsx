@@ -1,10 +1,15 @@
 /**
  * BundleSummaryBar — sticky bottom bar showing bundle stats + Push to Estimate
  * and Draft RFQ Packet actions. Hidden when bundle is empty.
+ *
+ * Pass F: Travel time tile — when closest_store.driveMinutes is provided
+ * (via the closestStore prop), a "Travel: 18 min" stat tile is surfaced.
+ * Small touch but premium feel.
  */
 import React from 'react';
 import { View, Text, StyleSheet, Pressable, Platform, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import type { ClosestStore } from '@/hooks/useMaterialsSearch';
 
 interface Props {
   itemCount: number;
@@ -19,6 +24,11 @@ interface Props {
    * Draft-RFQ button is suppressed (it would be redundant).
    */
   hasSupplierLines?: boolean;
+  /**
+   * Pass F: closest store, used to show travel time in the bundle bar.
+   * When present and driveMinutes > 0, renders a "Travel: N min" stat tile.
+   */
+  closestStore?: ClosestStore | null;
 }
 
 const WEB_TRANSITION: ViewStyle =
@@ -38,10 +48,10 @@ export function BundleSummaryBar({
   onDraftRfq,
   onClear,
   hasSupplierLines = false,
+  closestStore,
 }: Props) {
   if (itemCount === 0) return null;
 
-  // Pass E: primary CTA adapts to bundle contents.
   const primaryLabel = hasSupplierLines ? 'DRAFT RFQS' : 'PUSH TO ESTIMATE';
   const primaryA11y = hasSupplierLines
     ? 'Draft RFQs from supplier bundle'
@@ -51,12 +61,27 @@ export function BundleSummaryBar({
     ? 'bundle-draft-rfqs-btn'
     : 'bundle-push-to-estimate-btn';
 
+  // Pass F: travel time from closest store
+  const travelMin =
+    closestStore &&
+    typeof closestStore.driveMinutes === 'number' &&
+    closestStore.driveMinutes > 0
+      ? closestStore.driveMinutes
+      : null;
+
   return (
     <View style={styles.bar} testID="materials-bundle-summary-bar">
       <View style={styles.stats}>
         <Stat label="Items" value={String(itemCount)} />
         <Stat label="Suppliers" value={String(supplierCount)} />
         <Stat label="Subtotal" value={formatPrice(subtotal)} accent testID="bundle-subtotal" />
+        {travelMin !== null && (
+          <Stat
+            label="Travel"
+            value={`${travelMin} min`}
+            testID="bundle-travel-time"
+          />
+        )}
       </View>
 
       <View style={styles.actions}>
@@ -75,8 +100,6 @@ export function BundleSummaryBar({
             <Text style={styles.ghostBtnText}>CLEAR</Text>
           </Pressable>
         )}
-        {/* Secondary Draft-RFQ button only shows in tool mode; when the
-            bundle is supplier-led, primary CTA already drafts RFQs. */}
         {!hasSupplierLines && (
           <Pressable
             onPress={onDraftRfq}
@@ -148,20 +171,14 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(251,191,36,0.26)',
     flexWrap: 'wrap',
     ...(Platform.OS === 'web'
-      ? (({
-          position: 'sticky' as any,
-          bottom: 8,
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          boxShadow:
-            '0 -8px 32px rgba(0,0,0,0.40), 0 1px 0 rgba(251,191,36,0.08) inset',
-        } as unknown) as ViewStyle)
+      ? (({ position: 'sticky' as any, bottom: 8, backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', boxShadow: '0 -8px 32px rgba(0,0,0,0.40), 0 1px 0 rgba(251,191,36,0.08) inset' } as unknown) as ViewStyle)
       : {}),
   },
   stats: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 22,
+    flexWrap: 'wrap',
   },
   statTile: {
     gap: 3,
@@ -247,9 +264,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#fbbf24',
     ...(Platform.OS === 'web'
-      ? (({
-          boxShadow: '0 4px 12px rgba(251,191,36,0.30)',
-        } as unknown) as ViewStyle)
+      ? (({ boxShadow: '0 4px 12px rgba(251,191,36,0.30)' } as unknown) as ViewStyle)
       : {}),
   },
   primaryBtnHovered: {

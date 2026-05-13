@@ -1,5 +1,5 @@
 /**
- * Materials Search API client — Pass C.
+ * Materials Search API client — Pass C + Pass F.
  *
  * Typed client wrapping `GET /api/v1/materials/search` (Express proxy that
  * mints a capability token + forwards to the Python orchestrator).
@@ -11,10 +11,10 @@
  *             client surfaces the rejection code to the hook.
  *   Law #9 — no raw secrets or PII in error messages surfaced to the client.
  *
- * Bug A/B/C fix (2026-05-13): _mapProduct now reads p.pickup.in_stock
- * (boolean) and p.pickup.drive_minutes (int|null) from the backend's new
- * pickup wrapper. _mapClosestStore now reads drive_minutes from the
- * backend's enriched closest_store object.
+ * Pass F additions:
+ *   BackendClosestStore extended with phone, hours_open_now, hours_today,
+ *   current_status from Google Places enrichment (enrich_store_with_places).
+ *   _mapClosestStore preserves all new fields through to ClosestStore domain type.
  */
 
 import { API_BASE } from './officeMemory';
@@ -73,6 +73,8 @@ export interface MaterialsSearchParams {
  * with `in_stock` (boolean), `store_id`, `store_name`, `quantity`, and
  * `drive_minutes` (int|null, filled by Distance Matrix). Before this fix,
  * `pickup` was always absent and `in_stock` defaulted to false.
+ *
+ * Pass F: additional raw fields forwarded from SerpApi for premium card display.
  */
 export interface BackendProduct {
   title: string;
@@ -82,6 +84,7 @@ export interface BackendProduct {
   rating?: number | null;
   reviews?: number | null;
   sku?: string | null;
+  model_number?: string | null;
   link?: string | null;
   thumbnail?: string | null;
   /**
@@ -92,17 +95,30 @@ export interface BackendProduct {
     in_stock?: boolean;
     store_id?: string | null;
     store_name?: string | null;
+    store_address?: string | null;
     quantity?: number | null;
     /** Null when Distance Matrix did not resolve (fail-soft). */
     drive_minutes?: number | null;
-    store_address?: string | null;
     delivery_zip?: string | null;
   } | null;
   delivery?: boolean | null;
   description?: string | null;
   specifications?: Record<string, string | number | boolean | null> | null;
-  model_number?: string | null;
   product_id?: string | null;
+  /** Pass F: SerpApi badges array */
+  badges?: string[] | null;
+  /** Pass F: price badge string (e.g. "Sale") */
+  price_badge?: string | null;
+  /** Pass F: availability text ("Pickup today", "Ships in 3 days") */
+  availability_text?: string | null;
+  /** Pass F: in-store bay number */
+  bay?: number | string | null;
+  /** Pass F: in-store aisle number */
+  aisle?: number | string | null;
+  /** Pass F: number of variants */
+  variant_count?: number | null;
+  /** Pass F: variant type label ("colors"|"sizes"|"options") */
+  variant_type?: string | null;
   [key: string]: unknown;
 }
 
@@ -139,9 +155,7 @@ export interface BackendAddon {
 }
 
 /**
- * Backend Yelp supplier shape (snake_case). Returned when mode=supplier
- * (Pass E PR #57). Frontend maps this to the Supplier type defined in
- * hooks/useMaterialsSearch.ts.
+ * Backend Yelp supplier shape (snake_case).
  */
 export interface BackendSupplier {
   id?: string;
@@ -165,12 +179,10 @@ export interface BackendSupplier {
 }
 
 /**
- * Backend closest-store shape (snake_case). Returned by PR #58 on every
- * code path (cache hit, success, budget exhausted). Frontend maps this to
- * the ClosestStore type defined in hooks/useMaterialsSearch.ts.
+ * Backend closest-store shape (snake_case).
  *
- * Bug B fix (2026-05-13): drive_minutes is now populated by the Distance
- * Matrix call in routes/materials.py. When null, the UI renders "—".
+ * Pass F additions: phone, hours_open_now, hours_today, current_status
+ * from Google Places enrichment in enrich_store_with_places().
  */
 export interface BackendClosestStore {
   id?: string;
@@ -180,12 +192,19 @@ export interface BackendClosestStore {
   city?: string;
   state?: string;
   zip?: string;
-  phone?: string;
+  /** Pass F: E.164 or formatted phone (public HD number). */
+  phone?: string | null;
   lat?: number;
   lng?: number;
   /** Bug B fix: populated by Distance Matrix. Null = not yet resolved. */
   drive_minutes?: number | null;
   in_traffic?: boolean;
+  /** Pass F: true when store is currently open per Google Places. */
+  hours_open_now?: boolean | null;
+  /** Pass F: today’s hours string, e.g. "6 AM - 10 PM". */
+  hours_today?: string | null;
+  /** Pass F: OPEN | CLOSING_SOON | CLOSED */
+  current_status?: 'OPEN' | 'CLOSING_SOON' | 'CLOSED' | null;
 }
 
 export interface MaterialsSearchResponse {
@@ -213,15 +232,8 @@ export interface MaterialsSearchResponse {
 // ---------------------------------------------------------------------------
 
 function _mapProduct(p: BackendProduct, idx: number): Product {
-  // Bug A fix: pickup is now a real object from the backend normalizer.
-  // Before this fix pickup was always undefined → in_stock=false, driveMinutes=0.
   const pickup = p.pickup ?? {};
   const inStock = pickup.in_stock === true;
-
-  // Bug C fix: drive_minutes may be null (Distance Matrix not resolved).
-  // Map null → 0 at the domain boundary so ProductStore.driveMinutes stays
-  // typed as number, but ProductCard handles 0 as "not resolved" (shows "— MIN").
-  // We use null-coalescing so explicit 0 from backend is preserved.
   const driveMinutes: number = typeof pickup.drive_minutes === 'number'
     ? pickup.drive_minutes
     : 0;
@@ -232,6 +244,21 @@ function _mapProduct(p: BackendProduct, idx: number): Product {
     driveMinutes,
     inStock,
   };
+
+  // Pass F: extended product fields for premium card display
+  const extended: Record<string, unknown> = {};
+  if (Array.isArray(p.badges) && p.badges.length > 0) extended.badges = p.badges;
+  if (p.price_badge) extended.priceBadge = p.price_badge;
+  if (p.availability_text) extended.availabilityText = p.availability_text;
+  if (p.bay !== null && p.bay !== undefined) extended.bay = p.bay;
+  if (p.aisle !== null && p.aisle !== undefined) extended.aisle = p.aisle;
+  if (p.model_number) extended.modelNumber = p.model_number;
+  if (typeof p.variant_count === 'number' && p.variant_count > 0) {
+    extended.variantCount = p.variant_count;
+    extended.variantType = p.variant_type ?? 'options';
+  }
+  if (pickup.store_address) extended.storeAddress = pickup.store_address;
+
   return {
     id: p.product_id ?? p.sku ?? `mat-${idx}`,
     title: p.title ?? '',
@@ -246,7 +273,8 @@ function _mapProduct(p: BackendProduct, idx: number): Product {
     fetchedAt: new Date().toISOString(),
     sku: p.sku ?? undefined,
     category: typeof p.description === 'string' ? undefined : undefined,
-  };
+    ...extended,
+  } as Product;
 }
 
 function _mapSupplier(
@@ -269,7 +297,6 @@ function _mapSupplier(
 function _mapFilters(f: BackendFilters): MaterialsFilter[] {
   const filters: MaterialsFilter[] = [];
 
-  // Brand filter
   if (f.brands && f.brands.length > 0) {
     filters.push({
       key: 'brand',
@@ -282,7 +309,6 @@ function _mapFilters(f: BackendFilters): MaterialsFilter[] {
     });
   }
 
-  // Stock filter
   if (f.stock) {
     filters.push({
       key: 'stock',
@@ -294,7 +320,6 @@ function _mapFilters(f: BackendFilters): MaterialsFilter[] {
     });
   }
 
-  // Price buckets
   if (f.price_buckets && f.price_buckets.length > 0) {
     filters.push({
       key: 'price',
@@ -342,16 +367,23 @@ function _mapClosestStore(
     id: s.store_id ?? s.id ?? '',
     name: s.name ?? 'Home Depot',
     address: s.address ?? '',
-    // Bug B fix: drive_minutes is now populated by Distance Matrix.
-    // When null (fail-soft path), pass 0 so ProductStore.driveMinutes
-    // stays typed as number; ClosestStoreCard treats 0 as "not resolved"
-    // and shows "—" instead.
     driveMinutes: typeof s.drive_minutes === 'number' ? s.drive_minutes : 0,
     inTraffic: Boolean(s.in_traffic),
     city: s.city,
     state: s.state,
-    phone: s.phone,
-  };
+    // Pass F: preserve enrichment fields through to ClosestStore domain type.
+    // These are typed as unknown on ClosestStore (open-ended) so no type widening needed.
+    ...(s.phone !== undefined && s.phone !== null ? { phone: s.phone } : {}),
+    ...(s.hours_open_now !== undefined && s.hours_open_now !== null
+      ? { hours_open_now: s.hours_open_now }
+      : {}),
+    ...(s.hours_today !== undefined && s.hours_today !== null
+      ? { hours_today: s.hours_today }
+      : {}),
+    ...(s.current_status !== undefined && s.current_status !== null
+      ? { current_status: s.current_status }
+      : {}),
+  } as import('../../hooks/useMaterialsSearch').ClosestStore;
 }
 
 export function mapServerResponse(
@@ -367,9 +399,6 @@ export function mapServerResponse(
   return {
     products: resp.products.map(_mapProduct),
     specialtySuppliers: resp.specialty_suppliers.map(_mapSupplier),
-    // Pass E Supplier-mode results (Yelp). Null when mode='tool' so the UI
-    // can distinguish 'never searched in supplier mode' from 'searched but
-    // got zero results'.
     suppliers: Array.isArray(resp.suppliers)
       ? resp.suppliers.map(_mapSupplierFull)
       : null,
@@ -385,17 +414,6 @@ export function mapServerResponse(
 
 type FetchFn = (url: string, options?: RequestInit) => Promise<Response>;
 
-/**
- * Call GET /api/v1/materials/search via the Express proxy.
- *
- * The proxy:
- *   1. Validates the caller's JWT (extracts suite_id)
- *   2. Mints a capability token (scope = materials:search)
- *   3. Injects X-Tenant-Id / X-Suite-Id / X-Office-Id
- *   4. Forwards to the Python orchestrator with an 11s budget
- *
- * Throws `MaterialsApiError` on non-2xx responses.
- */
 export async function searchMaterials(
   authenticatedFetch: FetchFn,
   params: MaterialsSearchParams,
