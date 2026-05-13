@@ -306,9 +306,19 @@ const s = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    // Founder lock 2026-05-13: heavier tint + blur so the homepage
+    // recedes and full attention lands on the Authority Queue drawer.
+    // 0.62 alpha + 6px blur is the same "modal-modal" treatment used on
+    // DocumentPreviewModal — feels like a focused overlay, not just a
+    // tinted scrim.
+    backgroundColor: 'rgba(0,0,0,0.62)',
     zIndex: 90,
-  },
+    ...(Platform.OS === 'web' ? {
+      backdropFilter: 'blur(6px)',
+      WebkitBackdropFilter: 'blur(6px)',
+      transition: 'opacity 180ms ease-out',
+    } : {}),
+  } as any,
 
   // ── Right-edge tab ────────────────────────────────────────────────
   tab: {
