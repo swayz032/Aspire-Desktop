@@ -396,14 +396,20 @@ export function mapServerResponse(
   isCachedOnlyMode: boolean;
   closestStore: import('../../hooks/useMaterialsSearch').ClosestStore | null;
 } {
+  // Supplier-mode backend response omits products / specialty_suppliers /
+  // filters entirely — it returns {success, suppliers, mode, ...}. Guard
+  // every tool-mode field with Array.isArray so the mapper doesn't TypeError
+  // on `undefined.map()` and silently kill the response.
   return {
-    products: resp.products.map(_mapProduct),
-    specialtySuppliers: resp.specialty_suppliers.map(_mapSupplier),
+    products: Array.isArray(resp.products) ? resp.products.map(_mapProduct) : [],
+    specialtySuppliers: Array.isArray(resp.specialty_suppliers)
+      ? resp.specialty_suppliers.map(_mapSupplier)
+      : [],
     suppliers: Array.isArray(resp.suppliers)
       ? resp.suppliers.map(_mapSupplierFull)
       : null,
-    filters: _mapFilters(resp.filters),
-    isCachedOnlyMode: resp.is_cached_only_mode,
+    filters: resp.filters ? _mapFilters(resp.filters) : [],
+    isCachedOnlyMode: Boolean(resp.is_cached_only_mode),
     closestStore: _mapClosestStore(resp.closest_store),
   };
 }
