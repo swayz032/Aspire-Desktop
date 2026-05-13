@@ -677,7 +677,16 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any, suiteId?: str
                 gender: profile.gender || '',
                 hasCamera: !!profile.hasCamera,
                 currentDate: fullDate,
-                timeOfDay: timeOfDay
+                timeOfDay: timeOfDay,
+                // Founder lock 2026-05-13: expose tenant scope to the brain
+                // so invoke_quinn / invoke_adam / invoke_tec / invoke_clara
+                // can substitute suite_id / office_id / tenant_id into
+                // their tool payloads. Without these, the desktop server
+                // falls back to DEFAULT_SUITE_ID and writes approval rows
+                // under an orphan tenant — Approve buttons then error.
+                suiteId: _suiteId || '',
+                officeId: profile.officeId || _suiteId || '',
+                tenantId: _suiteId || ''
               };
 
               // Inject context into the persona brain so subsequent turns
