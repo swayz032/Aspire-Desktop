@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Platform, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { FrontDeskHeaderStrip } from '@/components/front-desk/FrontDeskHeaderStrip';
 import { DialPadArtwork } from '@/components/front-desk/DialPadArtwork';
 import { InboxRail } from '@/components/front-desk/InboxRail';
 import { TodayFeed } from '@/components/front-desk/TodayFeed';
@@ -456,6 +455,84 @@ function VerifiedToast({ receiptId, onDismiss }: { receiptId: string; onDismiss:
   );
 }
 
+/**
+ * HubTitleStrip — slim premium glassy-black strip across the top of the Front
+ * Desk Hub. Replaces the outer page header (FrontDeskHeaderStrip) and folds
+ * the Voice/Video toggle inline (Pass D laptop layout 2026-05-12).
+ *
+ * Setup is now a sidebar nav sub-item only — no top-right button.
+ */
+function HubTitleStrip({
+  mode,
+  personaName,
+  onModeChange,
+}: {
+  mode: StageMode;
+  personaName: string;
+  onModeChange: (m: StageMode) => void;
+}) {
+  return (
+    <View style={titleStripStyles.bar}>
+      <View style={titleStripStyles.titleCol}>
+        <Text style={titleStripStyles.title}>Front Desk</Text>
+        <Text style={titleStripStyles.subtitle}>
+          {`${personaName} is handling calls, voice messages, texts, and callback notes.`}
+        </Text>
+      </View>
+      <View style={titleStripStyles.toggleSlot}>
+        <StageToggle mode={mode} personaName={personaName} onChange={onModeChange} />
+      </View>
+    </View>
+  );
+}
+
+const titleStripStyles = StyleSheet.create({
+  bar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: '#0a0a0a',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+    marginBottom: 12,
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage:
+            'radial-gradient(120% 80% at 50% 0%, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0) 60%), linear-gradient(180deg, #050507 0%, #000000 100%)',
+          boxShadow: '0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 18px rgba(0,0,0,0.45)',
+        } as any)
+      : null),
+  },
+  titleCol: {
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+    gap: 1,
+  },
+  title: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+    ...(Platform.OS === 'web'
+      ? ({ fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' } as any)
+      : null),
+  },
+  subtitle: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 16,
+  },
+  toggleSlot: {
+    flexShrink: 0,
+  },
+});
+
 function StageToggle({
   mode,
   personaName,
@@ -580,13 +657,18 @@ export function FrontDeskHubSkeleton() {
   return (
     <FrontDeskProvider personaName={personaName}>
     <View style={styles.outer}>
-      <FrontDeskHeaderStrip />
+      {/* Slim premium glassy-black title strip — replaces the outer page
+          header (Pass D 2026-05-12 founder feedback). Holds the "Front Desk"
+          title on the left and the Voice/Video stage toggle on the right.
+          Setup moves to the sidebar nav dropdown — no top-right button. */}
+      <HubTitleStrip
+        mode={mode}
+        personaName={personaName}
+        onModeChange={handleModeChange}
+      />
       <View style={[styles.root, twoCol ? styles.rootRow : styles.rootStack]}>
         <View style={styles.mainCol}>
           <View style={[styles.card, styles.stageCard, { flex: 7 }]}>
-            <View style={styles.toggleSlot}>
-              <StageToggle mode={mode} personaName={personaName} onChange={handleModeChange} />
-            </View>
             {/* Live session timer — centered at the top of the stage. */}
             {mode === 'voice' && sessionActive ? (
               <View style={[styles.timerSlot, { pointerEvents: 'none' }]}>
@@ -644,14 +726,17 @@ const styles = StyleSheet.create({
     maxWidth: 1280,
     alignSelf: 'center',
     paddingHorizontal: 16,
-    paddingTop: 12,
+    // Pass D laptop layout 2026-05-12: tighter top padding + no inner root
+    // gap. The old outer page header (FrontDeskHeaderStrip) is gone — the new
+    // in-hub HubTitleStrip carries its own marginBottom — so we want the
+    // cards to fill upward toward the nav pill without a stale gap.
+    paddingTop: 8,
     paddingBottom: 16,
     minHeight: 0,
   },
   root: {
     flex: 1,
     gap: 16,
-    paddingTop: 12,
     minHeight: 0,
   },
   rootRow: { flexDirection: 'row' },
