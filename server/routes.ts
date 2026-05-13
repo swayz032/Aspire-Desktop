@@ -8255,7 +8255,14 @@ router.post('/api/elevenlabs/agent-session', async (req: Request, res: Response)
             salutation: lastName ? 'Mr.' : '',
             business_name: profile.business_name || '',
             industry: profile.industry || '',
-            office_id: profile.office_id || '',
+            // office_id MUST always be a non-empty UUID string. EL declares
+            // it as a required dynamic_variable on aspire_send_sms (and any
+            // other tool that needs tenant scope) — empty string causes EL
+            // to fail the session with "Missing required dynamic variables
+            // in tools: {'office_id', 'tenant_id'}". Fall back to suite_id
+            // (in this single-tenant-per-suite codebase office_id defaults
+            // to suite_id at the orchestrator anyway).
+            office_id: profile.office_id || suiteId,
             // Tiffany Front Desk + receptionist agents declare `called_number`
             // as a required dynamic variable on their twilio_* tool configs.
             // Internal owner-facing sessions don't have a callee — pass an
