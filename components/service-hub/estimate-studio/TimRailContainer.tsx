@@ -18,7 +18,7 @@ import { usePropertyData } from '@/hooks/usePropertyData';
 // MUST default to Controls there or the user lands on Assistant with no
 // search bar / address bar visible anywhere = the 'nothing works' bug.
 // Bumped 1280 → 1500 so 1366/1440 laptops get Controls-first UX.
-const LAPTOP_OR_TABLET_BREAKPOINT = 2000;
+const LAPTOP_OR_TABLET_BREAKPOINT = 1500;
 
 // Tim Rail tabs: Assistant | Context | Controls.
 // The Controls tab owns the studio chrome (address bar + studio tabs +
@@ -31,6 +31,7 @@ const LAPTOP_OR_TABLET_BREAKPOINT = 2000;
 export function TimRailContainer() {
   const { width } = useWindowDimensions();
   const isLaptopOrTablet = width < LAPTOP_OR_TABLET_BREAKPOINT;
+  const railWidth = width < 1100 ? 272 : width < LAPTOP_OR_TABLET_BREAKPOINT ? 288 : 320;
   // Default to Controls on laptop/tablet (chrome is hoisted there, the
   // user MUST land on it or there's no search/address bar visible) and
   // Assistant on desktop (chrome stays in-canvas, Assistant is the home).
@@ -51,7 +52,7 @@ export function TimRailContainer() {
   const propertyData = usePropertyData(address);
 
   return (
-    <View style={styles.zone} testID="estimate-studio-tim-zone">
+    <View style={[styles.zone, { width: railWidth }]} testID="estimate-studio-tim-zone">
       <TimRailHeader />
       <TimRailTabSwitcher active={activeTab} onChange={setActiveTab} />
       <View style={styles.body}>

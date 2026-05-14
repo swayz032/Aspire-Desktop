@@ -1079,8 +1079,7 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     backgroundColor: '#1C1C1E',
     flex: 1,
-    height: 840,
-    maxHeight: 840,
+    minHeight: 0,
   } as any,
   header: {
     paddingHorizontal: 16,

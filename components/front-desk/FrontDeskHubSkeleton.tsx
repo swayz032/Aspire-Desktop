@@ -21,7 +21,7 @@ const CARD_BORDER = 'rgba(255,255,255,0.07)';
 const CARD_RADIUS = 14;
 const STAGE_BG = '#000000';
 
-const BREAKPOINT_TWO_COL = 1100;
+const BREAKPOINT_TWO_COL = 900;
 
 type StageMode = 'voice' | 'video';
 type Persona = 'sarah' | 'tiffany';
@@ -584,14 +584,12 @@ export function FrontDeskHubSkeleton() {
   //   because flex:1 + tall monitors. maxHeight cap below handles vertical.)
   // - Laptop (1024–1440) → 1080 — previous 1280 cap matched the shell so
   //   it didn't visibly inset. 1080 actually makes the page feel narrower.
-  const outerMaxWidth = width >= 1440 ? 1280 : 1080;
-  // Page height cap — keep the hub compact on tall monitors instead of
-  // filling the entire viewport (the "real tall" complaint).
-  const outerMaxHeight = width >= 1440 ? 780 : 700;
+  const outerMaxWidth = width >= 1440 ? 1280 : undefined;
+  const railWidth = width >= 1280 ? 360 : width >= BREAKPOINT_TWO_COL ? 300 : undefined;
 
   return (
     <FrontDeskProvider personaName={personaName}>
-    <View style={[styles.outer, { maxWidth: outerMaxWidth, maxHeight: outerMaxHeight }]}>
+    <View style={[styles.outer, outerMaxWidth ? { maxWidth: outerMaxWidth } : null]}>
       <View style={[styles.root, twoCol ? styles.rootRow : styles.rootStack]}>
         <View style={styles.mainCol}>
           <View style={[styles.card, styles.stageCard, { flex: 7 }]}>
@@ -653,7 +651,7 @@ export function FrontDeskHubSkeleton() {
             <TodayFeed />
           </View>
         </View>
-        <View style={twoCol ? styles.railCol : styles.railColStacked}>
+        <View style={[twoCol ? styles.railCol : styles.railColStacked, twoCol && railWidth ? { width: railWidth } : null]}>
           <InboxRail />
           <DialPadArtwork />
         </View>

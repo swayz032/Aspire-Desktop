@@ -41,6 +41,18 @@
 - store_receipts call signature: store_receipts([receipt_dict]) — test assertions must unpack the list, not treat it as a dict
 - The existing stub handoff block used list_by_entity("handoff", ...) which was WRONG — correct is correlation_id filter
 
+## Materials product shape + drive-time patterns (2026-05-13)
+- `normalize_from_serpapi_homedepot` must emit `pickup` wrapper in `extra` — `ProductRecord.to_dict()` flattens extra so `pickup` lands top-level. Frontend reads `p.pickup.in_stock`, `p.pickup.drive_minutes`.
+- `_resolve_in_stock` priority: `fulfillment_pickup.available` → `pickup.quantity > 0` → `availability_text` "in stock"/"available" → default False.
+- Distance Matrix client: `providers/google_distance_matrix_client.py`, fail-soft (None on any error), 3s timeout, cache via `drive_minutes_cache.py` keyed on (origin_zip, dest_store_id) — no PII (Law #9).
+- Bug D: `hd_payload` in `trades.py` needs `"num": "24"` — SerpApi HD defaults to ~12 results without it.
+- `trades.py` is ~1900 lines after Pass F — too large for push_files JSON payload. Use `push_files` with full content string (works up to GitHub's 100MB file limit; tested at ~45KB ✅).
+- `drive_minutes_resolved: bool` added to every success receipt's `redacted_outputs` per Law #2.
+- Pass F pagination: threshold `_HD_PAGE2_THRESHOLD=18`, cap `_HD_PAGE2_MAX_PRODUCTS=60`. Page 2 uses `start=24` SerpApi param. Dedup by `sku` → `product_id` → `item_id` key priority.
+- Places enricher: `hd_store_places_enricher.py` in `services/adam/`. Two-step: Text Search to get place_id (cached 24h), then Details for phone/opening_hours/business_status (cached 6h). Both caches keyed on `store_id` (no PII).
+- `ProductCardExtended` interface on frontend extends `Product` with badges, priceBadge, availabilityText, bay, aisle, modelNumber, variantCount, variantType, storeAddress — all optional.
+- `BackendClosestStore` now has phone, hours_open_now, hours_today, current_status — spread onto ClosestStore domain type via `...spread` in `_mapClosestStore`. ClosestStore is open-ended (index signature) so no TS widening needed.
+
 ## Service Hub Pass 3.1 — Google API proxy patterns (2026-05-10)
 - All 4 Google property clients in `server/serviceHub/property/` use same key via `resolveGooglePlacesApiKey()` from `runtimeGuards.ts`
 - `propertyTypes.ts` is the canonical type file — import types from there, not define your own

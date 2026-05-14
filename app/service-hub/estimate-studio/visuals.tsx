@@ -39,8 +39,8 @@ function useResponsiveSizes() {
   const isTabletDesktop = width >= 768 && width < 1280;
   const isShort = height < 900;
   return {
-    heroMinHeight: isCompact ? 260 : isTabletDesktop ? 340 : isShort ? 320 : 360,
-    gridSlotHeight: isCompact ? 108 : isTabletDesktop ? 118 : isShort ? 118 : 140,
+    heroMinHeight: isCompact ? 260 : isTabletDesktop ? 400 : isShort ? 320 : 360,
+    gridSlotHeight: isCompact ? 108 : isTabletDesktop ? 120 : isShort ? 118 : 140,
     containerPadding: isCompact ? 10 : isTabletDesktop ? 12 : 16,
     containerGap: isCompact ? 10 : isTabletDesktop ? 12 : 16,
   };

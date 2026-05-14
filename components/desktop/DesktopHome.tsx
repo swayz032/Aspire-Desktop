@@ -407,31 +407,38 @@ function DesktopHomeInner() {
   }, [session?.access_token, suiteId]);
 
   // ── Responsive column widths (spec p13 viewport matrix, Canvas.layout tokens) ──
-  const tabletDesktopFit = Platform.OS === 'web' && width >= 960 && width < 1280;
-  const leftWidth = tabletDesktopFit
-    ? 220
+  const tabletDesktopFit = Platform.OS === 'web' && width >= 768 && width < 1280;
+  const compactTabletFit = Platform.OS === 'web' && width >= 768 && width < 920;
+  const leftWidth = compactTabletFit
+    ? 176
+    : tabletDesktopFit
+    ? 208
     : isTablet
       ? 0
       : isLaptop
         ? Canvas.layout.leftColLaptop
         : Canvas.layout.leftColDesktop;
-  const rightWidth = tabletDesktopFit
-    ? 240
+  const rightWidth = compactTabletFit
+    ? 188
+    : tabletDesktopFit
+      ? 220
     : isTablet
       ? Canvas.layout.rightColTablet
       : isLaptop
         ? Canvas.layout.rightColLaptop
         : Canvas.layout.rightColDesktop;
-  const showThreeCol = Platform.OS === 'web' ? width >= 960 : !isTablet;
-  const columnGap = tabletDesktopFit
-    ? Canvas.layout.gapTablet
+  const showThreeCol = Platform.OS === 'web' ? width >= 768 : !isTablet;
+  const columnGap = compactTabletFit
+    ? 10
+    : tabletDesktopFit
+      ? Canvas.layout.gapTablet
     : isTablet
       ? Canvas.layout.gapTablet
       : isLaptop
         ? Canvas.layout.gapLaptop
         : Canvas.layout.gapDesktop;
   const isWide = width >= 1920;
-  const workspaceHeight = Math.max(720, Math.min(840, height - 170));
+  const workspaceHeight = Math.max(640, Math.min(840, height - 150));
 
   // ── Conditional render: CanvasWorkspace (canvas mode) vs dashboard (chat mode) ──
   return (
@@ -681,7 +688,7 @@ const styles = StyleSheet.create({
     } : {}),
   } as any,
   centerColTablet: {
-    minWidth: 0,
+    minWidth: 320,
   },
   rightCol: {
     width: Canvas.layout.rightColDesktop,
