@@ -361,6 +361,18 @@ function dayShort(day: string): string {
   return day.charAt(0).toUpperCase() + day.slice(1);
 }
 
+function normalizeRoutingPhone(phone: string): string {
+  const trimmed = phone.trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('+')) {
+    return `+${trimmed.slice(1).replace(/\D/g, '')}`;
+  }
+  const digits = trimmed.replace(/\D/g, '');
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  return trimmed;
+}
+
 // ---------------------------------------------------------------------------
 // Per-tab dirty diff
 // ---------------------------------------------------------------------------
@@ -567,7 +579,10 @@ function FrontDeskSetupContent() {
           prev.name !== c.name ||
           prev.phone !== c.phone ||
           prev.role !== c.role ||
-          prev.customRoleLabel !== c.customRoleLabel
+          prev.customRoleLabel !== c.customRoleLabel ||
+          prev.fallbackMode !== c.fallbackMode ||
+          prev.transferAllowed !== c.transferAllowed ||
+          prev.priority !== c.priority
         );
       });
 
@@ -577,16 +592,23 @@ function FrontDeskSetupContent() {
         ops.push(
           createRoutingContact(opts, {
             role: c.role === 'custom' ? c.customRoleLabel || 'custom' : c.role,
-            label: c.name,
-            phone: c.phone,
+            name: c.name,
+            phone: normalizeRoutingPhone(c.phone),
+            transfer_allowed: c.transferAllowed,
+            fallback_mode: c.fallbackMode,
+            sort_order: c.priority,
           }),
         );
       }
       for (const c of toUpdate) {
         ops.push(
           updateRoutingContact(opts, c.id, {
-            label: c.name,
-            phone: c.phone,
+            name: c.name,
+            role: c.role === 'custom' ? c.customRoleLabel || 'custom' : c.role,
+            phone: normalizeRoutingPhone(c.phone),
+            transfer_allowed: c.transferAllowed,
+            fallback_mode: c.fallbackMode,
+            sort_order: c.priority,
           }),
         );
       }

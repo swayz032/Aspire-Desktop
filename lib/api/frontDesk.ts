@@ -463,17 +463,24 @@ export async function purchaseNumber(
  */
 export interface RoutingContactCreatePayload {
   role: string;
-  label: string;
+  name: string;
   phone?: string;
   sip_uri?: string;
   email?: string;
+  transfer_allowed?: boolean;
+  fallback_mode?: string;
+  sort_order?: number;
 }
 
 export interface RoutingContactPatchPayload {
-  label?: string;
+  name?: string;
+  role?: string;
   phone?: string;
   sip_uri?: string;
   email?: string;
+  transfer_allowed?: boolean;
+  fallback_mode?: string;
+  sort_order?: number;
 }
 
 export async function createRoutingContact(
