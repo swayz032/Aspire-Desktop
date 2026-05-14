@@ -21,7 +21,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { View, StyleSheet, ScrollView, Platform, ViewStyle } from 'react-native';
+import { View, StyleSheet, ScrollView, Platform, ViewStyle, useWindowDimensions } from 'react-native';
 import { Colors, Spacing } from '@/constants/tokens';
 import { DesktopShell } from '@/components/desktop/DesktopShell';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
