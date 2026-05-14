@@ -18,13 +18,12 @@ import { useProjectAddress } from '@/hooks/useProjectAddress';
 //   Stacked          : 768–1099 — rail stacked below canvas
 //   Mobile           : <  768   — chrome stays in canvas (rail tabs unusable
 //                                 at this width); tighter chrome.
-const DESKTOP_BREAKPOINT = 2000;
+const DESKTOP_BREAKPOINT = 768;
 // Chrome hoist applies below this. Bumped 1280 → 1500 so common laptops
 // (1366x768, 1440x900) get the hoist UX, not desktop chrome. User report:
 // 'only Upload button shows in Controls tab' meant 1366/1440 laptops were
 // hitting the desktop branch where PROJECT + NAVIGATE are suppressed.
-const LAPTOP_OR_TABLET_BREAKPOINT = 2000;
-const WORKSPACE_BREAKPOINT = 1100;         // Tim rail stacks below this
+const WORKSPACE_BREAKPOINT = 960;         // Tim rail stacks below this
 const TABLET_BREAKPOINT = 768;
 
 // Estimate Studio workspace — ONE BIG CANVAS.
@@ -73,8 +72,7 @@ export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
   // Controls tab. Replaces the prior height-dependent isLaptop heuristic —
   // the user's 958×937 viewport didn't trip it because the trigger was
   // gated on width >= 1100 AND height < 900.
-  const isLaptopOrTablet =
-    width >= TABLET_BREAKPOINT && width < LAPTOP_OR_TABLET_BREAKPOINT;
+  const isLaptopOrTablet = false;
 
   // Responsive canvas width:
   //   Desktop (>=1500)         → 1400 cap (centered with gutter)
@@ -84,15 +82,11 @@ export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
   //   Mobile (<768)            → full width
   const canvasMaxWidth = isDesktop
     ? 1400
-    : isLaptopOrTablet
-      ? 1280
-      : undefined;
+    : undefined;
 
   // With chrome hoisted out, the canvas reclaims the ~22px the chrome was
   // taking, so the calc subtracts less of the viewport. Desktop unchanged.
-  const canvasHeightCalc = isLaptopOrTablet
-    ? 'calc(100vh - 96px)'
-    : 'calc(100vh - 118px)';
+  const canvasHeightCalc = isMobile ? 'calc(100vh - 96px)' : 'calc(100vh - 118px)';
   const pathname = usePathname() ?? '';
   // Materials tab owns its own search bar (the materials warehouse search)
   // and route-hero canvas-swap. Detect the route via path-segment endsWith

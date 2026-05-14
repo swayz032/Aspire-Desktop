@@ -35,14 +35,14 @@ import { usePropertyData } from '@/hooks/usePropertyData';
 // viewports so the full hero + lane stay visible without scroll.
 function useResponsiveSizes() {
   const { width, height } = useWindowDimensions();
-  const isTablet = width < 768;
-  const isLaptop = width >= 768 && width < 2000;
-  const isShort = height < 800;
+  const isCompact = width < 768;
+  const isTabletDesktop = width >= 768 && width < 1280;
+  const isShort = height < 900;
   return {
-    heroMinHeight: isTablet ? 260 : isLaptop ? 420 : isShort ? 320 : 360,
-    gridSlotHeight: isTablet ? 108 : isLaptop ? 120 : isShort ? 118 : 140,
-    containerPadding: isTablet ? 10 : isLaptop ? 10 : 16,
-    containerGap: isTablet ? 10 : isLaptop ? 10 : 16,
+    heroMinHeight: isCompact ? 260 : isTabletDesktop ? 340 : isShort ? 320 : 360,
+    gridSlotHeight: isCompact ? 108 : isTabletDesktop ? 118 : isShort ? 118 : 140,
+    containerPadding: isCompact ? 10 : isTabletDesktop ? 12 : 16,
+    containerGap: isCompact ? 10 : isTabletDesktop ? 12 : 16,
   };
 }
 

@@ -260,10 +260,7 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
     backgroundColor: '#0a0a0a',
-    // Founder lock 2026-05-13: vertically center the hub inside the body
-    // so the maxHeight cap (780/700) doesn't leave a big gap at the bottom
-    // on tall monitors. Distributes leftover space above + below instead.
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
   },
   bodyContent: {
     padding: 16,

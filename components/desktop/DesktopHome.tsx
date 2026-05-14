@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Platform, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Platform, Pressable, useWindowDimensions } from 'react-native';
 import { DesktopShell } from './DesktopShell';
 import { AvaDeskPanel } from './AvaDeskPanel';
 import { InteractionModePanel } from '@/components/InteractionModePanel';
@@ -103,6 +103,7 @@ function DesktopHomeInner() {
   const router = useRouter();
   const { mode, stageOpen, runwayState } = useImmersion();
   const { isTablet, isLaptop, width, mounted: bpMounted } = useBreakpoint();
+  const { height } = useWindowDimensions();
   useGlobalKeyboard();
   const { tenant } = useTenant();
   const { session, suiteId } = useSupabase();
@@ -406,19 +407,31 @@ function DesktopHomeInner() {
   }, [session?.access_token, suiteId]);
 
   // ── Responsive column widths (spec p13 viewport matrix, Canvas.layout tokens) ──
-  const leftWidth = isTablet ? 0 : isLaptop ? Canvas.layout.leftColLaptop : Canvas.layout.leftColDesktop;
-  const rightWidth = isTablet
-    ? Canvas.layout.rightColTablet
-    : isLaptop
-      ? Canvas.layout.rightColLaptop
-      : Canvas.layout.rightColDesktop;
-  const showThreeCol = !isTablet;
-  const columnGap = isTablet
+  const tabletDesktopFit = Platform.OS === 'web' && width >= 960 && width < 1280;
+  const leftWidth = tabletDesktopFit
+    ? 220
+    : isTablet
+      ? 0
+      : isLaptop
+        ? Canvas.layout.leftColLaptop
+        : Canvas.layout.leftColDesktop;
+  const rightWidth = tabletDesktopFit
+    ? 240
+    : isTablet
+      ? Canvas.layout.rightColTablet
+      : isLaptop
+        ? Canvas.layout.rightColLaptop
+        : Canvas.layout.rightColDesktop;
+  const showThreeCol = Platform.OS === 'web' ? width >= 960 : !isTablet;
+  const columnGap = tabletDesktopFit
     ? Canvas.layout.gapTablet
-    : isLaptop
-      ? Canvas.layout.gapLaptop
-      : Canvas.layout.gapDesktop;
+    : isTablet
+      ? Canvas.layout.gapTablet
+      : isLaptop
+        ? Canvas.layout.gapLaptop
+        : Canvas.layout.gapDesktop;
   const isWide = width >= 1920;
+  const workspaceHeight = Math.max(720, Math.min(840, height - 170));
 
   // ── Conditional render: CanvasWorkspace (canvas mode) vs dashboard (chat mode) ──
   return (
@@ -470,7 +483,7 @@ function DesktopHomeInner() {
               )}
 
               <ImmersionLayer depth={1}>
-              <View style={[styles.threeColWrapper, { gap: columnGap, height: 840 }]}>
+              <View style={[styles.threeColWrapper, { gap: columnGap, minHeight: workspaceHeight }]}>
                 {showThreeCol && (
                 <View style={[styles.leftCol, { width: leftWidth }]}>
                   <CanvasTileWrapper
@@ -527,7 +540,7 @@ function DesktopHomeInner() {
                   </View>
                 )}
 
-                <View style={styles.centerCol}>
+                <View style={[styles.centerCol, tabletDesktopFit ? styles.centerColTablet : null]}>
                   {/* Ava is the brain — NOT wrapped as a tile */}
                   <AvaDeskPanel />
                 </View>
@@ -667,6 +680,9 @@ const styles = StyleSheet.create({
       position: 'relative',
     } : {}),
   } as any,
+  centerColTablet: {
+    minWidth: 0,
+  },
   rightCol: {
     width: Canvas.layout.rightColDesktop,
     gap: Spacing.lg,
