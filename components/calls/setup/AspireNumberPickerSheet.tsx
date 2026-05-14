@@ -75,6 +75,7 @@ export interface TwilioAvailableNumber {
 }
 
 export interface PurchasedNumberResult {
+  phoneNumberId: string;
   phoneNumber: string;
   friendlyName: string;
   region?: string;
@@ -342,6 +343,7 @@ export function AspireNumberPickerSheet({
         genIdempotencyKey(),
       );
       const result: PurchasedNumberResult = {
+        phoneNumberId: purchased.phone_number_id,
         phoneNumber: purchased.phone_number,
         friendlyName: formatNumber(purchased.phone_number),
         sid: purchased.twilio_sid,

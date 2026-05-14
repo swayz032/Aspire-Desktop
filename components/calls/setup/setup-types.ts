@@ -58,6 +58,8 @@ export interface PublicNumberConfig {
   mode: PublicNumberMode;
   /** Selected Aspire number (when mode === 'ASPIRE_NEW_NUMBER' or after companion-SMS purchase in 'FORWARD_EXISTING') */
   selectedNumberId?: string;
+  /** Selected Aspire number E.164 for display in the setup UI. */
+  selectedNumberPhone?: string;
   /** Area code search filter (legacy — sheet now owns this; kept for hydration compat) */
   areaCode?: string;
   /** Vanity contains filter (legacy — sheet now owns this) */

@@ -251,6 +251,8 @@ function hydrateFromVersionedConfig(
     publicNumber: {
       ...base.publicNumber,
       mode: publicNumberMode,
+      selectedNumberId: typeof row.phone_number_id === 'string' ? row.phone_number_id : undefined,
+      selectedNumberPhone: base.publicNumber.selectedNumberPhone,
     },
     catch: { mode: row.catch_mode },
     businessHours: {
@@ -287,6 +289,7 @@ function buildPatchBody(config: FrontDeskConfig): FrontDeskConfigPatchPartial {
   }
   const patch: FrontDeskConfigPatchPartial = {
     public_number_mode: config.publicNumber.mode,
+    ...(config.publicNumber.selectedNumberId ? { phone_number_id: config.publicNumber.selectedNumberId } : {}),
     catch_mode: config.catch.mode,
     after_hours_mode: AFTER_HOURS_FE_TO_WIRE(config.businessHours.afterHoursMode),
     busy_mode: BUSY_FE_TO_WIRE(config.busy.mode),
@@ -451,6 +454,7 @@ function FrontDeskSetupContent() {
           DEFAULT_CONFIG,
           res.voicemail_email,
         );
+        hydrated.publicNumber.selectedNumberPhone = res.aspire_number?.e164 ?? hydrated.publicNumber.selectedNumberPhone;
         setConfig(hydrated);
         setOriginalConfig(hydrated);
         setAspireNumber(res.aspire_number ?? null);
@@ -542,6 +546,7 @@ function FrontDeskSetupContent() {
         config,
         res.voicemail_email,
       );
+      hydrated.publicNumber.selectedNumberPhone = res.aspire_number?.e164 ?? hydrated.publicNumber.selectedNumberPhone;
       setConfig(hydrated);
       setOriginalConfig(hydrated);
       setAspireNumber(res.aspire_number ?? null);

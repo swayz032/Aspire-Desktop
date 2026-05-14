@@ -190,7 +190,10 @@ export function PublicNumberSection({
 
   const handlePurchased = useCallback(
     (result: PurchasedNumberResult) => {
-      onChange({ selectedNumberId: result.phoneNumber });
+      onChange({
+        selectedNumberId: result.phoneNumberId,
+        selectedNumberPhone: result.phoneNumber,
+      });
     },
     [onChange],
   );
@@ -214,7 +217,7 @@ export function PublicNumberSection({
           <AspireNewNumberFlow
             config={config}
             onOpenPicker={() => setPickerOpen(true)}
-            onClearSelection={() => onChange({ selectedNumberId: undefined })}
+            onClearSelection={() => onChange({ selectedNumberId: undefined, selectedNumberPhone: undefined })}
           />
         ) : null}
 
@@ -269,7 +272,7 @@ function AspireNewNumberFlow({
     >
       {config.selectedNumberId ? (
         <ActiveNumberCard
-          number={formatPhoneDisplay(config.selectedNumberId)}
+          number={formatPhoneDisplay(config.selectedNumberPhone || '')}
           subtitle="Sarah answers this number directly. Voice + SMS active."
           onChange={onClearSelection}
           onPickAnother={onOpenPicker}
@@ -457,9 +460,9 @@ function ForwardExistingFlow({
         </View>
         {config.selectedNumberId ? (
           <ActiveNumberCard
-            number={formatPhoneDisplay(config.selectedNumberId)}
+            number={formatPhoneDisplay(config.selectedNumberPhone || '')}
             subtitle="Aspire SMS active. Customers texting your existing number stay on your carrier."
-            onChange={() => onChange({ selectedNumberId: undefined })}
+            onChange={() => onChange({ selectedNumberId: undefined, selectedNumberPhone: undefined })}
             onPickAnother={onOpenPicker}
           />
         ) : (

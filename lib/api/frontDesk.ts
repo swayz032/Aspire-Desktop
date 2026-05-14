@@ -94,6 +94,7 @@ export interface FrontDeskConfigRow {
   version_no: number;
   is_current: boolean;
   public_number_mode: PublicNumberMode;
+  phone_number_id?: string | null;
   catch_mode: CatchMode;
   after_hours_mode: AfterHoursMode;
   busy_mode: BusyMode;
@@ -181,6 +182,7 @@ export interface BusinessHoursWire {
 
 export interface FrontDeskConfigPatchPartial {
   public_number_mode?: PublicNumberMode;
+  phone_number_id?: string;
   catch_mode?: CatchMode;
   after_hours_mode?: AfterHoursMode;
   busy_mode?: BusyMode;
@@ -255,6 +257,7 @@ export interface AvailableNumbersResponse {
 }
 
 export interface PurchasedNumber {
+  phone_number_id: string;
   phone_number: string;
   twilio_sid: string;
   elevenlabs_phone_number_id: string;
@@ -439,6 +442,7 @@ export async function purchaseNumber(
   const json = await expectJson<PurchasedNumber & { success: boolean }>(resp, 'TWILIO_PURCHASE_FAILED');
   return {
     phone_number: json.phone_number,
+    phone_number_id: json.phone_number_id,
     twilio_sid: json.twilio_sid,
     elevenlabs_phone_number_id: json.elevenlabs_phone_number_id,
     attached_to_agent_id: json.attached_to_agent_id,
