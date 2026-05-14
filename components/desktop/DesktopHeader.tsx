@@ -16,6 +16,7 @@ import {
 } from '@/lib/incomingVideoCallStore';
 import { useDynamicAuthorityQueue } from '@/lib/authorityQueueStore';
 import { useBackendConnected, useDeviceOnline } from '@/lib/connectivityStore';
+import { stripLegalSuffixes } from '@/lib/businessName';
 
 interface Notification {
   id: string;
@@ -106,7 +107,8 @@ function DesktopHeaderInner({
   }, []);
 
   // Derive display values from auth context, falling back to props, then defaults
-  const businessName = businessNameProp || tenant?.businessName || bootstrapIdentity?.businessName || 'Your Business';
+  const businessNameRaw = businessNameProp || tenant?.businessName || bootstrapIdentity?.businessName || 'Your Business';
+  const businessName = stripLegalSuffixes(businessNameRaw) || businessNameRaw;
   const role = roleProp || tenant?.role || 'Founder';
   const suiteDisplayId = tenant?.displayId || bootstrapIdentity?.suiteDisplayId || '';
   const officeDisplayId = tenant?.officeDisplayId || bootstrapIdentity?.officeDisplayId || '';

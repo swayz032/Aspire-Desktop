@@ -19,6 +19,7 @@ import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { isLocalSyntheticAuthBypass } from '@/lib/supabaseRuntime';
 import { useAvaChat } from '@/hooks/useAvaChat';
 import { useAvaPresentsContext } from '@/contexts/AvaPresentsContext';
+import { stripLegalSuffixes } from '@/lib/businessName';
 import type { UIMessage } from 'ai';
 
 type AvaMode = 'voice' | 'video';
@@ -238,7 +239,8 @@ function AvaDeskPanelInner() {
   }, []);
   const suiteDisplayId = tenant?.displayId || bootstrapIdentity?.suiteDisplayId || '';
   const officeDisplayId = tenant?.officeDisplayId || bootstrapIdentity?.officeDisplayId || '';
-  const resolvedBusinessName = tenant?.businessName || bootstrapIdentity?.businessName || 'Your Company';
+  const resolvedBusinessNameRaw = tenant?.businessName || bootstrapIdentity?.businessName || 'Your Company';
+  const resolvedBusinessName = stripLegalSuffixes(resolvedBusinessNameRaw) || resolvedBusinessNameRaw;
   const companyPillLabel = resolvedBusinessName;
   const resolvedOwnerName = tenant?.ownerName || bootstrapIdentity?.ownerName || '';
   
