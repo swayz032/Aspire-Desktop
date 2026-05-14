@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { useRouter, usePathname, type Href } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { useSafeAreaInsetsCompat } from '@/lib/safeArea';
 // ScrollView no longer used — body is a flex View so cards size to viewport.
