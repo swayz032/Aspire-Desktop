@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { useRouter, usePathname, type Href } from 'expo-router';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
@@ -29,6 +29,7 @@ const NAV_PILLS: NavPill[] = [
     route: '/session/front-desk',
     subItems: [
       { id: 'setup', label: 'Front Desk Setup', route: '/session/calls/setup' as any },
+      { id: 'estimate-studio', label: 'Estimate Studio', route: '/service-hub/estimate-studio' as any },
     ]
   },
   { id: 'office-memory', label: 'Office Memory', route: '/office-memory' },

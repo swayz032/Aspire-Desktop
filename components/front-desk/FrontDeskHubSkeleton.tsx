@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Platform, useWindowDimensions } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { DialPadArtwork } from '@/components/front-desk/DialPadArtwork';
 import { InboxRail } from '@/components/front-desk/InboxRail';
@@ -505,6 +506,7 @@ function ToggleBtn({
 }
 
 export function FrontDeskHubSkeleton() {
+  const router = useRouter();
   const { width } = useWindowDimensions();
   const twoCol = width >= BREAKPOINT_TWO_COL;
   const { authenticatedFetch } = useAuthFetch();
@@ -604,7 +606,19 @@ export function FrontDeskHubSkeleton() {
                   {`${personaName} is handling calls, voice messages, texts, and callback notes.`}
                 </Text>
               </View>
-              <StageToggle mode={mode} personaName={personaName} onChange={handleModeChange} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Pressable
+                  onPress={() => router.push('/session/calls/setup' as any)}
+                  style={({ hovered }: any) => [
+                    styles.setupBtn,
+                    hovered && styles.setupBtnHover
+                  ]}
+                >
+                  <Ionicons name="settings-outline" size={14} color="rgba(255,255,255,0.7)" />
+                  <Text style={styles.setupBtnText}>Setup</Text>
+                </Pressable>
+                <StageToggle mode={mode} personaName={personaName} onChange={handleModeChange} />
+              </View>
             </View>
             {/* Live session timer — centered at the top of the stage. */}
             {mode === 'voice' && sessionActive ? (
@@ -785,6 +799,28 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     zIndex: 13,
+  },
+  setupBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', transition: 'all 0.15s ease' } as any) : null),
+  },
+  setupBtnHover: {
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderColor: 'rgba(255,255,255,0.20)',
+  },
+  setupBtnText: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: -0.1,
   },
 });
 
