@@ -120,6 +120,23 @@ const RECEPTIONIST_FALLBACK: SarahStatus = {
 // Wire-format adapters (versioned API ↔ frontend type)
 // ---------------------------------------------------------------------------
 
+function normalizePublicNumberMode(v: string | null | undefined): PublicNumberMode {
+  const normalized = (v || '').trim().toUpperCase();
+  if (normalized === 'FORWARD_EXISTING' || normalized === 'KEEP_CURRENT_NUMBER') {
+    return 'FORWARD_EXISTING';
+  }
+  if (normalized === 'PORT_IN') {
+    return 'PORT_IN';
+  }
+  return 'ASPIRE_NEW_NUMBER';
+}
+
+function publicNumberModeToWire(v: PublicNumberMode): string {
+  if (v === 'FORWARD_EXISTING') return 'KEEP_CURRENT_NUMBER';
+  if (v === 'PORT_IN') return 'PORT_IN';
+  return 'ASPIRE_NUMBER';
+}
+
 // The FE uses stable UPPERCASE enum names. The persisted backend/db shape is
 // still lowercase canonical values; these adapters accept either form on read
 // and always emit the lowercase wire values the backend stores today.
@@ -228,7 +245,7 @@ function hydrateFromVersionedConfig(
     };
   }
 
-  const publicNumberMode = row.public_number_mode as PublicNumberMode;
+  const publicNumberMode = normalizePublicNumberMode(row.public_number_mode);
   const forwarding: ForwardingVerification | undefined =
     publicNumberMode === 'FORWARD_EXISTING'
       ? {
@@ -305,7 +322,7 @@ function buildPatchBody(config: FrontDeskConfig): FrontDeskConfigPatchPartial {
     };
   }
   const patch: FrontDeskConfigPatchPartial = {
-    public_number_mode: config.publicNumber.mode,
+    public_number_mode: publicNumberModeToWire(config.publicNumber.mode) as PublicNumberMode,
     ...(config.publicNumber.selectedNumberId ? { phone_number_id: config.publicNumber.selectedNumberId } : {}),
     catch_mode: config.catch.mode,
     after_hours_mode: AFTER_HOURS_FE_TO_WIRE(config.businessHours.afterHoursMode),
