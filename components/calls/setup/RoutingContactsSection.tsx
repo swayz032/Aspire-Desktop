@@ -75,6 +75,14 @@ function deriveInitials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+function formatRoutingPhoneInput(value: string): string {
+  const cleaned = value.replace(/\D/g, '');
+  const normalized = cleaned.startsWith('1') && cleaned.length > 10 ? cleaned.slice(1) : cleaned;
+  if (normalized.length <= 3) return normalized;
+  if (normalized.length <= 6) return `(${normalized.slice(0, 3)}) ${normalized.slice(3)}`;
+  return `(${normalized.slice(0, 3)}) ${normalized.slice(3, 6)}-${normalized.slice(6, 10)}`;
+}
+
 // ---------------------------------------------------------------------------
 // One-time CSS
 // ---------------------------------------------------------------------------
@@ -422,7 +430,7 @@ function ContactEditorModal({
             <Field label="Phone">
               <TextInput
                 value={phone}
-                onChangeText={setPhone}
+                onChangeText={(value) => setPhone(formatRoutingPhoneInput(value))}
                 placeholder="(404) 555-0182"
                 placeholderTextColor={Colors.text.muted}
                 style={modalStyles.input}

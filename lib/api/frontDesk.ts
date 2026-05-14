@@ -70,10 +70,20 @@ async function expectJson<T>(resp: Response, fallbackCode: string): Promise<T> {
 export type PublicNumberMode =
   | 'ASPIRE_NEW_NUMBER'
   | 'FORWARD_EXISTING'
-  | 'PORT_IN';
+  | 'PORT_IN'
+  | 'ASPIRE_NUMBER'
+  | 'KEEP_CURRENT_NUMBER';
 export type CatchMode = 'APP_ONLY' | 'PHONE_ONLY' | 'APP_AND_PHONE_SIMUL_RING';
-export type AfterHoursMode = 'take_message' | 'ask_callback_window' | 'try_transfer_then_message';
-export type BusyMode = 'take_message' | 'ask_callback_window' | 'try_transfer_then_message';
+export type AfterHoursMode =
+  | 'take_message'
+  | 'ask_callback_window'
+  | 'callback_window'
+  | 'try_transfer_then_message';
+export type BusyMode =
+  | 'take_message'
+  | 'ask_callback_window'
+  | 'callback_window'
+  | 'try_transfer_then_message';
 export type ForwardingStatus = 'NOT_CONFIGURED' | 'PENDING' | 'VERIFIED' | 'LAST_TEST_FAILED';
 
 /**
@@ -464,13 +474,20 @@ export interface RoutingContactCreatePayload {
   phone?: string;
   sip_uri?: string;
   email?: string;
+  transfer_allowed?: boolean;
+  fallback_mode?: string;
+  sort_order?: number;
 }
 
 export interface RoutingContactPatchPayload {
+  role?: string;
   label?: string;
   phone?: string;
   sip_uri?: string;
   email?: string;
+  transfer_allowed?: boolean;
+  fallback_mode?: string;
+  sort_order?: number;
 }
 
 export async function createRoutingContact(

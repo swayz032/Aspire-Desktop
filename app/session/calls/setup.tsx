@@ -123,6 +123,7 @@ const RECEPTIONIST_FALLBACK: SarahStatus = {
 const AFTER_HOURS_WIRE_TO_FE: Record<ApiAfterHoursMode, AfterHoursMode> = {
   take_message: 'TAKE_MESSAGE',
   ask_callback_window: 'ASK_CALLBACK_WINDOW',
+  callback_window: 'ASK_CALLBACK_WINDOW',
   try_transfer_then_message: 'TRY_TRANSFER_THEN_MESSAGE',
 };
 const AFTER_HOURS_FE_TO_WIRE: Record<AfterHoursMode, ApiAfterHoursMode> = {
@@ -133,6 +134,7 @@ const AFTER_HOURS_FE_TO_WIRE: Record<AfterHoursMode, ApiAfterHoursMode> = {
 const BUSY_WIRE_TO_FE: Record<ApiBusyMode, BusyMode> = {
   take_message: 'TAKE_MESSAGE',
   ask_callback_window: 'ASK_CALLBACK_WINDOW',
+  callback_window: 'ASK_CALLBACK_WINDOW',
   try_transfer_then_message: 'TRY_TRANSFER_THEN_MESSAGE',
 };
 const BUSY_FE_TO_WIRE: Record<BusyMode, ApiBusyMode> = {
@@ -169,6 +171,10 @@ function mapWireToContact(row: RoutingContactRow, index: number): RoutingContact
       .slice(0, 2)
       .map((s) => s.charAt(0).toUpperCase())
       .join('') || '??';
+  const fallbackMode =
+    row.fallback_mode === 'message_only' || row.fallback_mode === 'message_fallback'
+      ? 'MESSAGE_FALLBACK'
+      : 'TRANSFER_ALLOWED';
   return {
     id: row.id,
     role,
@@ -176,11 +182,31 @@ function mapWireToContact(row: RoutingContactRow, index: number): RoutingContact
     name: display,
     phone: row.phone || '',
     initials,
-    fallbackMode:
-      (row.fallback_mode as RoutingContact['fallbackMode']) || 'TRANSFER_ALLOWED',
+    fallbackMode,
     transferAllowed: row.transfer_allowed ?? true,
     priority: typeof row.sort_order === 'number' ? row.sort_order : index,
   };
+}
+
+function normalizePublicNumberMode(mode: string | null | undefined): PublicNumberMode {
+  if (mode === 'FORWARD_EXISTING' || mode === 'KEEP_CURRENT_NUMBER') {
+    return 'FORWARD_EXISTING';
+  }
+  if (mode === 'PORT_IN') {
+    return 'PORT_IN';
+  }
+  return 'ASPIRE_NEW_NUMBER';
+}
+
+function normalizeRoutingPhone(phone: string): string {
+  const cleaned = phone.replace(/\D/g, '');
+  if (cleaned.length === 11 && cleaned.startsWith('1')) {
+    return `+${cleaned}`;
+  }
+  if (cleaned.length === 10) {
+    return `+1${cleaned}`;
+  }
+  return phone.trim();
 }
 
 /**
@@ -205,7 +231,7 @@ function hydrateFromVersionedConfig(
     };
   }
 
-  const publicNumberMode = row.public_number_mode as PublicNumberMode;
+  const publicNumberMode = normalizePublicNumberMode(row.public_number_mode);
   const forwarding: ForwardingVerification | undefined =
     publicNumberMode === 'FORWARD_EXISTING'
       ? {
@@ -565,15 +591,24 @@ function FrontDeskSetupContent() {
           createRoutingContact(opts, {
             role: c.role === 'custom' ? c.customRoleLabel || 'custom' : c.role,
             label: c.name,
-            phone: c.phone,
+            phone: normalizeRoutingPhone(c.phone),
+            transfer_allowed: c.transferAllowed,
+            fallback_mode:
+              c.fallbackMode === 'MESSAGE_FALLBACK' ? 'message_fallback' : 'transfer_allowed',
+            sort_order: c.priority,
           }),
         );
       }
       for (const c of toUpdate) {
         ops.push(
           updateRoutingContact(opts, c.id, {
+            role: c.role === 'custom' ? c.customRoleLabel || 'custom' : c.role,
             label: c.name,
-            phone: c.phone,
+            phone: normalizeRoutingPhone(c.phone),
+            transfer_allowed: c.transferAllowed,
+            fallback_mode:
+              c.fallbackMode === 'MESSAGE_FALLBACK' ? 'message_fallback' : 'transfer_allowed',
+            sort_order: c.priority,
           }),
         );
       }
