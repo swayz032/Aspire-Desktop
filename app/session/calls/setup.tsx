@@ -120,11 +120,9 @@ const RECEPTIONIST_FALLBACK: SarahStatus = {
 // Wire-format adapters (versioned API ↔ frontend type)
 // ---------------------------------------------------------------------------
 
-// After backend migration 111 the wire format and FE format are identical
-// (both UPPERCASE). These adapters used to translate between legacy lowercase
-// wire and UPPERCASE FE — now they're identity functions kept for forward-
-// compatibility (and to defend against any stale lowercase rows the server
-// migration normalizer might have missed).
+// The FE uses stable UPPERCASE enum names. The persisted backend/db shape is
+// still lowercase canonical values; these adapters accept either form on read
+// and always emit the lowercase wire values the backend stores today.
 const _normalizeAfterHours = (v: string | null | undefined): AfterHoursMode => {
   const upper = (v || '').toUpperCase();
   if (upper === 'TAKE_MESSAGE' || upper === 'ASK_CALLBACK_WINDOW' || upper === 'TRY_TRANSFER_THEN_MESSAGE') {
@@ -143,9 +141,28 @@ const _normalizeBusy = (v: string | null | undefined): BusyMode => {
   return 'TAKE_MESSAGE';
 };
 const AFTER_HOURS_WIRE_TO_FE = (v: ApiAfterHoursMode | string | null | undefined): AfterHoursMode => _normalizeAfterHours(v);
-const AFTER_HOURS_FE_TO_WIRE = (v: AfterHoursMode): ApiAfterHoursMode => v;
+const AFTER_HOURS_FE_TO_WIRE = (v: AfterHoursMode): ApiAfterHoursMode => {
+  if (v === 'ASK_CALLBACK_WINDOW') return 'callback_window' as ApiAfterHoursMode;
+  if (v === 'TRY_TRANSFER_THEN_MESSAGE') return 'try_transfer_then_message' as ApiAfterHoursMode;
+  return 'take_message' as ApiAfterHoursMode;
+};
 const BUSY_WIRE_TO_FE = (v: ApiBusyMode | string | null | undefined): BusyMode => _normalizeBusy(v);
-const BUSY_FE_TO_WIRE = (v: BusyMode): ApiBusyMode => v;
+const BUSY_FE_TO_WIRE = (v: BusyMode): ApiBusyMode => {
+  if (v === 'ASK_CALLBACK_WINDOW') return 'callback_window' as ApiBusyMode;
+  if (v === 'TRY_TRANSFER_THEN_MESSAGE') return 'try_transfer_then_message' as ApiBusyMode;
+  return 'take_message' as ApiBusyMode;
+};
+
+function normalizeFallbackMode(v: string | null | undefined): RoutingContact['fallbackMode'] {
+  const normalized = (v || '').trim().toLowerCase();
+  if (normalized === 'transfer_allowed') return 'TRANSFER_ALLOWED';
+  if (normalized === 'message_only' || normalized === 'message_fallback') return 'MESSAGE_ONLY';
+  return 'TRANSFER_ALLOWED';
+}
+
+function fallbackModeToWire(v: RoutingContact['fallbackMode']): string {
+  return v === 'MESSAGE_ONLY' ? 'message_only' : 'transfer_allowed';
+}
 
 /**
  * Project a server-shaped `RoutingContactRow` into the local `RoutingContact`
@@ -157,7 +174,8 @@ const KNOWN_ROLES: ReadonlySet<RoutingContact['role']> = new Set([
   'owner',
   'sales',
   'support',
-  'operations',
+  'billing',
+  'scheduling',
   'custom',
 ]);
 
@@ -182,8 +200,7 @@ function mapWireToContact(row: RoutingContactRow, index: number): RoutingContact
     name: display,
     phone: row.phone || '',
     initials,
-    fallbackMode:
-      (row.fallback_mode as RoutingContact['fallbackMode']) || 'TRANSFER_ALLOWED',
+    fallbackMode: normalizeFallbackMode(row.fallback_mode),
     transferAllowed: row.transfer_allowed ?? true,
     priority: typeof row.sort_order === 'number' ? row.sort_order : index,
   };
@@ -600,7 +617,7 @@ function FrontDeskSetupContent() {
             name: c.name,
             phone: normalizeRoutingPhone(c.phone),
             transfer_allowed: c.transferAllowed,
-            fallback_mode: c.fallbackMode,
+            fallback_mode: fallbackModeToWire(c.fallbackMode),
             sort_order: c.priority,
           }),
         );
@@ -612,7 +629,7 @@ function FrontDeskSetupContent() {
             role: c.role === 'custom' ? c.customRoleLabel || 'custom' : c.role,
             phone: normalizeRoutingPhone(c.phone),
             transfer_allowed: c.transferAllowed,
-            fallback_mode: c.fallbackMode,
+            fallback_mode: fallbackModeToWire(c.fallbackMode),
             sort_order: c.priority,
           }),
         );

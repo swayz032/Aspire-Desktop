@@ -54,13 +54,14 @@ const ROLE_OPTIONS: { value: RoutingContactRole; label: string }[] = [
   { value: 'owner', label: 'Owner' },
   { value: 'sales', label: 'Sales' },
   { value: 'support', label: 'Support' },
-  { value: 'operations', label: 'Operations' },
+  { value: 'billing', label: 'Billing' },
+  { value: 'scheduling', label: 'Scheduling' },
   { value: 'custom', label: 'Custom' },
 ];
 
 const FALLBACK_OPTIONS: { value: RoutingFallbackMode; label: string }[] = [
   { value: 'TRANSFER_ALLOWED', label: 'Transfer allowed' },
-  { value: 'MESSAGE_FALLBACK', label: 'Message fallback' },
+  { value: 'MESSAGE_ONLY', label: 'Message fallback' },
 ];
 
 function roleLabel(role: RoutingContactRole, customLabel?: string): string {

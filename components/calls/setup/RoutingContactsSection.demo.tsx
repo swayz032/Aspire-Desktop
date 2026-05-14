@@ -35,7 +35,7 @@ const SAMPLE: RoutingContact[] = [
     name: 'James Cole',
     phone: '(404) 555-0177',
     initials: 'JC',
-    fallbackMode: 'MESSAGE_FALLBACK',
+    fallbackMode: 'MESSAGE_ONLY',
     transferAllowed: true,
     priority: 2,
   },

@@ -168,9 +168,15 @@ export interface BusinessHoursConfig {
 // Routing Contacts (non-seat destinations)
 // ---------------------------------------------------------------------------
 
-export type RoutingContactRole = 'owner' | 'sales' | 'support' | 'operations' | 'custom';
+export type RoutingContactRole =
+  | 'owner'
+  | 'sales'
+  | 'support'
+  | 'billing'
+  | 'scheduling'
+  | 'custom';
 
-export type RoutingFallbackMode = 'TRANSFER_ALLOWED' | 'MESSAGE_FALLBACK';
+export type RoutingFallbackMode = 'TRANSFER_ALLOWED' | 'MESSAGE_ONLY';
 
 export interface RoutingContact {
   id: string;
