@@ -60,6 +60,27 @@ function clientReceiptId(): string {
   return crypto.randomUUID();
 }
 
+function readErrorMessage(payload: unknown, fallback: string): string {
+  if (!payload || typeof payload !== 'object') return fallback;
+
+  const body = payload as {
+    error?: unknown;
+    message?: unknown;
+    detail?: unknown;
+  };
+
+  if (typeof body.message === 'string' && body.message.trim()) return body.message;
+  if (typeof body.error === 'string' && body.error.trim()) return body.error;
+
+  if (body.detail && typeof body.detail === 'object') {
+    const detail = body.detail as { error?: unknown; message?: unknown };
+    if (typeof detail.message === 'string' && detail.message.trim()) return detail.message;
+    if (typeof detail.error === 'string' && detail.error.trim()) return detail.error;
+  }
+
+  return fallback;
+}
+
 /**
  * Generic fire-and-forget fetch with timeout enforcement (<5 s).
  * Returns `{ ok, receipt_id, error }` — never throws.
@@ -93,8 +114,8 @@ async function apiPost(
     // 4xx / 5xx
     let errorMsg = `HTTP ${resp.status}`;
     try {
-      const errBody = (await resp.json()) as { error?: string; message?: string };
-      errorMsg = errBody.message ?? errBody.error ?? errorMsg;
+      const errBody = await resp.json();
+      errorMsg = readErrorMessage(errBody, errorMsg);
     } catch {
       // ignore
     }
@@ -140,8 +161,8 @@ async function apiPatch(
     }
     let errorMsg = `HTTP ${resp.status}`;
     try {
-      const errBody = (await resp.json()) as { error?: string; message?: string };
-      errorMsg = errBody.message ?? errBody.error ?? errorMsg;
+      const errBody = await resp.json();
+      errorMsg = readErrorMessage(errBody, errorMsg);
     } catch {
       // ignore
     }
@@ -181,8 +202,8 @@ async function apiDelete(
     }
     let errorMsg = `HTTP ${resp.status}`;
     try {
-      const errBody = (await resp.json()) as { error?: string; message?: string };
-      errorMsg = errBody.message ?? errBody.error ?? errorMsg;
+      const errBody = await resp.json();
+      errorMsg = readErrorMessage(errBody, errorMsg);
     } catch {
       // ignore
     }
