@@ -407,18 +407,30 @@ function DesktopHomeInner() {
   }, [session?.access_token, suiteId]);
 
   // ── Responsive column widths (spec p13 viewport matrix, Canvas.layout tokens) ──
-  // iPad landscape (1024-1279 — viewport-fixed 2026-05-17) uses the SAME 3-col
-  // layout as desktop with the compact tabletDesktopFit widths (208 / flex / 220
-  // + 12px gaps). Fits in 1100 maxWidth contentInner with the shell's iPad-
-  // landscape gutter. The earlier 2-col workaround was masking the wrong-viewport
-  // bug (server was forcing width=1280); now that viewport reports the real
-  // device width, the standard 3-col fits.
-  const tabletDesktopFit = Platform.OS === 'web' && width >= 768 && width < 1280;
+  // Three explicit web bands at iPad/laptop widths:
+  //   compactTabletFit   768 – 919   (portrait iPad, tight): 176 + flex + 188
+  //   tabletPortraitFit  920 – 1023  (large portrait tablets):  208 + flex + 220
+  //   isTabletLandscape 1024 – 1279  (iPad landscape 1080/1180): laptop-grade
+  //                                  260 + flex + 280, so left/right rails
+  //                                  don't feel squeezed against the wide
+  //                                  AvaDesk center. Math at 1180 viewport:
+  //                                  1076 - 260 - 280 - 24 (gaps) = 512 for
+  //                                  centerCol — above its 440 minWidth.
+  const isTabletLandscape =
+    Platform.OS === 'web' &&
+    width >= Canvas.layout.tabletLandscapeLower &&
+    width < Canvas.layout.tabletLandscapeUpper;
+  const tabletPortraitFit = Platform.OS === 'web' && width >= 920 && width < 1024;
   const compactTabletFit = Platform.OS === 'web' && width >= 768 && width < 920;
+  // `tabletDesktopFit` kept as a derived combined flag for downstream styling
+  // (e.g. `centerColTablet { minWidth: 320 }`) that wants ANY web tablet band.
+  const tabletDesktopFit = compactTabletFit || tabletPortraitFit || isTabletLandscape;
   const leftWidth = compactTabletFit
     ? 176
-    : tabletDesktopFit
-    ? 208
+    : tabletPortraitFit
+      ? 208
+    : isTabletLandscape
+      ? Canvas.layout.leftColLaptop
     : isTablet
       ? 0
       : isLaptop
@@ -426,8 +438,10 @@ function DesktopHomeInner() {
         : Canvas.layout.leftColDesktop;
   const rightWidth = compactTabletFit
     ? 188
-    : tabletDesktopFit
+    : tabletPortraitFit
       ? 220
+    : isTabletLandscape
+      ? Canvas.layout.rightColLaptop
     : isTablet
       ? Canvas.layout.rightColTablet
       : isLaptop
@@ -436,21 +450,15 @@ function DesktopHomeInner() {
   const showThreeCol = Platform.OS === 'web' ? width >= 768 : !isTablet;
   const columnGap = compactTabletFit
     ? 10
-    : tabletDesktopFit
+    : tabletPortraitFit
       ? Canvas.layout.gapTablet
+    : isTabletLandscape
+      ? Canvas.layout.gapLaptop
     : isTablet
       ? Canvas.layout.gapTablet
       : isLaptop
         ? Canvas.layout.gapLaptop
         : Canvas.layout.gapDesktop;
-  // Keep the symbol exported for any callers tracking the old token — but
-  // it's no longer used to gate layout; the shell maxWidth=1100 in the
-  // iPad-landscape band already provides the polite gutter.
-  const isTabletLandscape =
-    Platform.OS === 'web' &&
-    width >= Canvas.layout.tabletLandscapeLower &&
-    width < Canvas.layout.tabletLandscapeUpper;
-  void isTabletLandscape;
   const isWide = width >= 1920;
   const workspaceHeight = Math.max(640, Math.min(840, height - 150));
 
