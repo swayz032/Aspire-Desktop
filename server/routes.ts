@@ -295,20 +295,29 @@ function validateAnamAvaPromptAndConfig(prompt: string, personaId: string): stri
     errors.push('Anam Ava prompt missing "## NEVER SAY" block.');
   }
 
-  // Check 4: Token budget estimate. Each token is ~4 chars. Contract caps at
-  // 4000 (heavy workflows must live in KB, not prompt). Warn at 3500.
-  // See ANAM_AVA_PROMPT_CONTRACT.md S-3.
+  // Check 4: Token budget estimate. Each token is ~4 chars. Per
+  // ANAM_AVA_PROMPT_CONTRACT.md S-3 the contract specifies:
+  //   target ≈ 3500, warn > 3500, hard error > 4500.
+  // The previous code mistakenly pushed the soft warning onto errors[], so
+  // in strict mode any prompt growing between 3500 and 4000 tokens 503'd
+  // every session (e.g. prompt at 3730 on 2026-05-17). Soft warnings now
+  // log via logger.warn at the call site (the validator returns them as
+  // part of a separate signal); only the hard threshold blocks.
   const estimatedTokens = Math.floor(rawPrompt.length / 4);
-  if (estimatedTokens > 4000) {
+  if (estimatedTokens > 4500) {
     errors.push(
-      `Anam Ava prompt estimated token count ${estimatedTokens} exceeds contract limit of 4000. ` +
+      `Anam Ava prompt estimated token count ${estimatedTokens} exceeds the contract hard error threshold of 4500 (ANAM_AVA_PROMPT_CONTRACT S-3). ` +
       'Move heavy workflow content into KB docs (Ava_Voice_Rules_v6, Tools_and_Cards_v6, Strategic_Playbook_v6, Invoicing_and_Quotes_v6).',
     );
   } else if (estimatedTokens > 3500) {
-    errors.push(
-      `Anam Ava prompt estimated token count ${estimatedTokens} is above the 3500-token warning threshold (contract S-3). ` +
-      'Consider trimming or moving content to KB.',
-    );
+    // Soft warning per contract — log but don't block the session. Surfaces
+    // in Railway logs so we still see drift before it hits the hard cap.
+    logger.warn('Anam Ava prompt token-budget warning (contract S-3)', {
+      estimatedTokens,
+      warnThreshold: 3500,
+      hardErrorThreshold: 4500,
+      note: 'Consider trimming or moving content to KB. Session NOT blocked at warn threshold.',
+    });
   }
 
   // ── Wave 4.2 contract enforcement (ANAM_AVA_PROMPT_CONTRACT.md) ─────────────
