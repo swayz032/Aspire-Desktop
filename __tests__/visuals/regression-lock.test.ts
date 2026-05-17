@@ -236,4 +236,51 @@ describe('Visuals Tab — Design Lock v1.0', () => {
       expect(shellMatch![0]).not.toMatch(/\baspectRatio\s*:/);
     });
   });
+
+  describe('Lock #15: ProjectAddressBar owns address input ONLY (Wave 0 cleanup)', () => {
+    // Wave 0 (2026-05-17): Upload, "+ New Project", and the "Recent ▾"
+    // dropdown were removed from the Estimate Studio header bar. Tim
+    // Rail Controls > Quick Actions is the single source of truth for
+    // Upload + New Project. This lock prevents them from being
+    // re-introduced into ProjectAddressBar.
+    const src = read(
+      'components/service-hub/estimate-studio/ProjectAddressBar.tsx',
+    );
+
+    it('does NOT render an Upload button', () => {
+      // Strip block comments so the rule comment in the file header
+      // doesn't trigger a false positive.
+      const code = src.replace(/\/\*[\s\S]*?\*\//g, '');
+      expect(code).not.toMatch(/<Text[^>]*>Upload<\/Text>/);
+      expect(code).not.toMatch(/testID=["']estimate-studio-upload-evidence["']/);
+      expect(code).not.toMatch(/styles\.uploadButton\b/);
+    });
+
+    it('does NOT render a "New Project" button', () => {
+      const code = src.replace(/\/\*[\s\S]*?\*\//g, '');
+      expect(code).not.toMatch(/<Text[^>]*>New Project<\/Text>/);
+      expect(code).not.toMatch(/testID=["']estimate-studio-new-project["']/);
+      expect(code).not.toMatch(/styles\.newProjectButton\b/);
+    });
+
+    it('does NOT render the "Recent" dropdown chip', () => {
+      const code = src.replace(/\/\*[\s\S]*?\*\//g, '');
+      expect(code).not.toMatch(/<Text[^>]*>Recent<\/Text>/);
+      expect(code).not.toMatch(/styles\.recentChip\b/);
+    });
+
+    it('DOES still render the address TextInput with its anchor testID', () => {
+      expect(src).toMatch(/<TextInput\b/);
+      expect(src).toMatch(/testID=["']estimate-studio-address-input["']/);
+      expect(src).toMatch(/placeholder=["']Enter property address\.\.\.["']/);
+    });
+
+    it('drops the compact + onNewProject props from the public API', () => {
+      // The compact toggle existed only to hide the now-removed buttons,
+      // and onNewProject only wired the now-removed "+ New Project" button.
+      // Both must stay gone so callers don't pass dead props.
+      expect(src).not.toMatch(/\bcompact\??\s*:/);
+      expect(src).not.toMatch(/\bonNewProject\??\s*:/);
+    });
+  });
 });
