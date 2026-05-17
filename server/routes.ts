@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import express, { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { storage } from './storage';
@@ -9810,6 +9810,333 @@ router.get('/api/v1/materials/search', async (req: Request, res: Response) => {
     });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Wave 6A — Blueprint Story Engine: POST /api/v1/blueprints/upload
+// ---------------------------------------------------------------------------
+// GREEN tier — Drew INGEST + CLASSIFY are read-side (parse the PDF, write
+// blueprint_projects + blueprint_sheets keyed by suite_id with RLS). We mint
+// a capability token (Law #5) and forward to the Python orchestrator via
+// `POST /v1/agents/invoke` — Drew agent — with task=INGEST. On success the
+// proxy auto-chains task=CLASSIFY using the project_id from INGEST.
+//
+// Request body (JSON):
+//   { filename: string,
+//     mime_type: 'application/pdf'|'image/jpeg'|'image/png'|'image/heic'|'image/heif',
+//     pdf_b64: string (base64-encoded raw file bytes),
+//     idempotency_key?: string }
+//
+// Body size: client-side cap is 50 MB raw → base64 inflates ~33% → JSON body
+// can reach ~67 MB. We register a 75 MB JSON parser scoped to this single
+// route (global parser stays at 1 MB).
+//
+// Response: see UploadBlueprintResponse in lib/api/blueprintsApi.ts. Composes
+// the real INGEST + CLASSIFY results into a single stage_progress shape.
+// ---------------------------------------------------------------------------
+
+const BLUEPRINT_UPLOAD_JSON_LIMIT = '75mb';
+const BLUEPRINT_MAX_RAW_BYTES = 50 * 1024 * 1024;
+const BLUEPRINT_ACCEPTED_MIME = new Set([
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/heic',
+  'image/heif',
+]);
+
+router.post(
+  '/api/v1/blueprints/upload',
+  express.json({ limit: BLUEPRINT_UPLOAD_JSON_LIMIT }),
+  async (req: Request, res: Response) => {
+    const suiteId = requireAuth(req, res);
+    if (!suiteId) return;
+
+    const orchestratorUrl = resolveOrchestratorUrl();
+    if (!orchestratorUrl) {
+      res.status(503).json({
+        error: 'ORCHESTRATOR_UNAVAILABLE',
+        message: 'Backend service is not configured',
+      });
+      return;
+    }
+
+    const officeIdRaw = (req.headers['x-office-id'] as string) || '';
+    const officeId =
+      typeof officeIdRaw === 'string' && officeIdRaw.trim() ? officeIdRaw.trim() : suiteId;
+    const tenantId = suiteId;
+    const actorId = ((req as any).authenticatedUserId as string) || suiteId;
+    const correlationId =
+      (req.headers['x-correlation-id'] as string) || `corr_${crypto.randomUUID()}`;
+    const traceId = (req.headers['x-trace-id'] as string) || correlationId;
+
+    // Validate body shape (Law #3: fail-closed on malformed input).
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const filename = typeof body.filename === 'string' ? body.filename.trim() : '';
+    const mimeType = typeof body.mime_type === 'string' ? body.mime_type.toLowerCase() : '';
+    const pdfB64 = typeof body.pdf_b64 === 'string' ? body.pdf_b64 : '';
+
+    if (!filename || !mimeType || !pdfB64) {
+      res.status(400).json({
+        error: 'INVALID_INPUT',
+        message: 'filename, mime_type, and pdf_b64 are required',
+        correlation_id: correlationId,
+      });
+      return;
+    }
+    if (!BLUEPRINT_ACCEPTED_MIME.has(mimeType)) {
+      res.status(415).json({
+        error: 'UNSUPPORTED_MEDIA_TYPE',
+        message: `mime_type ${mimeType} not accepted`,
+        correlation_id: correlationId,
+      });
+      return;
+    }
+
+    // Decode to validate size + strip the base64 envelope (the orchestrator
+    // accepts raw base64; we re-encode after validation to a stable form).
+    let rawBytesLen: number;
+    try {
+      // Buffer.from is forgiving — ignores whitespace and pads if missing.
+      rawBytesLen = Buffer.from(pdfB64, 'base64').byteLength;
+    } catch {
+      res.status(400).json({
+        error: 'INVALID_BASE64',
+        message: 'pdf_b64 is not valid base64',
+        correlation_id: correlationId,
+      });
+      return;
+    }
+    if (rawBytesLen === 0) {
+      res.status(400).json({
+        error: 'EMPTY_FILE',
+        message: 'Decoded file is empty',
+        correlation_id: correlationId,
+      });
+      return;
+    }
+    if (rawBytesLen > BLUEPRINT_MAX_RAW_BYTES) {
+      res.status(413).json({
+        error: 'FILE_TOO_LARGE',
+        message: `File is ${(rawBytesLen / 1024 / 1024).toFixed(1)} MB — max is ${(
+          BLUEPRINT_MAX_RAW_BYTES / 1024 / 1024
+        ).toFixed(0)} MB`,
+        correlation_id: correlationId,
+      });
+      return;
+    }
+
+    // Mint capability token (Law #5) — scope=blueprints:upload.
+    if (!resolveSigningKey()) {
+      res.status(503).json({
+        error: 'SIGNING_KEY_UNAVAILABLE',
+        message: 'Capability token signing key not configured',
+      });
+      return;
+    }
+    const minted = mintCapabilityToken({
+      scope: 'blueprints:upload',
+      tenant_id: tenantId,
+      suite_id: suiteId,
+      office_id: officeId,
+      correlation_id: correlationId,
+    });
+    if (!minted) {
+      res.status(503).json({
+        error: 'SIGNING_KEY_UNAVAILABLE',
+        message: 'Capability token signing key not configured',
+      });
+      return;
+    }
+
+    // ── Stage 1: Drew INGEST ──
+    const ingestBody = {
+      agent: 'drew',
+      task: 'INGEST',
+      suite_id: suiteId,
+      office_id: officeId,
+      correlation_id: correlationId,
+      capability_token: minted.token,
+      payload: {
+        pdf_bytes: pdfB64,
+        filename,
+        suite_id: suiteId,
+        office_id: officeId,
+      },
+    };
+
+    // Structured log — never log pdf bytes or token.
+    logger.info('[BlueprintsUpload] INGEST start', {
+      suite_id: suiteId,
+      office_id: officeId,
+      trace_id: traceId,
+      correlation_id: correlationId,
+      size_bytes: rawBytesLen,
+    });
+
+    const ingestController = new AbortController();
+    const ingestTimer = setTimeout(() => ingestController.abort(), 120_000);
+    let ingestResult: any = null;
+    let ingestStatus = 0;
+    try {
+      const orchResp = await fetch(`${orchestratorUrl}/v1/agents/invoke`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Tenant-Id': tenantId,
+          'X-Suite-Id': suiteId,
+          'X-Office-Id': officeId,
+          'X-Actor-Id': actorId,
+          'X-Correlation-Id': correlationId,
+          'X-Trace-Id': traceId,
+        },
+        body: JSON.stringify(ingestBody),
+        signal: ingestController.signal,
+      });
+      clearTimeout(ingestTimer);
+      ingestStatus = orchResp.status;
+      const text = await orchResp.text();
+      try {
+        ingestResult = text ? JSON.parse(text) : null;
+      } catch {
+        ingestResult = { status: 'error', stage: 'ingest', reason: 'upstream_non_json' };
+      }
+      if (!orchResp.ok) {
+        logger.warn('[BlueprintsUpload] INGEST upstream non-2xx', {
+          suite_id: suiteId,
+          status: orchResp.status,
+        });
+        res.status(orchResp.status).json({
+          error: 'INGEST_UPSTREAM_ERROR',
+          message:
+            (ingestResult && (ingestResult.message || ingestResult.error)) ||
+            `Backend returned ${orchResp.status}`,
+          correlation_id: correlationId,
+        });
+        return;
+      }
+    } catch (err: unknown) {
+      clearTimeout(ingestTimer);
+      const isTimeout = err instanceof Error && err.name === 'AbortError';
+      logger.error('[BlueprintsUpload] INGEST fetch failed', {
+        suite_id: suiteId,
+        reason: err instanceof Error ? err.name + ': ' + err.message.slice(0, 120) : 'unknown',
+        is_timeout: isTimeout,
+      });
+      res.status(isTimeout ? 504 : 502).json({
+        error: isTimeout ? 'ORCHESTRATOR_TIMEOUT' : 'ORCHESTRATOR_UNREACHABLE',
+        message: isTimeout ? 'Backend did not respond in time' : 'Could not reach backend service',
+        correlation_id: correlationId,
+      });
+      return;
+    }
+
+    // Compose stage_progress as we go.
+    const stageProgress: Record<string, string> = {
+      ingest: ingestResult?.status === 'error' ? 'error' : 'ok',
+      classify: 'pending',
+      see: 'pending',
+      reason: 'pending',
+      procure: 'pending',
+    };
+
+    // In-band INGEST failure (HTTP 200, status: 'error') — return early.
+    if (ingestResult?.status === 'error' || !ingestResult?.project_id) {
+      logger.warn('[BlueprintsUpload] INGEST in-band error', {
+        suite_id: suiteId,
+        reason: ingestResult?.reason,
+      });
+      res.status(200).json({
+        success: false,
+        project_id: ingestResult?.project_id ?? '',
+        filename,
+        size_bytes: rawBytesLen,
+        correlation_id: correlationId,
+        ingest: ingestResult ?? { status: 'error', stage: 'ingest', reason: 'unknown' },
+        classify: null,
+        stage_progress: stageProgress,
+      });
+      return;
+    }
+
+    const projectId: string = String(ingestResult.project_id);
+
+    // ── Stage 2: Drew CLASSIFY (auto-chained) ──
+    const classifyBody = {
+      agent: 'drew',
+      task: 'CLASSIFY',
+      suite_id: suiteId,
+      office_id: officeId,
+      correlation_id: correlationId,
+      capability_token: minted.token,
+      payload: {
+        project_id: projectId,
+        suite_id: suiteId,
+      },
+    };
+
+    const classifyController = new AbortController();
+    const classifyTimer = setTimeout(() => classifyController.abort(), 60_000);
+    let classifyResult: any = null;
+    try {
+      const orchResp = await fetch(`${orchestratorUrl}/v1/agents/invoke`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Tenant-Id': tenantId,
+          'X-Suite-Id': suiteId,
+          'X-Office-Id': officeId,
+          'X-Actor-Id': actorId,
+          'X-Correlation-Id': correlationId,
+          'X-Trace-Id': traceId,
+        },
+        body: JSON.stringify(classifyBody),
+        signal: classifyController.signal,
+      });
+      clearTimeout(classifyTimer);
+      const text = await orchResp.text();
+      try {
+        classifyResult = text ? JSON.parse(text) : null;
+      } catch {
+        classifyResult = { status: 'error', stage: 'classify', reason: 'upstream_non_json' };
+      }
+      stageProgress.classify =
+        orchResp.ok && classifyResult?.status === 'ok' ? 'ok' : 'error';
+    } catch (err: unknown) {
+      clearTimeout(classifyTimer);
+      logger.warn('[BlueprintsUpload] CLASSIFY fetch failed (non-fatal)', {
+        suite_id: suiteId,
+        reason: err instanceof Error ? err.name : 'unknown',
+      });
+      classifyResult = {
+        status: 'error',
+        stage: 'classify',
+        reason: 'fetch_failed',
+      };
+      stageProgress.classify = 'error';
+    }
+
+    logger.info('[BlueprintsUpload] complete', {
+      suite_id: suiteId,
+      office_id: officeId,
+      trace_id: traceId,
+      correlation_id: correlationId,
+      project_id: projectId,
+      sheet_count: ingestResult?.sheet_count,
+      classify_status: classifyResult?.status,
+    });
+
+    res.status(200).json({
+      success: true,
+      project_id: projectId,
+      filename,
+      size_bytes: rawBytesLen,
+      correlation_id: correlationId,
+      ingest: ingestResult,
+      classify: classifyResult,
+      stage_progress: stageProgress,
+    });
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Pass D: /api/v1/materials/bundles/* — bundle CRUD + push-to-estimate
