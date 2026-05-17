@@ -18,7 +18,6 @@ import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
   Pressable,
@@ -42,23 +41,19 @@ type PlaceSuggestion = {
 interface ProjectAddressBarProps {
   initialAddress?: string;
   onAddressChange?: (address: string) => void;
-  onNewProject?: () => void;
-  /**
-   * Compact mode hides the inline Upload + New Project buttons. Set true when
-   * rendering inside the Tim Rail Controls tab's PROJECT section — Controls
-   * has its own QUICK ACTIONS row, so duplicating the buttons here caused
-   * them to overlap the address input on laptops (reported 2026-05-13).
-   */
-  compact?: boolean;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
+//
+// Wave 0 cleanup (2026-05-17): the inline Upload, "+ New Project" buttons
+// and the "Recent ▾" chip were removed. Tim Rail's Controls tab
+// (`TimRailControlsTab.tsx`) is the single source of truth for those actions
+// — duplicating them in the header bar created clutter and overlap on
+// laptops. The address input is the only affordance this component owns.
 
 export function ProjectAddressBar({
   initialAddress,
   onAddressChange,
-  onNewProject,
-  compact = false,
 }: ProjectAddressBarProps) {
   const { address: storedAddress } = useProjectAddress();
 
@@ -227,7 +222,6 @@ export function ProjectAddressBar({
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
-  const showRecentChip = draft.length === 0;
   const dropdownVisible =
     showDropdown && draft.trim().length >= 2 && (isFetchingSuggestions || suggestions.length > 0);
 
@@ -254,13 +248,6 @@ export function ProjectAddressBar({
             autoCapitalize="words"
             autoCorrect={false}
           />
-          {showRecentChip && (
-            <View style={styles.recentChip}>
-              <Ionicons name="time-outline" size={12} color="rgba(255,255,255,0.45)" />
-              <Text style={styles.recentChipText}>Recent</Text>
-              <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.45)" />
-            </View>
-          )}
           {isFetchingSuggestions && (
             <ActivityIndicator size="small" color="rgba(255,255,255,0.45)" />
           )}
@@ -329,28 +316,6 @@ export function ProjectAddressBar({
         })()}
       </View>
 
-      {!compact && (
-        <>
-          <TouchableOpacity
-            style={styles.uploadButton}
-            activeOpacity={0.85}
-            testID="estimate-studio-upload-evidence"
-          >
-            <Ionicons name="cloud-upload-outline" size={16} color="rgba(255,255,255,0.85)" />
-            <Text style={styles.uploadButtonText}>Upload</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.newProjectButton}
-            activeOpacity={0.85}
-            onPress={onNewProject}
-            testID="estimate-studio-new-project"
-          >
-            <Ionicons name="add" size={16} color="#0A0A0F" />
-            <Text style={styles.newProjectButtonText}>New Project</Text>
-          </TouchableOpacity>
-        </>
-      )}
     </View>
   );
 }
@@ -391,16 +356,13 @@ function parseSuggestions(raw: unknown[]): PlaceSuggestion[] {
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
     paddingVertical: 8,
     marginBottom: 16,
     zIndex: 9999,
     position: 'relative',
   },
   searchWrap: {
-    flex: 1,
+    width: '100%',
     position: 'relative',
     zIndex: 9999,
   },
@@ -422,22 +384,6 @@ const styles = StyleSheet.create({
     padding: 0,
     margin: 0,
     outlineStyle: 'none' as any,
-  },
-  recentChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  recentChipText: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.55)',
-    fontWeight: '500',
   },
   dropdown: {
     position: 'absolute',
@@ -492,37 +438,5 @@ const styles = StyleSheet.create({
   suggestionSecondary: {
     fontSize: 11,
     color: 'rgba(255,255,255,0.55)',
-  },
-  uploadButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 10,
-    backgroundColor: '#1C1C1E',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-  },
-  uploadButtonText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: 'rgba(255,255,255,0.85)',
-    letterSpacing: -0.1,
-  },
-  newProjectButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 10,
-    backgroundColor: '#fbbf24',
-  },
-  newProjectButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#0A0A0F',
-    letterSpacing: -0.1,
   },
 });
