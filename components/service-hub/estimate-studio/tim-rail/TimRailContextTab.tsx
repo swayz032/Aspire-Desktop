@@ -15,6 +15,7 @@ import { PropertySummaryCard } from './PropertySummaryCard';
 import { MaterialsRouteContextCard } from './MaterialsRouteContextCard';
 import { PlansPhotosContextPayload } from './PlansPhotosContextPayload';
 import { ScopeContextPayload } from './ScopeContextPayload';
+import { TakeoffContextPayload } from './TakeoffContextPayload';
 import type { PropertyData } from '@/services/serviceHub/propertyDataApi';
 
 // Inject a one-shot stylesheet on web that hides the scrollbar inside
@@ -49,6 +50,8 @@ export function TimRailContextTab({ data, loading, error, onRetry }: Props) {
     pathname.endsWith('/plans-photos') || pathname.endsWith('/plans-photos/');
   const isScopeTab =
     pathname.endsWith('/scope') || pathname.endsWith('/scope/');
+  const isTakeoffTab =
+    pathname.endsWith('/takeoff') || pathname.endsWith('/takeoff/');
 
   return (
     <ScrollView
@@ -99,6 +102,10 @@ export function TimRailContextTab({ data, loading, error, onRetry }: Props) {
           + missing inputs + linked destinations + tariff summary. Property
           facts carry over below as on Plans & Photos. */}
       {isScopeTab && <ScopeContextPayload />}
+
+      {/* Takeoff payload (Wave 8): pipeline status + current sheet meta +
+          symbol confidence + tariff exposure. Property facts carry over below. */}
+      {isTakeoffTab && <TakeoffContextPayload />}
 
       {/* Property facts hidden on Materials tab — that tab's context
           is the route + bundle, not the property valuation card. The

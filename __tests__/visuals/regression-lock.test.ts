@@ -326,6 +326,102 @@ describe('Visuals Tab — Design Lock v1.0', () => {
     });
   });
 
+  describe('Lock #18: Takeoff tab uses shared shells + mode-aware geometry', () => {
+    // Wave 8 (2026-05-17): Takeoff is the Commercial Blueprint workspace. It
+    // must reuse the Wave 6A shells so future modes (residential, smart-room,
+    // roofing) inherit consistent geometry. The mode switcher has 4 pills:
+    // Commercial + Residential enabled, Smart Room + Roofing disabled with
+    // a "Phase 8" badge until Phase 8 ships.
+    const tabSrc = read(
+      'components/service-hub/estimate-studio/takeoff/TakeoffTab.tsx',
+    );
+    const pageSrc = read('app/service-hub/estimate-studio/takeoff.tsx');
+    const modeSrc = read(
+      'components/service-hub/estimate-studio/takeoff/ModeSwitcher.tsx',
+    );
+    const sheetViewerSrc = read(
+      'components/service-hub/estimate-studio/takeoff/SheetViewer.tsx',
+    );
+
+    it('TakeoffTab uses <CanvasCardSwitcher /> via the mode container', () => {
+      // The mode container hosts CanvasCardSwitcher — that's the shell reuse.
+      const commercialSrc = read(
+        'components/service-hub/estimate-studio/takeoff/CommercialBlueprintMode.tsx',
+      );
+      expect(commercialSrc).toMatch(/CanvasCardSwitcher/);
+      expect(commercialSrc).toMatch(/<CanvasCardSwitcher\b/);
+    });
+
+    it('TakeoffTab uses <BottomChipStrip /> for card selection', () => {
+      expect(tabSrc).toMatch(/BottomChipStrip/);
+      expect(tabSrc).toMatch(/<BottomChipStrip\b/);
+    });
+
+    it('TakeoffTab uses 4 chips: Sheet Viewer / Assemblies / Quantities / Symbol Legend', () => {
+      expect(tabSrc).toMatch(/key:\s*['"]sheet-viewer['"]/);
+      expect(tabSrc).toMatch(/key:\s*['"]assemblies['"]/);
+      expect(tabSrc).toMatch(/key:\s*['"]quantities['"]/);
+      expect(tabSrc).toMatch(/key:\s*['"]legend['"]/);
+      // Labels match the plan.
+      expect(tabSrc).toMatch(/label:\s*['"]Sheet Viewer['"]/);
+      expect(tabSrc).toMatch(/label:\s*['"]Assemblies['"]/);
+      expect(tabSrc).toMatch(/label:\s*['"]Quantities['"]/);
+      expect(tabSrc).toMatch(/label:\s*['"]Symbol Legend['"]/);
+    });
+
+    it('takeoff.tsx route delegates to <TakeoffTab /> (no TabPlaceholder)', () => {
+      expect(pageSrc).toMatch(/<TakeoffTab\s*\/>/);
+      expect(pageSrc).not.toMatch(/TabPlaceholder/);
+    });
+
+    it('ModeSwitcher exposes exactly four modes', () => {
+      expect(modeSrc).toMatch(/key:\s*['"]commercial['"]/);
+      expect(modeSrc).toMatch(/key:\s*['"]residential['"]/);
+      expect(modeSrc).toMatch(/key:\s*['"]smart-room['"]/);
+      expect(modeSrc).toMatch(/key:\s*['"]roofing['"]/);
+    });
+
+    it('Smart Room + Roofing modes are disabled with a Phase 8 badge', () => {
+      // Each disabled mode must carry both `disabled: true` and badge:'Phase 8'.
+      const smartRoomBlock = modeSrc.match(/key:\s*['"]smart-room['"][\s\S]{0,200}/);
+      expect(smartRoomBlock).toBeTruthy();
+      expect(smartRoomBlock![0]).toMatch(/disabled:\s*true/);
+      expect(smartRoomBlock![0]).toMatch(/badge:\s*['"]Phase 8['"]/);
+
+      const roofingBlock = modeSrc.match(/key:\s*['"]roofing['"][\s\S]{0,200}/);
+      expect(roofingBlock).toBeTruthy();
+      expect(roofingBlock![0]).toMatch(/disabled:\s*true/);
+      expect(roofingBlock![0]).toMatch(/badge:\s*['"]Phase 8['"]/);
+    });
+
+    it('renders the Drop-a-plan-set empty-state copy when no project is loaded', () => {
+      // Locked literal so reviewers always see the correct CTA when empty.
+      expect(tabSrc).toMatch(/Drop a plan set in Plans & Photos/);
+    });
+
+    it('SymbolOverlay is reachable from SheetViewer (overlay toggle wired)', () => {
+      expect(sheetViewerSrc).toMatch(/SymbolOverlay/);
+      expect(sheetViewerSrc).toMatch(/<SymbolOverlay\b/);
+      expect(sheetViewerSrc).toMatch(/symbol-overlay-toggle/);
+    });
+
+    it('TimRailContextTab branches on /takeoff and renders TakeoffContextPayload', () => {
+      const railSrc = read(
+        'components/service-hub/estimate-studio/tim-rail/TimRailContextTab.tsx',
+      );
+      expect(railSrc).toMatch(/pathname\.endsWith\(['"]\/takeoff['"]\)/);
+      expect(railSrc).toMatch(/<TakeoffContextPayload\b/);
+    });
+
+    it('Push-to-materials is a YELLOW capability flow (scope materials.bundle.add)', () => {
+      const routesSrc = read('server/routes.ts');
+      // The new route must mint a token with the materials.bundle.add scope.
+      expect(routesSrc).toMatch(/\/api\/v1\/blueprints\/projects\/:id\/push-to-materials/);
+      expect(routesSrc).toMatch(/scope:\s*['"]materials\.bundle\.add['"]/);
+      expect(routesSrc).toMatch(/risk_tier:\s*['"]yellow['"]/);
+    });
+  });
+
   describe('Lock #16: Plans & Photos tab uses shared shell (CanvasCardSwitcher + BottomChipStrip)', () => {
     // Wave 6A (2026-05-17): Plans & Photos is the primary upload entry for
     // the Blueprint Story Engine. It must use the shared canvas-card switcher

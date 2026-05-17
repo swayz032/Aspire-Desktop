@@ -539,3 +539,250 @@ export async function resolveMissingInput(
 
   return (await resp.json()) as BlueprintMissingInput;
 }
+// ---------------------------------------------------------------------------
+// Wave 8 additions — Takeoff (Commercial Blueprint mode)
+// ---------------------------------------------------------------------------
+//
+// Wave 8 reads + push-to-materials. Depends on Wave 2.7 backend (symbols,
+// assemblies, materials). Reads degrade gracefully — when the backend
+// returns 404/501 the call returns `{ endpointMissing: true, ...empty }`
+// and the Takeoff tab shows a "Wave 2.7 pending" banner.
+//
+// Push-to-materials is YELLOW: Express proxy mints a `materials.bundle.add`
+// capability token (Law #5). The caller must show a confirmation modal
+// BEFORE invoking. Server-side scope enforcement is the real gate.
+//
+// NOTE on naming: Wave 7 (parallel branch) also adds `BlueprintAssembly`
+// and `BlueprintMaterial` interfaces with a different shape (REASON/PROCURE
+// truth model). To avoid collision at merge time, Wave 8 prefixes its types
+// with `Takeoff*` (TakeoffSymbol, TakeoffAssembly, TakeoffMaterial).
+// ---------------------------------------------------------------------------
+
+export type TakeoffSymbolTruth = 'asserted' | 'derived' | 'assumed';
+export type TakeoffTariffFlag =
+  | 'steel'
+  | 'aluminum'
+  | 'softwood'
+  | 'hardwood'
+  | 'copper'
+  | 'none';
+
+/** Wave 8 — one detected symbol on a sheet. Bbox is normalised 0-1 to the
+ *  parent sheet's rendered image, so the overlay scales with zoom. */
+export interface TakeoffSymbol {
+  symbol_id: string;
+  sheet_id: string;
+  /** e.g. "electrical.outlet.duplex", "plumbing.fixture.toilet", "structural.column.steel". */
+  class: string;
+  /** 0..1 — drives overlay opacity. */
+  confidence: number;
+  /** Normalised 0..1 bounding box. */
+  bbox: { x: number; y: number; w: number; h: number };
+  /** Optional user override label after Confirm/Reclassify. */
+  override_class?: string;
+  /** Detection lifecycle status. */
+  status?: 'detected' | 'confirmed' | 'reclassified' | 'dropped';
+}
+
+/** Wave 8 — one derived assembly. */
+export interface TakeoffAssembly {
+  assembly_id: string;
+  /** Display label, e.g. 'Type A interior partition'. */
+  type: string;
+  quantity: number;
+  unit: string;
+  truth: TakeoffSymbolTruth;
+  /** Sheet that anchors this assembly's derivation. */
+  source_sheet_id?: string | null;
+  /** When truth=assumed, confidence reflects derivation strength. */
+  confidence?: number;
+}
+
+/** Wave 8 — one derived material line item. */
+export interface TakeoffMaterial {
+  material_id: string;
+  line_item: string;
+  quantity: number;
+  unit: string;
+  truth: TakeoffSymbolTruth;
+  /** Mapped tariff exposure category. */
+  tariff_flag: TakeoffTariffFlag;
+  /** Supplier preview if a default is suggested (procure not yet run = null). */
+  supplier_name?: string | null;
+  /** True if this material has been pushed to the bundle already. */
+  in_bundle?: boolean;
+}
+
+export interface ListTakeoffSymbolsOptions {
+  sheet_id?: string;
+  /** Filter to confidences >= floor (0..1). */
+  confidence_floor?: number;
+  /** Filter by class-prefix, e.g. "electrical." or "plumbing.fixture.". */
+  class_prefix?: string;
+}
+
+export interface PushToMaterialsResult {
+  success: boolean;
+  added_count: number;
+  /** Material IDs successfully added to the bundle. */
+  added_material_ids: string[];
+  /** Material IDs that the server rejected (already in bundle, malformed, etc.). */
+  rejected: Array<{ material_id: string; reason: string }>;
+  bundle_id?: string;
+  correlation_id?: string;
+}
+
+/** Wave 8 — fetch symbols for a project / single sheet. Degrades gracefully. */
+export async function getTakeoffSymbols(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  officeId: string,
+  opts: ListTakeoffSymbolsOptions = {},
+): Promise<{ symbols: TakeoffSymbol[]; endpointMissing: boolean }> {
+  const qs = new URLSearchParams();
+  if (opts.sheet_id) qs.set('sheet_id', opts.sheet_id);
+  if (opts.confidence_floor != null) qs.set('confidence_floor', String(opts.confidence_floor));
+  if (opts.class_prefix) qs.set('class_prefix', opts.class_prefix);
+  const url = `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}/symbols${
+    qs.toString() ? `?${qs.toString()}` : ''
+  }`;
+
+  const resp = await authenticatedFetch(url, {
+    method: 'GET',
+    headers: { 'X-Office-Id': officeId },
+  });
+
+  if (resp.status === 404 || resp.status === 501) {
+    return { symbols: [], endpointMissing: true };
+  }
+  if (!resp.ok) {
+    let code = 'GET_SYMBOLS_FAILED';
+    let message = `getTakeoffSymbols failed (${resp.status})`;
+    try {
+      const parsed = await resp.json();
+      code = parsed?.error ?? parsed?.code ?? code;
+      message = parsed?.message ?? message;
+    } catch {
+      /* non-JSON */
+    }
+    throw new BlueprintsApiError(resp.status, code, message);
+  }
+  const data = (await resp.json()) as { symbols?: TakeoffSymbol[] };
+  return { symbols: Array.isArray(data.symbols) ? data.symbols : [], endpointMissing: false };
+}
+
+/** Wave 8 — fetch derived assemblies for a project. Degrades gracefully. */
+export async function getTakeoffAssemblies(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  officeId: string,
+): Promise<{ assemblies: TakeoffAssembly[]; endpointMissing: boolean }> {
+  const url = `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}/assemblies`;
+  const resp = await authenticatedFetch(url, {
+    method: 'GET',
+    headers: { 'X-Office-Id': officeId },
+  });
+  if (resp.status === 404 || resp.status === 501) {
+    return { assemblies: [], endpointMissing: true };
+  }
+  if (!resp.ok) {
+    let code = 'GET_ASSEMBLIES_FAILED';
+    let message = `getTakeoffAssemblies failed (${resp.status})`;
+    try {
+      const parsed = await resp.json();
+      code = parsed?.error ?? code;
+      message = parsed?.message ?? message;
+    } catch {
+      /* non-JSON */
+    }
+    throw new BlueprintsApiError(resp.status, code, message);
+  }
+  const data = (await resp.json()) as { assemblies?: TakeoffAssembly[] };
+  return {
+    assemblies: Array.isArray(data.assemblies) ? data.assemblies : [],
+    endpointMissing: false,
+  };
+}
+
+/** Wave 8 — fetch derived materials for a project. Degrades gracefully. */
+export async function getTakeoffMaterials(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  officeId: string,
+): Promise<{ materials: TakeoffMaterial[]; endpointMissing: boolean }> {
+  const url = `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}/materials`;
+  const resp = await authenticatedFetch(url, {
+    method: 'GET',
+    headers: { 'X-Office-Id': officeId },
+  });
+  if (resp.status === 404 || resp.status === 501) {
+    return { materials: [], endpointMissing: true };
+  }
+  if (!resp.ok) {
+    let code = 'GET_MATERIALS_FAILED';
+    let message = `getTakeoffMaterials failed (${resp.status})`;
+    try {
+      const parsed = await resp.json();
+      code = parsed?.error ?? code;
+      message = parsed?.message ?? message;
+    } catch {
+      /* non-JSON */
+    }
+    throw new BlueprintsApiError(resp.status, code, message);
+  }
+  const data = (await resp.json()) as { materials?: TakeoffMaterial[] };
+  return {
+    materials: Array.isArray(data.materials) ? data.materials : [],
+    endpointMissing: false,
+  };
+}
+
+/** Wave 8 — push selected blueprint-derived materials to the project's
+ *  materials bundle. YELLOW tier: the Express proxy mints a capability token
+ *  with scope=`materials.bundle.add` (Law #5). The caller MUST have shown
+ *  a confirmation modal BEFORE calling this method. */
+export async function pushToMaterialsBundle(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  materialIds: string[],
+  officeId: string,
+): Promise<PushToMaterialsResult> {
+  if (!projectId) {
+    throw new BlueprintsApiError(400, 'INVALID_PROJECT_ID', 'projectId is required');
+  }
+  if (!Array.isArray(materialIds) || materialIds.length === 0) {
+    throw new BlueprintsApiError(400, 'EMPTY_MATERIAL_IDS', 'At least one material_id required');
+  }
+  const url = `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}/push-to-materials`;
+  const resp = await authenticatedFetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Office-Id': officeId,
+    },
+    body: JSON.stringify({ material_ids: materialIds }),
+  });
+  if (!resp.ok) {
+    let code = 'PUSH_TO_MATERIALS_FAILED';
+    let message = `pushToMaterialsBundle failed (${resp.status})`;
+    let correlationId: string | undefined;
+    try {
+      const parsed = await resp.json();
+      code = parsed?.error ?? parsed?.code ?? code;
+      message = parsed?.message ?? message;
+      correlationId = parsed?.correlation_id;
+    } catch {
+      /* non-JSON */
+    }
+    throw new BlueprintsApiError(resp.status, code, message, correlationId);
+  }
+  const data = (await resp.json()) as PushToMaterialsResult;
+  return {
+    success: !!data.success,
+    added_count: data.added_count ?? 0,
+    added_material_ids: Array.isArray(data.added_material_ids) ? data.added_material_ids : [],
+    rejected: Array.isArray(data.rejected) ? data.rejected : [],
+    bundle_id: data.bundle_id,
+    correlation_id: data.correlation_id,
+  };
+}
