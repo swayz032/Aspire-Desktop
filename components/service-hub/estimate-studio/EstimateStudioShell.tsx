@@ -76,13 +76,23 @@ export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
     width >= TABLET_BREAKPOINT && width < DESKTOP_BREAKPOINT;
 
   // Responsive canvas width:
-  //   Desktop (>=1500)         → 1400 cap (centered with gutter)
-  //   Laptop/Tablet (768..1499) → 1280 cap (slim by ~80-160px each side on
-  //                              1366/1440 laptops — was 880 which left
-  //                              huge dead space).
-  //   Mobile (<768)            → full width
+  //   Desktop (>=1500)             → 1400 cap (centered with gutter)
+  //   Laptop (1280..1499)          → 1280 cap
+  //   iPad landscape (1024..1279)  → 1140 cap — centers the canvas with a
+  //                                  polite gutter so it matches DesktopShell's
+  //                                  tablet-landscape cap visually. Previously
+  //                                  unconstrained: outer canvas spanned full
+  //                                  ServiceHubShell width and the Visuals
+  //                                  hero hugged the left edge.
+  //   Mobile (<768)                → full width
+  const isTabletLandscape = width >= 1024 && width < 1280;
+  const isLaptopMid = width >= 1280 && width < DESKTOP_BREAKPOINT;
   const canvasMaxWidth = isDesktop
     ? 1400
+    : isLaptopMid
+    ? 1280
+    : isTabletLandscape
+    ? 1140
     : undefined;
 
   // With chrome hoisted out, the canvas reclaims the ~22px the chrome was

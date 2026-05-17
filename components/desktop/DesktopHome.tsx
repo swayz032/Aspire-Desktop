@@ -407,10 +407,21 @@ function DesktopHomeInner() {
   }, [session?.access_token, suiteId]);
 
   // ── Responsive column widths (spec p13 viewport matrix, Canvas.layout tokens) ──
-  const tabletDesktopFit = Platform.OS === 'web' && width >= 768 && width < 1280;
+  // Tablet-landscape band (1024–1279) collapses to a 2-COLUMN layout: center
+  // stage + right rail only. The left strip (Interaction Mode + Today's Plan)
+  // stacks above via `tabletTopRow`. Reason: at 1180px viewport, the prior
+  // 3-col 208+12+440+12+220 distribution was forcing Ops Snapshot widget
+  // content (Connect-accounts CTA + Service tier pill) past the right edge.
+  const isTabletLandscape =
+    Platform.OS === 'web' &&
+    width >= Canvas.layout.tabletLandscapeLower &&
+    width < Canvas.layout.tabletLandscapeUpper;
+  const tabletDesktopFit = Platform.OS === 'web' && width >= 768 && width < 1280 && !isTabletLandscape;
   const compactTabletFit = Platform.OS === 'web' && width >= 768 && width < 920;
   const leftWidth = compactTabletFit
     ? 176
+    : isTabletLandscape
+    ? 0
     : tabletDesktopFit
     ? 208
     : isTablet
@@ -420,6 +431,8 @@ function DesktopHomeInner() {
         : Canvas.layout.leftColDesktop;
   const rightWidth = compactTabletFit
     ? 188
+    : isTabletLandscape
+      ? Canvas.layout.rightColTabletLandscape
     : tabletDesktopFit
       ? 220
     : isTablet
@@ -427,9 +440,15 @@ function DesktopHomeInner() {
       : isLaptop
         ? Canvas.layout.rightColLaptop
         : Canvas.layout.rightColDesktop;
-  const showThreeCol = Platform.OS === 'web' ? width >= 768 : !isTablet;
+  // Tablet-landscape uses a 2-col layout (left stacks above). Drive showThreeCol
+  // false in that band so the existing tabletTopRow path renders the left strip
+  // above the center+right row.
+  const showThreeCol =
+    Platform.OS === 'web' ? width >= 768 && !isTabletLandscape : !isTablet;
   const columnGap = compactTabletFit
     ? 10
+    : isTabletLandscape
+      ? Canvas.layout.gapTablet
     : tabletDesktopFit
       ? Canvas.layout.gapTablet
     : isTablet
@@ -528,7 +547,10 @@ function DesktopHomeInner() {
                 </View>
                 )}
 
-                {/* Tablet: left column content stacks above center */}
+                {/* Tablet / tablet-landscape: left column content stacks above center.
+                    At iPad landscape (1024-1279) we keep BOTH Interaction Mode and
+                    Today's Plan above the center+right row so nothing is lost when
+                    we drop the left strip. */}
                 {!showThreeCol && (
                   <View style={styles.tabletTopRow}>
                     <CanvasTileWrapper
@@ -544,6 +566,26 @@ function DesktopHomeInner() {
                         <InteractionModePanel options={INTERACTION_MODES} />
                       </View>
                     </CanvasTileWrapper>
+                    {isTabletLandscape && (
+                      <CanvasTileWrapper
+                        tileId="inbox_setup"
+                        mode={mode}
+                        onPress={handleTilePress}
+                        onHoverIn={handleTileHoverIn}
+                        onHoverOut={handleTileHoverOut}
+                        onContextMenu={handleContextMenu}
+                      >
+                        <View style={[styles.section, styles.tabletTopRowPlan]}>
+                          <SectionHeader
+                            title="Today's Plan"
+                            subtitle={`${planItems.length} tasks`}
+                            actionLabel="See all"
+                            onAction={() => router.push('/session/plan' as any)}
+                          />
+                          <TodayPlanTabs planItems={planItems} />
+                        </View>
+                      </CanvasTileWrapper>
+                    )}
                   </View>
                 )}
 
@@ -787,6 +829,12 @@ const styles = StyleSheet.create({
   tabletTopRow: {
     width: '100%',
     marginBottom: Spacing.md,
+    gap: Spacing.md,
+  } as any,
+  tabletTopRowPlan: {
+    // Cap the stacked Today's Plan so it doesn't sprawl full-width — keeps
+    // the iPad-landscape layout readable without forcing huge row scans.
+    maxHeight: 320,
   } as any,
   greeting: {
     color: Colors.text.primary,

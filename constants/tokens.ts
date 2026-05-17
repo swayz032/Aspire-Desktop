@@ -507,6 +507,19 @@ export const Canvas = {
   layout: {
     /** Max content width on wide displays (1920+) to prevent over-stretching */
     wideMaxWidth: 1600,
+    /**
+     * iPad landscape "no-man's-land" cap (>=1024 && <1280).
+     * Without this, non-fullBleed pages span 100% up to 1280 — at 1180px
+     * the right column content (Ops Snapshot CTA + tier pill) clips the
+     * shell padding because columns are sized for the wider band. Capping
+     * the shell at 1100 forces a polite outer gutter and lets columns
+     * (especially the right rail) breathe at iPad landscape.
+     */
+    tabletLandscapeMaxWidth: 1100,
+    /** Breakpoint upper bound for the iPad-landscape band (exclusive). */
+    tabletLandscapeUpper: 1280,
+    /** Breakpoint lower bound for the iPad-landscape band (inclusive). */
+    tabletLandscapeLower: 1024,
     /** Gap between columns per breakpoint */
     gapTablet: 12,
     gapLaptop: 12,
@@ -516,6 +529,9 @@ export const Canvas = {
     leftColLaptop: 260,
     leftColDesktop: 280,
     rightColTablet: 280,
+    /** Right column width specifically at iPad landscape (1024-1279).
+     *  Must be wide enough for Ops Snapshot CTA + tier pill (~300px). */
+    rightColTabletLandscape: 300,
     rightColLaptop: 280,
     rightColDesktop: 320,
   },

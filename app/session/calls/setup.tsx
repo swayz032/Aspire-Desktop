@@ -23,7 +23,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Platform, ViewStyle, useWindowDimensions, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing } from '@/constants/tokens';
+import { Colors, Spacing, Canvas } from '@/constants/tokens';
 import { DesktopShell } from '@/components/desktop/DesktopShell';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { triggerTestIncomingCall } from '@/lib/incomingCallOverlayStore';
@@ -455,11 +455,24 @@ function FrontDeskSetupContent() {
   const { width: windowWidth } = useWindowDimensions();
   const officeId = tenant?.officeId ?? null;
 
-  // Tablet optimization: reduce minWidths so the 2-column layout fits on 10" iPad Portrait (810px).
-  // Desktop behavior unchanged.
-  const isTabletWidth = windowWidth < 1000;
-  const mainColMinWidth = isTabletWidth ? 450 : 600;
+  // Tablet optimization: reduce minWidths so the 2-column layout fits on
+  // both 10" iPad portrait (810px) AND 10" iPad landscape (1180px). Previously
+  // the threshold was <1000 which let iPad landscape fall into desktop mode
+  // (minWidth 600+320 = 920) — combined with the page-level `maxWidth: 1480`
+  // having no effect at 1180, the body grid filled tightly and hugged left.
+  // Bumping to <1280 brings iPad landscape into the tablet tuning AND we cap
+  // the scroll content at the same tablet-landscape token used by DesktopShell
+  // so the page centers with a polite gutter.
+  const isTabletWidth = windowWidth < Canvas.layout.tabletLandscapeUpper;
+  const isTabletLandscape =
+    Platform.OS === 'web' &&
+    windowWidth >= Canvas.layout.tabletLandscapeLower &&
+    windowWidth < Canvas.layout.tabletLandscapeUpper;
+  const mainColMinWidth = isTabletWidth ? 440 : 600;
   const railColMinWidth = isTabletWidth ? 280 : 320;
+  const scrollMaxWidth = isTabletLandscape
+    ? Canvas.layout.tabletLandscapeMaxWidth
+    : 1480;
 
   const [config, setConfig] = useState<FrontDeskConfig>(DEFAULT_CONFIG);
   const [originalConfig, setOriginalConfig] = useState<FrontDeskConfig>(DEFAULT_CONFIG);
@@ -816,7 +829,10 @@ function FrontDeskSetupContent() {
   return (
     <ScrollView
       style={styles.scroll}
-      contentContainerStyle={styles.scrollContent}
+      contentContainerStyle={[
+        styles.scrollContent,
+        Platform.OS === 'web' ? ({ maxWidth: scrollMaxWidth } as ViewStyle) : null,
+      ]}
       showsVerticalScrollIndicator={false}
     >
       {/* Hero */}
@@ -915,8 +931,11 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 80,
     gap: 20,
+    // maxWidth applied inline (default 1480, tablet-landscape uses
+    // Canvas.layout.tabletLandscapeMaxWidth so the page centers with a
+    // polite gutter instead of hugging the sidebar at 1180px).
     ...(Platform.OS === 'web'
-      ? ({ maxWidth: 1480, marginHorizontal: 'auto' as const, width: '100%' } as object)
+      ? ({ marginHorizontal: 'auto' as const, width: '100%' } as object)
       : {}),
   } as any,
 

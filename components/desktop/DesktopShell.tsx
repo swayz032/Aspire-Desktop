@@ -1,8 +1,8 @@
 import React, { ReactNode } from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, StyleSheet, Platform, useWindowDimensions } from 'react-native';
 import { DesktopHeader } from './DesktopHeader';
 import { DesktopSidebar } from './DesktopSidebar';
-import { Colors } from '@/constants/tokens';
+import { Colors, Canvas } from '@/constants/tokens';
 import { useSidebarState } from '@/lib/uiStore';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
@@ -14,12 +14,26 @@ interface DesktopShellProps {
 
 function DesktopShellInner({ children, hideSidebar = false, fullBleed = false }: DesktopShellProps) {
   const { sidebarExpanded } = useSidebarState();
+  const { width } = useWindowDimensions();
+
+  // iPad-landscape no-man's-land: 1024 <= width < 1280. At this band the
+  // default 1280 maxWidth lets pages span the full chrome inset (no outer
+  // gutter), so columns sized for desktop end up clipped at the right edge.
+  // Cap the shell at `tabletLandscapeMaxWidth` (1100) so non-fullBleed pages
+  // center inside a polite gutter and right rails get breathing room.
+  const isTabletLandscape =
+    Platform.OS === 'web' &&
+    width >= Canvas.layout.tabletLandscapeLower &&
+    width < Canvas.layout.tabletLandscapeUpper;
+  const innerMaxWidth = isTabletLandscape
+    ? Canvas.layout.tabletLandscapeMaxWidth
+    : 1280;
 
   return (
     <View style={styles.container}>
       {/* Sidebar on the left - full height from top to bottom */}
       {!hideSidebar && <DesktopSidebar expanded={sidebarExpanded} />}
-      
+
       {/* Right side: Header on top, content below */}
       <View style={styles.rightSection}>
         <DesktopHeader />
@@ -27,7 +41,7 @@ function DesktopShellInner({ children, hideSidebar = false, fullBleed = false }:
           {fullBleed ? (
             children
           ) : (
-            <View style={styles.contentInner}>
+            <View style={[styles.contentInner, { maxWidth: innerMaxWidth }]}>
               {children}
             </View>
           )}
@@ -80,7 +94,7 @@ const styles = StyleSheet.create({
   },
   contentInner: {
     flex: 1,
-    maxWidth: 1280,
+    // maxWidth applied inline (1280 default, tablet-landscape cap from tokens).
     alignSelf: 'center',
     width: '100%',
     overflow: 'hidden',
