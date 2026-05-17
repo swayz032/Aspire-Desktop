@@ -14,6 +14,7 @@ import { usePathname } from 'expo-router';
 import { PropertySummaryCard } from './PropertySummaryCard';
 import { MaterialsRouteContextCard } from './MaterialsRouteContextCard';
 import { PlansPhotosContextPayload } from './PlansPhotosContextPayload';
+import { ScopeContextPayload } from './ScopeContextPayload';
 import type { PropertyData } from '@/services/serviceHub/propertyDataApi';
 
 // Inject a one-shot stylesheet on web that hides the scrollbar inside
@@ -46,6 +47,8 @@ export function TimRailContextTab({ data, loading, error, onRetry }: Props) {
     pathname.endsWith('/materials') || pathname.endsWith('/materials/');
   const isPlansPhotosTab =
     pathname.endsWith('/plans-photos') || pathname.endsWith('/plans-photos/');
+  const isScopeTab =
+    pathname.endsWith('/scope') || pathname.endsWith('/scope/');
 
   return (
     <ScrollView
@@ -91,6 +94,11 @@ export function TimRailContextTab({ data, loading, error, onRetry }: Props) {
       {/* Plans & Photos payload: pipeline status + discipline counts + last
           upload. Renders null off-route. Property facts carry over below. */}
       {isPlansPhotosTab && <PlansPhotosContextPayload />}
+
+      {/* Scope payload (Wave 7): pipeline + confidence + truth distribution
+          + missing inputs + linked destinations + tariff summary. Property
+          facts carry over below as on Plans & Photos. */}
+      {isScopeTab && <ScopeContextPayload />}
 
       {/* Property facts hidden on Materials tab — that tab's context
           is the route + bundle, not the property valuation card. The

@@ -8,15 +8,15 @@
  * Wave 6A scope:
  *   - uploadBlueprint(): full INGEST + auto-chained CLASSIFY in one call.
  *
- * Wave 6.5 (deferred — backend GET endpoints not yet wired):
- *   - getProject(): GET /api/v1/blueprints/projects/:id
- *   - listSheets(): GET /api/v1/blueprints/projects/:id/sheets
- *   - getProjectStatus(): GET /api/v1/blueprints/projects/:id/status
+ * Wave 7 scope (this file):
+ *   - Project/sheet/status GETs (Wave 2.5 backend reads)
+ *   - Story / assemblies / materials / missing_inputs GETs (Wave 2.7)
+ *   - resolveMissingInput POST (Wave 2.7 — YELLOW tier; scope=
+ *     `blueprints:resolve_missing_input`)
  *
- * These three are declared with their full types so call-sites can be
- * sketched ahead of Wave 6.5 wiring, but the implementations throw
- * `NotImplementedError` until the backend reads land. See
- * docs/plans/serene-seeking-hollerith for the cross-wave plan.
+ * Until Wave 2.5 / 2.7 backend PRs merge, the Express proxy returns 404 for
+ * these routes. Callers (hooks) MUST catch `BlueprintsApiError.status === 404`
+ * and degrade to an empty render path. See docs/plans/serene-seeking-hollerith.
  *
  * Law compliance:
  *   Law #5 — capability token minted server-side by the Express proxy.
@@ -144,6 +144,103 @@ export interface BlueprintSheet {
 }
 
 // ---------------------------------------------------------------------------
+// Wave 7 — Story / Assemblies / Materials / Missing Inputs (REASON + PROCURE)
+// ---------------------------------------------------------------------------
+
+/** Confidence class for a fact in the story / assembly / material chain. */
+export type TruthClass =
+  | 'observed'
+  | 'derived'
+  | 'assumed'
+  | 'missing'
+  | 'field_confirmed'
+  | 'vendor_confirmed'
+  | 'permit_confirmed';
+
+/** A single phase of the project's work narrative. */
+export interface BlueprintStoryPhase {
+  key: string;
+  title: string;
+  /** Plain-English narrative markdown body. */
+  body_md: string;
+  facts: BlueprintStoryFact[];
+}
+
+/** A single inline fact in a phase narrative. Renders as a TruthBadge chip. */
+export interface BlueprintStoryFact {
+  key: string;
+  label: string;
+  truth: TruthClass;
+  /** Optional 0..1 confidence (derived / assumed). */
+  confidence?: number;
+  /** Optional missing_input_id when truth === 'assumed' or 'missing'. */
+  missing_input_id?: string | null;
+}
+
+export interface BlueprintStory {
+  project_id: string;
+  /** Overall project mean confidence (0..1). */
+  mean_confidence: number;
+  /** Counts by truth class for the truth-distribution bar. */
+  truth_distribution: Record<TruthClass, number>;
+  phases: BlueprintStoryPhase[];
+  updated_at: string | null;
+  /** REASON pipeline stage state — UI polls until 'done' or 'error'. */
+  status: 'pending' | 'in_progress' | 'done' | 'error';
+}
+
+/** An assembly line item Drew identified (e.g. "drywall partition"). */
+export interface BlueprintAssembly {
+  assembly_id: string;
+  assembly_type: string;
+  label: string;
+  quantity: number;
+  unit: string;
+  truth: TruthClass;
+  confidence?: number;
+  /** True if part of the base scope; false if alternate / not-in-base. */
+  in_base_scope: boolean;
+  alternate_note?: string | null;
+}
+
+/** A material line item Drew / PROCURE identified. */
+export interface BlueprintMaterial {
+  material_id: string;
+  label: string;
+  quantity: number;
+  unit: string;
+  truth: TruthClass;
+  tariff_flagged: boolean;
+  tariff_note?: string | null;
+  /** Estimated $ impact for the tariff line (PROCURE; null until Wave 5). */
+  tariff_impact_usd?: number | null;
+  supplier_hint?: string | null;
+}
+
+/** A known-unknown that needs field confirmation / RFI / owner input. */
+export interface BlueprintMissingInput {
+  input_id: string;
+  description: string;
+  suggested_resolution?: string | null;
+  status: 'open' | 'resolved';
+  resolved_value?: string | null;
+  resolved_at?: string | null;
+}
+
+export interface GetAssembliesOptions {
+  activeOnly?: boolean;
+}
+
+export interface GetMaterialsOptions {
+  tariffOnly?: boolean;
+  hasSupplier?: boolean;
+}
+
+export interface GetMissingInputsOptions {
+  unresolvedOnly?: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // API functions
 // ---------------------------------------------------------------------------
 
@@ -242,47 +339,203 @@ export async function uploadBlueprint(
 }
 
 // ---------------------------------------------------------------------------
-// Wave 6.5 stubs — types declared, implementations throw
+// Wave 6.5 / Wave 7 — real GET clients (graceful 404 via BlueprintsApiError)
+//
+// The Express proxy + Python orchestrator endpoints land in:
+//   Wave 2.5 — GET /api/v1/blueprints/projects/:id, /sheets, /status
+//   Wave 2.7 — GET /story, /assemblies, /materials, /missing_inputs +
+//              POST /missing_inputs/:input_id/resolve
+//
+// Until those PRs merge, the proxy returns 404. Callers (hooks) must catch
+// `BlueprintsApiError.status === 404` and degrade to an empty render path
+// rather than treating it as a real failure.
 // ---------------------------------------------------------------------------
 
-/** Wave 6.5 — fetch a single project's metadata + progress.
- *  Throws until backend GET endpoint lands. */
+async function _getJson<T>(
+  authenticatedFetch: FetchFn,
+  url: string,
+  officeId: string,
+  signal?: AbortSignal,
+): Promise<T> {
+  const resp = await authenticatedFetch(url, {
+    method: 'GET',
+    headers: { 'X-Office-Id': officeId },
+    signal,
+  });
+
+  if (!resp.ok) {
+    let code = 'BLUEPRINT_GET_FAILED';
+    let message = `Blueprint GET failed (${resp.status})`;
+    let correlationId: string | undefined;
+    try {
+      const parsed = await resp.json();
+      code = parsed?.error ?? parsed?.code ?? code;
+      message = parsed?.message ?? parsed?.detail?.message ?? message;
+      correlationId = parsed?.correlation_id;
+    } catch {
+      // non-JSON error body
+    }
+    throw new BlueprintsApiError(resp.status, code, message, correlationId);
+  }
+
+  return (await resp.json()) as T;
+}
+
+/** Fetch a single project's metadata + progress. */
 export async function getProject(
-  _authenticatedFetch: FetchFn,
-  _projectId: string,
-  _officeId: string,
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  officeId: string,
+  signal?: AbortSignal,
 ): Promise<BlueprintProject> {
-  throw new BlueprintsApiError(
-    501,
-    'NOT_IMPLEMENTED_WAVE_6_5',
-    'getProject() lands in Wave 6.5 alongside backend GET /v1/blueprints/projects/:id',
+  return _getJson<BlueprintProject>(
+    authenticatedFetch,
+    `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}`,
+    officeId,
+    signal,
   );
 }
 
-/** Wave 6.5 — list sheets for a project (with thumbnails + revision chain).
- *  Throws until backend GET endpoint lands. */
+/** List sheets for a project (with thumbnails + revision chain). */
 export async function listSheets(
-  _authenticatedFetch: FetchFn,
-  _projectId: string,
-  _officeId: string,
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  officeId: string,
+  signal?: AbortSignal,
 ): Promise<BlueprintSheet[]> {
-  throw new BlueprintsApiError(
-    501,
-    'NOT_IMPLEMENTED_WAVE_6_5',
-    'listSheets() lands in Wave 6.5 alongside backend GET /v1/blueprints/projects/:id/sheets',
+  return _getJson<BlueprintSheet[]>(
+    authenticatedFetch,
+    `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}/sheets`,
+    officeId,
+    signal,
   );
 }
 
-/** Wave 6.5 — poll project pipeline stage progress.
- *  Throws until backend GET endpoint lands. */
+/** Poll project pipeline stage progress. */
 export async function getProjectStatus(
-  _authenticatedFetch: FetchFn,
-  _projectId: string,
-  _officeId: string,
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  officeId: string,
+  signal?: AbortSignal,
 ): Promise<{ stage_progress: StageProgress }> {
-  throw new BlueprintsApiError(
-    501,
-    'NOT_IMPLEMENTED_WAVE_6_5',
-    'getProjectStatus() lands in Wave 6.5 alongside backend GET /v1/blueprints/projects/:id/status',
+  return _getJson<{ stage_progress: StageProgress }>(
+    authenticatedFetch,
+    `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}/status`,
+    officeId,
+    signal,
   );
+}
+
+/** Wave 7 — fetch the phased story narrative (REASON output). */
+export async function getStory(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  officeId: string,
+  signal?: AbortSignal,
+): Promise<BlueprintStory> {
+  return _getJson<BlueprintStory>(
+    authenticatedFetch,
+    `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}/story`,
+    officeId,
+    signal,
+  );
+}
+
+/** Wave 7 — fetch project assemblies. */
+export async function getAssemblies(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  officeId: string,
+  options: GetAssembliesOptions = {},
+  signal?: AbortSignal,
+): Promise<BlueprintAssembly[]> {
+  const params = new URLSearchParams();
+  if (options.activeOnly) params.set('active_only', 'true');
+  const qs = params.toString();
+  const url = `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(
+    projectId,
+  )}/assemblies${qs ? `?${qs}` : ''}`;
+  return _getJson<BlueprintAssembly[]>(authenticatedFetch, url, officeId, signal);
+}
+
+/** Wave 7 — fetch project materials. */
+export async function getMaterials(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  officeId: string,
+  options: GetMaterialsOptions = {},
+  signal?: AbortSignal,
+): Promise<BlueprintMaterial[]> {
+  const params = new URLSearchParams();
+  if (options.tariffOnly) params.set('tariff_only', 'true');
+  if (options.hasSupplier) params.set('has_supplier', 'true');
+  const qs = params.toString();
+  const url = `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(
+    projectId,
+  )}/materials${qs ? `?${qs}` : ''}`;
+  return _getJson<BlueprintMaterial[]>(authenticatedFetch, url, officeId, signal);
+}
+
+/** Wave 7 — fetch project missing inputs. */
+export async function getMissingInputs(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  officeId: string,
+  options: GetMissingInputsOptions = {},
+  signal?: AbortSignal,
+): Promise<BlueprintMissingInput[]> {
+  const params = new URLSearchParams();
+  if (options.unresolvedOnly) params.set('unresolved_only', 'true');
+  const qs = params.toString();
+  const url = `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(
+    projectId,
+  )}/missing_inputs${qs ? `?${qs}` : ''}`;
+  return _getJson<BlueprintMissingInput[]>(authenticatedFetch, url, officeId, signal);
+}
+
+/** Wave 7 — confirm a missing input with a field-collected value (YELLOW tier).
+ *
+ *  Server-side proxy (Wave 2.7):
+ *    1) Validates JWT.
+ *    2) Mints capability token (scope=`blueprints:resolve_missing_input`).
+ *    3) Forwards to Drew with task=RESOLVE_MISSING_INPUT.
+ *    4) Writes blueprint_receipt (Law #2) + returns the updated row. */
+export async function resolveMissingInput(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  inputId: string,
+  value: string,
+  officeId: string,
+  signal?: AbortSignal,
+): Promise<BlueprintMissingInput> {
+  const url = `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(
+    projectId,
+  )}/missing_inputs/${encodeURIComponent(inputId)}/resolve`;
+
+  const resp = await authenticatedFetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Office-Id': officeId,
+    },
+    body: JSON.stringify({ value }),
+    signal,
+  });
+
+  if (!resp.ok) {
+    let code = 'RESOLVE_MISSING_INPUT_FAILED';
+    let message = `Resolve missing input failed (${resp.status})`;
+    let correlationId: string | undefined;
+    try {
+      const parsed = await resp.json();
+      code = parsed?.error ?? parsed?.code ?? code;
+      message = parsed?.message ?? parsed?.detail?.message ?? message;
+      correlationId = parsed?.correlation_id;
+    } catch {
+      // non-JSON error body
+    }
+    throw new BlueprintsApiError(resp.status, code, message, correlationId);
+  }
+
+  return (await resp.json()) as BlueprintMissingInput;
 }

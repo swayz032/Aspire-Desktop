@@ -284,6 +284,48 @@ describe('Visuals Tab — Design Lock v1.0', () => {
     });
   });
 
+  describe('Lock #17: Scope tab uses shared shell + renders inline TruthBadges', () => {
+    // Wave 7 (2026-05-17): Scope is THE tab where contractors read the plain-
+    // English story. It MUST use the same CanvasCardSwitcher + BottomChipStrip
+    // shells (so card geometry stays consistent across tabs) and MUST render
+    // inline TruthBadge components in the story so contractors can instantly
+    // tell observed-vs-derived-vs-assumed facts.
+    const tabSrc = read(
+      'components/service-hub/estimate-studio/scope/ScopeTab.tsx',
+    );
+    const storySrc = read(
+      'components/service-hub/estimate-studio/scope/StoryPanel.tsx',
+    );
+    const pageSrc = read('app/service-hub/estimate-studio/scope.tsx');
+
+    it('uses <CanvasCardSwitcher /> for the main canvas region', () => {
+      expect(tabSrc).toMatch(/CanvasCardSwitcher/);
+      expect(tabSrc).toMatch(/<CanvasCardSwitcher\b/);
+    });
+
+    it('uses <BottomChipStrip /> for card selection', () => {
+      expect(tabSrc).toMatch(/BottomChipStrip/);
+      expect(tabSrc).toMatch(/<BottomChipStrip\b/);
+    });
+
+    it('StoryPanel renders inline <TruthBadge /> components', () => {
+      expect(storySrc).toMatch(/TruthBadge/);
+      expect(storySrc).toMatch(/<TruthBadge\b/);
+    });
+
+    it('empty state copy contains the literal "Drop a plan set in Plans & Photos"', () => {
+      // Tonio: this is the contractor's entry breadcrumb when no project has
+      // been uploaded. The literal must remain so the visible UX matches the
+      // contract.
+      expect(tabSrc).toMatch(/Drop a plan set in Plans & Photos/);
+    });
+
+    it('scope.tsx route delegates to <ScopeTab /> (no TabPlaceholder)', () => {
+      expect(pageSrc).toMatch(/<ScopeTab\s*\/>/);
+      expect(pageSrc).not.toMatch(/TabPlaceholder/);
+    });
+  });
+
   describe('Lock #16: Plans & Photos tab uses shared shell (CanvasCardSwitcher + BottomChipStrip)', () => {
     // Wave 6A (2026-05-17): Plans & Photos is the primary upload entry for
     // the Blueprint Story Engine. It must use the shared canvas-card switcher
