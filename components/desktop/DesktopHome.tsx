@@ -407,21 +407,16 @@ function DesktopHomeInner() {
   }, [session?.access_token, suiteId]);
 
   // ── Responsive column widths (spec p13 viewport matrix, Canvas.layout tokens) ──
-  // Tablet-landscape band (1024–1279) collapses to a 2-COLUMN layout: center
-  // stage + right rail only. The left strip (Interaction Mode + Today's Plan)
-  // stacks above via `tabletTopRow`. Reason: at 1180px viewport, the prior
-  // 3-col 208+12+440+12+220 distribution was forcing Ops Snapshot widget
-  // content (Connect-accounts CTA + Service tier pill) past the right edge.
-  const isTabletLandscape =
-    Platform.OS === 'web' &&
-    width >= Canvas.layout.tabletLandscapeLower &&
-    width < Canvas.layout.tabletLandscapeUpper;
-  const tabletDesktopFit = Platform.OS === 'web' && width >= 768 && width < 1280 && !isTabletLandscape;
+  // iPad landscape (1024-1279 — viewport-fixed 2026-05-17) uses the SAME 3-col
+  // layout as desktop with the compact tabletDesktopFit widths (208 / flex / 220
+  // + 12px gaps). Fits in 1100 maxWidth contentInner with the shell's iPad-
+  // landscape gutter. The earlier 2-col workaround was masking the wrong-viewport
+  // bug (server was forcing width=1280); now that viewport reports the real
+  // device width, the standard 3-col fits.
+  const tabletDesktopFit = Platform.OS === 'web' && width >= 768 && width < 1280;
   const compactTabletFit = Platform.OS === 'web' && width >= 768 && width < 920;
   const leftWidth = compactTabletFit
     ? 176
-    : isTabletLandscape
-    ? 0
     : tabletDesktopFit
     ? 208
     : isTablet
@@ -431,8 +426,6 @@ function DesktopHomeInner() {
         : Canvas.layout.leftColDesktop;
   const rightWidth = compactTabletFit
     ? 188
-    : isTabletLandscape
-      ? Canvas.layout.rightColTabletLandscape
     : tabletDesktopFit
       ? 220
     : isTablet
@@ -440,15 +433,9 @@ function DesktopHomeInner() {
       : isLaptop
         ? Canvas.layout.rightColLaptop
         : Canvas.layout.rightColDesktop;
-  // Tablet-landscape uses a 2-col layout (left stacks above). Drive showThreeCol
-  // false in that band so the existing tabletTopRow path renders the left strip
-  // above the center+right row.
-  const showThreeCol =
-    Platform.OS === 'web' ? width >= 768 && !isTabletLandscape : !isTablet;
+  const showThreeCol = Platform.OS === 'web' ? width >= 768 : !isTablet;
   const columnGap = compactTabletFit
     ? 10
-    : isTabletLandscape
-      ? Canvas.layout.gapTablet
     : tabletDesktopFit
       ? Canvas.layout.gapTablet
     : isTablet
@@ -456,6 +443,14 @@ function DesktopHomeInner() {
       : isLaptop
         ? Canvas.layout.gapLaptop
         : Canvas.layout.gapDesktop;
+  // Keep the symbol exported for any callers tracking the old token — but
+  // it's no longer used to gate layout; the shell maxWidth=1100 in the
+  // iPad-landscape band already provides the polite gutter.
+  const isTabletLandscape =
+    Platform.OS === 'web' &&
+    width >= Canvas.layout.tabletLandscapeLower &&
+    width < Canvas.layout.tabletLandscapeUpper;
+  void isTabletLandscape;
   const isWide = width >= 1920;
   const workspaceHeight = Math.max(640, Math.min(840, height - 150));
 
@@ -547,10 +542,10 @@ function DesktopHomeInner() {
                 </View>
                 )}
 
-                {/* Tablet / tablet-landscape: left column content stacks above center.
-                    At iPad landscape (1024-1279) we keep BOTH Interaction Mode and
-                    Today's Plan above the center+right row so nothing is lost when
-                    we drop the left strip. */}
+                {/* Narrow tablet portrait (<768 with web, or non-web isTablet):
+                    keep the legacy single-card stack-above-center path. iPad
+                    landscape now uses the standard 3-col branch above since
+                    the viewport reports the real device width. */}
                 {!showThreeCol && (
                   <View style={styles.tabletTopRow}>
                     <CanvasTileWrapper
@@ -566,26 +561,6 @@ function DesktopHomeInner() {
                         <InteractionModePanel options={INTERACTION_MODES} />
                       </View>
                     </CanvasTileWrapper>
-                    {isTabletLandscape && (
-                      <CanvasTileWrapper
-                        tileId="inbox_setup"
-                        mode={mode}
-                        onPress={handleTilePress}
-                        onHoverIn={handleTileHoverIn}
-                        onHoverOut={handleTileHoverOut}
-                        onContextMenu={handleContextMenu}
-                      >
-                        <View style={[styles.section, styles.tabletTopRowPlan]}>
-                          <SectionHeader
-                            title="Today's Plan"
-                            subtitle={`${planItems.length} tasks`}
-                            actionLabel="See all"
-                            onAction={() => router.push('/session/plan' as any)}
-                          />
-                          <TodayPlanTabs planItems={planItems} />
-                        </View>
-                      </CanvasTileWrapper>
-                    )}
                   </View>
                 )}
 
