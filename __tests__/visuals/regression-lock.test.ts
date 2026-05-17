@@ -283,4 +283,42 @@ describe('Visuals Tab — Design Lock v1.0', () => {
       expect(src).not.toMatch(/\bonNewProject\??\s*:/);
     });
   });
+
+  describe('Lock #16: Plans & Photos tab uses shared shell (CanvasCardSwitcher + BottomChipStrip)', () => {
+    // Wave 6A (2026-05-17): Plans & Photos is the primary upload entry for
+    // the Blueprint Story Engine. It must use the shared canvas-card switcher
+    // shell so future waves (Scope, Takeoff) inherit the same geometry
+    // instead of re-implementing free-form layouts per tab.
+    const tabSrc = read(
+      'components/service-hub/estimate-studio/plans-photos/PlansPhotosTab.tsx',
+    );
+    const pageSrc = read('app/service-hub/estimate-studio/plans-photos.tsx');
+
+    it('uses <CanvasCardSwitcher /> for the main canvas region', () => {
+      expect(tabSrc).toMatch(/CanvasCardSwitcher/);
+      expect(tabSrc).toMatch(/<CanvasCardSwitcher\b/);
+    });
+
+    it('uses <BottomChipStrip /> for card selection', () => {
+      expect(tabSrc).toMatch(/BottomChipStrip/);
+      expect(tabSrc).toMatch(/<BottomChipStrip\b/);
+    });
+
+    it('uses <UploadDropZone /> (not a free-form upload form)', () => {
+      expect(tabSrc).toMatch(/UploadDropZone/);
+      expect(tabSrc).toMatch(/<UploadDropZone\b/);
+    });
+
+    it('plans-photos.tsx route delegates to <PlansPhotosTab /> (no TabPlaceholder)', () => {
+      expect(pageSrc).toMatch(/<PlansPhotosTab\s*\/>/);
+      expect(pageSrc).not.toMatch(/TabPlaceholder/);
+    });
+
+    it('renders the Wave 6.5 coming-soon banner so reviewers know what is deferred', () => {
+      // The banner explains thumbnails + 5-stage progress land in Wave 6.5.
+      // The literal string must remain so the visible UX matches the contract.
+      expect(tabSrc).toMatch(/Wave 6\.5/);
+      expect(tabSrc).toMatch(/Wave 2\.5/);
+    });
+  });
 });
