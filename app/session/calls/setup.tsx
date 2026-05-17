@@ -21,7 +21,8 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { View, StyleSheet, ScrollView, Platform, ViewStyle, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Platform, ViewStyle, useWindowDimensions, Pressable } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '@/constants/tokens';
 import { DesktopShell } from '@/components/desktop/DesktopShell';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
@@ -82,6 +83,19 @@ import type {
 // Defaults
 // ---------------------------------------------------------------------------
 
+// Detect the browser's IANA timezone for first-save default. Falls back to
+// America/New_York when Intl is unavailable or returns an empty/UTC string —
+// front_desk_configs.timezone is NOT NULL and a missing value crashes the save.
+function detectDefaultTimezone(): string {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz && tz !== 'UTC') return tz;
+  } catch {
+    // fall through
+  }
+  return 'America/New_York';
+}
+
 const DEFAULT_CONFIG: FrontDeskConfig = {
   publicNumber: { mode: 'ASPIRE_NEW_NUMBER' },
   catch: { mode: 'APP_AND_PHONE_SIMUL_RING' },
@@ -97,6 +111,7 @@ const DEFAULT_CONFIG: FrontDeskConfig = {
     ],
     afterHoursMode: 'TAKE_MESSAGE',
     pronunciationOverride: '',
+    timezone: detectDefaultTimezone(),
   },
   routingContacts: [],
   busy: { mode: 'TAKE_MESSAGE' },
@@ -331,9 +346,10 @@ function buildPatchBody(config: FrontDeskConfig): FrontDeskConfigPatchPartial {
     business_hours: businessHoursWire,
     receptionist_persona: config.receptionistPersona,
   };
-  if (config.businessHours.timezone) {
-    patch.timezone = config.businessHours.timezone;
-  }
+  // Always send timezone — front_desk_configs.timezone is NOT NULL. Fall back to
+  // America/New_York if state is somehow missing it (defensive; DEFAULT_CONFIG
+  // always populates via detectDefaultTimezone()).
+  patch.timezone = config.businessHours.timezone || 'America/New_York';
   // Send voicemail_email even when blank — empty string is the explicit
   // "clear" signal for an existing voicemail address. The handler relays
   // null vs unset to suite_profiles correctly.
@@ -814,6 +830,35 @@ function FrontDeskSetupContent() {
         saveDisabledReason={saveDisabledReason || undefined}
       />
 
+      {/* Save / hydration error banner — surfaces backend 4xx/5xx so users
+          don't perceive a silent "ghost save" that vanishes on refresh. */}
+      {(saveError || hydrationError) ? (
+        <View
+          style={styles.errorBanner}
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+        >
+          <Ionicons name="alert-circle" size={18} color="#fca5a5" />
+          <Text style={styles.errorBannerText} numberOfLines={3}>
+            {saveError
+              ? `Couldn't save: ${saveError}`
+              : `Couldn't load setup: ${hydrationError}`}
+          </Text>
+          <Pressable
+            onPress={() => {
+              if (saveError) setSaveError(null);
+              if (hydrationError) setHydrationError(null);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss error"
+            style={styles.errorBannerDismiss}
+            hitSlop={8}
+          >
+            <Ionicons name="close" size={16} color="#fca5a5" />
+          </Pressable>
+        </View>
+      ) : null}
+
       {/* Tab nav */}
       <View style={styles.tabsWrap}>
         <FrontDeskSetupTabs
@@ -878,6 +923,30 @@ const styles = StyleSheet.create({
   // ----- Tab nav strip -------------------------------------------------
   tabsWrap: {
     paddingHorizontal: 4,
+  },
+
+  // ----- Save/hydration error banner -----------------------------------
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(248,113,113,0.35)',
+    backgroundColor: 'rgba(127,29,29,0.18)',
+    marginHorizontal: 4,
+  },
+  errorBannerText: {
+    flex: 1,
+    color: '#fecaca',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  errorBannerDismiss: {
+    paddingHorizontal: 4,
+    paddingVertical: 2,
   },
 
   // ----- Body grid -----------------------------------------------------
