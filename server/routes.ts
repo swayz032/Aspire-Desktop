@@ -10332,6 +10332,198 @@ router.post('/api/v1/materials/bundles/push-to-estimate', async (req: Request, r
   });
 });
 
+// ---------------------------------------------------------------------------
+// Wave 8 — POST /api/v1/blueprints/projects/:id/push-to-materials  (YELLOW)
+// ---------------------------------------------------------------------------
+// Body: { material_ids: string[] }
+//
+// Mints a YELLOW capability token with scope `materials.bundle.add` (Law #5)
+// and forwards to the Python orchestrator at
+//   POST /v1/blueprints/projects/:id/push-to-materials
+//
+// The caller (usePushToMaterials hook) MUST present a confirmation modal
+// BEFORE calling — the modal is the UX gate (Law #4); the server-side
+// scope on the capability token is the real gate. Body sanity-checks here
+// match the client side so a bad payload never reaches the orchestrator.
+// ---------------------------------------------------------------------------
+router.post(
+  '/api/v1/blueprints/projects/:id/push-to-materials',
+  express.json({ limit: '256kb' }),
+  async (req: Request, res: Response) => {
+    const suiteId = requireAuth(req, res);
+    if (!suiteId) return;
+
+    const orchestratorUrl = resolveOrchestratorUrl();
+    if (!orchestratorUrl) {
+      res.status(503).json({
+        error: 'ORCHESTRATOR_UNAVAILABLE',
+        message: 'Backend service is not configured',
+      });
+      return;
+    }
+
+    const projectId = String(req.params.id ?? '').trim();
+    if (!projectId) {
+      res.status(400).json({ error: 'INVALID_PROJECT_ID', message: 'project id is required' });
+      return;
+    }
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const rawIds = body.material_ids;
+    if (!Array.isArray(rawIds) || rawIds.length === 0) {
+      res.status(400).json({
+        error: 'EMPTY_MATERIAL_IDS',
+        message: 'material_ids must be a non-empty array of strings',
+      });
+      return;
+    }
+    const materialIds = rawIds
+      .filter((v) => typeof v === 'string' && v.trim().length > 0)
+      .map((v) => (v as string).trim());
+    if (materialIds.length === 0) {
+      res.status(400).json({
+        error: 'EMPTY_MATERIAL_IDS',
+        message: 'material_ids must contain at least one non-empty string',
+      });
+      return;
+    }
+    if (materialIds.length > 500) {
+      res.status(413).json({
+        error: 'TOO_MANY_MATERIAL_IDS',
+        message: 'material_ids cannot exceed 500 entries per request',
+      });
+      return;
+    }
+
+    const officeIdRaw = (req.headers['x-office-id'] as string) || '';
+    const officeId =
+      typeof officeIdRaw === 'string' && officeIdRaw.trim() ? officeIdRaw.trim() : suiteId;
+    const tenantId = suiteId;
+    const actorId = ((req as any).authenticatedUserId as string) || suiteId;
+    const correlationId =
+      (req.headers['x-correlation-id'] as string) || `corr_${crypto.randomUUID()}`;
+    const traceId = (req.headers['x-trace-id'] as string) || correlationId;
+
+    // YELLOW capability token (Law #5).
+    if (!resolveSigningKey()) {
+      res.status(503).json({
+        error: 'SIGNING_KEY_UNAVAILABLE',
+        message: 'Capability token signing key not configured',
+      });
+      return;
+    }
+    const minted = mintCapabilityToken({
+      scope: 'materials.bundle.add',
+      tenant_id: tenantId,
+      suite_id: suiteId,
+      office_id: officeId,
+      correlation_id: correlationId,
+    });
+    if (!minted) {
+      res.status(503).json({
+        error: 'SIGNING_KEY_UNAVAILABLE',
+        message: 'Capability token signing key not configured',
+      });
+      return;
+    }
+
+    const orchestratorPath =
+      `/v1/blueprints/projects/${encodeURIComponent(projectId)}/push-to-materials`;
+    const url = `${orchestratorUrl}${orchestratorPath}`;
+    const forwardBody = {
+      project_id: projectId,
+      material_ids: materialIds,
+      suite_id: suiteId,
+      office_id: officeId,
+      capability_token: JSON.stringify(minted.token),
+    };
+
+    logger.info('[BlueprintsPushToMaterials] proxy', {
+      suite_id: suiteId,
+      office_id: officeId,
+      project_id: projectId,
+      material_count: materialIds.length,
+      correlation_id: correlationId,
+      risk_tier: 'yellow',
+    });
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const orchResp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Tenant-Id': tenantId,
+          'X-Suite-Id': suiteId,
+          'X-Office-Id': officeId,
+          'X-Actor-Id': actorId,
+          'X-Correlation-Id': correlationId,
+          'X-Trace-Id': traceId,
+        },
+        body: JSON.stringify(forwardBody),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      const text = await orchResp.text();
+      let data: any = null;
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { error: 'UPSTREAM_NON_JSON', message: text.slice(0, 200) };
+        }
+      }
+      if (!orchResp.ok) {
+        logger.warn('[BlueprintsPushToMaterials] orchestrator non-2xx', {
+          suite_id: suiteId,
+          project_id: projectId,
+          status: orchResp.status,
+        });
+        res.status(orchResp.status).json({
+          error: data?.error ?? 'PUSH_TO_MATERIALS_FAILED',
+          message: data?.message ?? `Orchestrator returned ${orchResp.status}`,
+          correlation_id: correlationId,
+        });
+        return;
+      }
+      // Normalize the response shape if the orchestrator returns a slimmer object.
+      res.status(200).json({
+        success: typeof data?.success === 'boolean' ? data.success : true,
+        added_count:
+          typeof data?.added_count === 'number'
+            ? data.added_count
+            : Array.isArray(data?.added_material_ids)
+              ? data.added_material_ids.length
+              : materialIds.length,
+        added_material_ids: Array.isArray(data?.added_material_ids)
+          ? data.added_material_ids
+          : materialIds,
+        rejected: Array.isArray(data?.rejected) ? data.rejected : [],
+        bundle_id: data?.bundle_id,
+        correlation_id: correlationId,
+      });
+    } catch (err: unknown) {
+      clearTimeout(timer);
+      const isTimeout = err instanceof Error && err.name === 'AbortError';
+      logger.error('[BlueprintsPushToMaterials] fetch failed', {
+        suite_id: suiteId,
+        project_id: projectId,
+        reason:
+          err instanceof Error ? `${err.name}: ${err.message.slice(0, 120)}` : 'unknown',
+        is_timeout: isTimeout,
+      });
+      res.status(isTimeout ? 504 : 502).json({
+        error: isTimeout ? 'ORCHESTRATOR_TIMEOUT' : 'ORCHESTRATOR_UNREACHABLE',
+        message: isTimeout
+          ? 'Backend did not respond in time'
+          : 'Could not reach backend service',
+        correlation_id: correlationId,
+      });
+    }
+  },
+);
+
 export default router;
 
 
