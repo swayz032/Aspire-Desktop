@@ -1151,8 +1151,18 @@ const TERMS_HTML = `<!DOCTYPE html>
 //
 // `interactive-widget=resizes-content` keeps content visible when the iPad
 // software keyboard appears (avoids the keyboard occluding inputs).
-const TABLET_VIEWPORT = 'width=1280, viewport-fit=cover, interactive-widget=resizes-content';
-const DESKTOP_VIEWPORT = 'width=1280, initial-scale=1, minimum-scale=0.5, shrink-to-fit=no';
+// 2026-05-17: finally completed the 2026-05-10 revert announced in the comment
+// above. Forcing `width=1280` made iPad 10.9" landscape (1180 CSS px) cut off
+// the rightmost ~100px and made every responsive page lean to the left — the
+// "right side cut off + lean left" bug across Home / Front Desk Setup /
+// Estimate Studio. The responsive CSS pass shipped in a0c0270 only works
+// when Safari is told the truth about the device width. Per the WebKit PR
+// #17109 note above, `width=1280` is also broken on iPadOS 26+.
+//
+// Tablet UA still gets viewport-fit=cover + interactive-widget so safe-area
+// insets and keyboard handling stay correct.
+const TABLET_VIEWPORT = 'width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content';
+const DESKTOP_VIEWPORT = 'width=device-width, initial-scale=1';
 const VIEWPORT_META_REGEX = /<meta\s+name="viewport"\s+content="[^"]*"\s*\/?>/i;
 
 // Tablet UA detection. Excludes phones (iPhone-only "Mobile" UA, small Android).
