@@ -16,6 +16,8 @@ import { MaterialsRouteContextCard } from './MaterialsRouteContextCard';
 import { PlansPhotosContextPayload } from './PlansPhotosContextPayload';
 import { ScopeContextPayload } from './ScopeContextPayload';
 import { TakeoffContextPayload } from './TakeoffContextPayload';
+import { ServiceBriefCard } from '@/components/service-hub/ServiceBriefCard';
+import { useTenant } from '@/providers';
 import type { PropertyData } from '@/services/serviceHub/propertyDataApi';
 
 // Inject a one-shot stylesheet on web that hides the scrollbar inside
@@ -52,6 +54,13 @@ export function TimRailContextTab({ data, loading, error, onRetry }: Props) {
     pathname.endsWith('/scope') || pathname.endsWith('/scope/');
   const isTakeoffTab =
     pathname.endsWith('/takeoff') || pathname.endsWith('/takeoff/');
+  // Wave 5.1b: Service Hub routes get a Service Memory brief card. Exclude
+  // the Estimate Studio sub-tabs that already render their own per-tab
+  // Context payload (Plans & Photos / Scope / Takeoff). Materials carries
+  // its own MaterialsRouteContextCard above and is also excluded.
+  const isServiceHubRoute = pathname.startsWith('/service-hub');
+  const tenant = useTenant() as { officeId?: string };
+  const activeOfficeId = tenant.officeId ?? '';
 
   return (
     <ScrollView
@@ -106,6 +115,18 @@ export function TimRailContextTab({ data, loading, error, onRetry }: Props) {
       {/* Takeoff payload (Wave 8): pipeline status + current sheet meta +
           symbol confidence + tariff exposure. Property facts carry over below. */}
       {isTakeoffTab && <TakeoffContextPayload />}
+
+      {/* Service Memory brief (Wave 5.1b): renders on /service-hub/* EXCEPT
+          the Estimate Studio sub-tabs that already host their own per-tab
+          Context payload (Plans & Photos / Scope / Takeoff) and the
+          Materials tab (which has MaterialsRouteContextCard above).
+          Property facts continue to render below as usual. */}
+      {isServiceHubRoute &&
+        !isPlansPhotosTab &&
+        !isScopeTab &&
+        !isTakeoffTab &&
+        !isMaterialsTab &&
+        activeOfficeId && <ServiceBriefCard officeId={activeOfficeId} />}
 
       {/* Property facts hidden on Materials tab — that tab's context
           is the route + bundle, not the property valuation card. The
