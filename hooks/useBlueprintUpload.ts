@@ -141,6 +141,23 @@ export function useBlueprintUpload(): UseBlueprintUploadResult {
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
+  // Locked at the first transition out of idle so the Tim Rail Context tab
+  // (and any other consumer) can render a stable elapsed timer. Cleared on
+  // any non-busy phase so the next upload starts a fresh clock.
+  const [startedAtMs, setStartedAtMs] = useState<number | null>(null);
+
+  useEffect(() => {
+    const isBusy =
+      phase === 'reading' ||
+      phase === 'uploading' ||
+      phase === 'ingesting' ||
+      phase === 'classifying';
+    if (isBusy && startedAtMs == null) {
+      setStartedAtMs(Date.now());
+    } else if (!isBusy && startedAtMs != null) {
+      setStartedAtMs(null);
+    }
+  }, [phase, startedAtMs]);
 
   // Publish state changes to the module-level store so the Tim Rail Context
   // tab can observe them without a provider.
@@ -152,8 +169,10 @@ export function useBlueprintUpload(): UseBlueprintUploadResult {
       stageProgress,
       error,
       uploadedAt: phase === 'success' ? Date.now() : null,
+      uploadRatio: progress.ratio,
+      startedAtMs,
     });
-  }, [phase, filename, response, stageProgress, error]);
+  }, [phase, filename, response, stageProgress, error, progress.ratio, startedAtMs]);
 
   const reset = useCallback(() => {
     abortRef.current?.abort();

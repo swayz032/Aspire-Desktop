@@ -598,12 +598,15 @@ describe('Visuals Tab — Design Lock v1.0', () => {
     });
   });
 
-  describe('Lock #15: DrewStageProgress — cinematic 5-stage display geometry', () => {
+  describe('Lock #15: DrewStageProgress lives in Tim Rail Context, canvas stays calm', () => {
     const src = read(
       'components/service-hub/estimate-studio/plans-photos/DrewStageProgress.tsx',
     );
     const dzSrc = read(
       'components/service-hub/estimate-studio/plans-photos/UploadDropZone.tsx',
+    );
+    const ctxPayloadSrc = read(
+      'components/service-hub/estimate-studio/tim-rail/PlansPhotosContextPayload.tsx',
     );
 
     it('declares all 5 pipeline stages in canonical order', () => {
@@ -618,23 +621,47 @@ describe('Visuals Tab — Design Lock v1.0', () => {
       }
     });
 
-    it('keeps host minHeight stable to enforce CLS = 0', () => {
+    it('keeps DrewStageProgress host minHeight stable to enforce CLS = 0', () => {
       // Host minHeight must be >= 520 so narration/insight swaps never
-      // reflow the surrounding canvas.
+      // reflow the Tim Rail Context tab.
       expect(src).toMatch(/minHeight:\s*520/);
     });
 
-    it('UploadDropZone renders DrewStageProgress during busy phases', () => {
-      // The cinematic card replaces the basic ring/progress UI for the
-      // four busy phases (reading | uploading | ingesting | classifying).
-      expect(dzSrc).toMatch(/<DrewStageProgress/);
+    it('canvas UploadDropZone does NOT render DrewStageProgress (canvas-clutter prevention)', () => {
+      // Locked design rule: canvas hosts ONE focused element. Stage timeline,
+      // narration, insights, sheet thumbnail rail — all of it belongs in the
+      // Tim Rail Context tab, NEVER the canvas. This is the test that caught
+      // and reverted the Wave 6A.1 cinematic-on-canvas regression.
+      expect(dzSrc).not.toMatch(/<DrewStageProgress/);
+      expect(dzSrc).not.toMatch(/from ['"].*DrewStageProgress['"]/);
+    });
+
+    it('canvas UploadDropZone shows a clean loading state during busy phases', () => {
+      // Busy phase canvas = loading ring + filename + elapsed timer. Nothing
+      // else. Verify the busy block exists and renders the calm LoadingRing.
       expect(dzSrc).toMatch(
         /phase === 'reading' \|\| phase === 'uploading' \|\| phase === 'ingesting' \|\| phase === 'classifying'/,
       );
+      expect(dzSrc).toMatch(/LoadingRing/);
+      expect(dzSrc).toMatch(/Drew is analyzing your blueprint/);
     });
 
-    it('UploadDropZone host expands to >= 600px while busy (room for cinematic card)', () => {
-      expect(dzSrc).toMatch(/hostBusy:\s*\{[\s\S]*?minHeight:\s*600/);
+    it('canvas UploadDropZone keeps busy footprint identical to idle (CLS = 0)', () => {
+      // hostBusy minHeight matches idle (320) so phase transitions never
+      // reflow the canvas.
+      expect(dzSrc).toMatch(/hostBusy:\s*\{[\s\S]*?minHeight:\s*320/);
+    });
+
+    it('Tim Rail Context payload mounts DrewStageProgress while busy (plans-photos route)', () => {
+      // The cinematic 5-stage timeline + narration + insights + thumbnail
+      // rail render HERE — only in the Tim Rail Context tab, only while a
+      // blueprint upload is in-progress on the Plans & Photos route.
+      expect(ctxPayloadSrc).toMatch(/from ['"]\.\.\/plans-photos\/DrewStageProgress['"]/);
+      expect(ctxPayloadSrc).toMatch(/<DrewStageProgress/);
+      // Busy-phase gate: only show cinematic display during reading/uploading/ingesting/classifying.
+      expect(ctxPayloadSrc).toMatch(/isBusy\s*=/);
+      expect(ctxPayloadSrc).toMatch(/snap\.phase === 'reading'/);
+      expect(ctxPayloadSrc).toMatch(/snap\.phase === 'classifying'/);
     });
 
     it('renders a sheet thumbnail rail (placeholder shimmer for Wave 6A.1)', () => {

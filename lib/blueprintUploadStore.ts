@@ -22,6 +22,10 @@ export interface BlueprintUploadSnapshot {
   response: UploadBlueprintResponse | null;
   stageProgress: StageProgress;
   error: { code: string; message: string } | null;
+  /** 0-1 upload ratio (only meaningful during reading/uploading). */
+  uploadRatio: number;
+  /** Epoch ms when the current busy run started; null when idle/done/error. */
+  startedAtMs: number | null;
 }
 
 const INITIAL_STAGE: StageProgress = {
@@ -39,6 +43,8 @@ const INITIAL: BlueprintUploadSnapshot = {
   response: null,
   stageProgress: INITIAL_STAGE,
   error: null,
+  uploadRatio: 0,
+  startedAtMs: null,
 };
 
 let state: BlueprintUploadSnapshot = INITIAL;

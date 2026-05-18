@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useBlueprintUploadSnapshot } from '@/lib/blueprintUploadStore';
 import { ContextTabPayload, type ContextSection } from '../shell/ContextTabPayload';
 import { UploadProgressInline } from '../plans-photos/UploadProgressInline';
+import { DrewStageProgress } from '../plans-photos/DrewStageProgress';
 import { getDisciplineStyle } from '../plans-photos/disciplines';
 
 function _relativeTime(ts: number | null): string {
@@ -38,8 +39,35 @@ export function PlansPhotosContextPayload(): React.ReactElement {
   );
   const sheetCount = snap.response?.ingest.sheet_count ?? 0;
   const revisions = snap.response?.classify?.revisions ?? 0;
+  const isBusy =
+    snap.phase === 'reading' ||
+    snap.phase === 'uploading' ||
+    snap.phase === 'ingesting' ||
+    snap.phase === 'classifying';
 
+  // Aspire design rule: cinematic 5-stage timeline + narration + insight
+  // cards + sheet thumbnail rail render HERE in the Tim Rail Context tab,
+  // NEVER on the canvas. Canvas stays calm (loading ring + filename + timer
+  // only). See: UploadDropZone busy block.
   const sections: ContextSection[] = [
+    ...(isBusy
+      ? [
+          {
+            key: 'drew-live',
+            title: 'Drew · Live Pipeline',
+            subtitle: 'Cinematic 5-stage timeline · narration · insights',
+            render: () => (
+              <DrewStageProgress
+                filename={snap.filename}
+                stageProgress={snap.stageProgress}
+                uploadRatio={snap.uploadRatio}
+                startedAtMs={snap.startedAtMs ?? Date.now()}
+                testID="context-drew-stage-progress"
+              />
+            ),
+          } as ContextSection,
+        ]
+      : []),
     {
       key: 'pipeline',
       title: 'Pipeline Status',

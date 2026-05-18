@@ -22,6 +22,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
+  Easing,
   Platform,
   Pressable,
   StyleSheet,
@@ -35,9 +36,59 @@ import {
   ACCEPTED_MIME_TYPES,
 } from '@/lib/api/blueprintsApi';
 import { UploadProgressInline } from './UploadProgressInline';
-import { DrewStageProgress } from './DrewStageProgress';
 import type { UploadPhase, UploadProgress } from '@/hooks/useBlueprintUpload';
 import type { StageProgress } from '@/lib/api/blueprintsApi';
+
+/**
+ * formatElapsed — mm:ss from a startedAt epoch ms. Pure helper so we can
+ * mount a stable timer without pulling Drew narration into the canvas.
+ */
+function formatElapsed(startedAtMs: number, nowMs: number): string {
+  const delta = Math.max(0, nowMs - startedAtMs);
+  const total = Math.floor(delta / 1000);
+  const mm = String(Math.floor(total / 60)).padStart(2, '0');
+  const ss = String(total % 60).padStart(2, '0');
+  return `${mm}:${ss}`;
+}
+
+/**
+ * LoadingRing — calm, centered, infinite rotation. Pure RN Animated so it
+ * works on web + native. Matches the project's flat-premium amber-gold
+ * accent without any cinematic clutter.
+ */
+function LoadingRing({ size = 56 }: { size?: number }): React.ReactElement {
+  const spin = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(spin, {
+        toValue: 1,
+        duration: 1200,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [spin]);
+  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  return (
+    <Animated.View
+      style={[
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          borderWidth: 2,
+          borderColor: 'rgba(255,255,255,0.08)',
+          borderTopColor: '#fbbf24',
+          transform: [{ rotate }],
+        },
+      ]}
+      accessibilityRole="progressbar"
+      accessibilityLabel="Drew is analyzing your blueprint"
+    />
+  );
+}
 
 const ACCEPT_ATTR = ACCEPTED_MIME_TYPES.join(',');
 
@@ -64,9 +115,12 @@ export function UploadDropZone({
   const [isDragOver, setIsDragOver] = useState(false);
   const fadeAnim = useRef(new Animated.Value(1)).current;
   // Lock a start timestamp the first frame we transition out of idle so
-  // DrewStageProgress can show real elapsed time. Resets back to null on
-  // any non-busy phase so the next upload starts a fresh clock.
+  // the calm canvas loading view can show real elapsed time. Resets back
+  // to null on any non-busy phase so the next upload starts a fresh clock.
+  // The cinematic 5-stage timeline + narration + insights live in the Tim
+  // Rail Context tab (see PlansPhotosContextPayload). Canvas stays calm.
   const [startedAtMs, setStartedAtMs] = useState<number | null>(null);
+  const [nowTick, setNowTick] = useState<number>(() => Date.now());
   useEffect(() => {
     const isBusy =
       phase === 'reading' ||
@@ -79,6 +133,12 @@ export function UploadDropZone({
       setStartedAtMs(null);
     }
   }, [phase, startedAtMs]);
+  // 1Hz elapsed-counter tick — only while busy. Tear down otherwise.
+  useEffect(() => {
+    if (startedAtMs == null) return;
+    const id = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [startedAtMs]);
 
   // 200ms cross-fade whenever the phase swaps to a new visual state.
   useEffect(() => {
@@ -227,16 +287,23 @@ export function UploadDropZone({
     }
 
     if (phase === 'reading' || phase === 'uploading' || phase === 'ingesting' || phase === 'classifying') {
-      // Cinematic Drew Blueprint Engine stage display. Replaces the basic
-      // ring/progress UI per the Wave 6A.1 immersive-loading spec.
+      // CANVAS LOADING STATE — calm, seamless, zero clutter.
+      // Aspire design rule: canvas hosts ONE focused element. The cinematic
+      // 5-stage timeline + narration + insight cards + sheet thumbnail rail
+      // live in the Tim Rail Context tab (PlansPhotosContextPayload). Here,
+      // we render only: loading ring + filename + elapsed timer.
+      const elapsed = formatElapsed(startedAtMs ?? Date.now(), nowTick);
       return (
-        <View style={styles.busyHost} testID={`dropzone-${phase}`}>
-          <DrewStageProgress
-            filename={filename}
-            stageProgress={stageProgress}
-            uploadRatio={progress.ratio}
-            startedAtMs={startedAtMs ?? Date.now()}
-          />
+        <View style={styles.body} testID={`dropzone-${phase}`}>
+          <LoadingRing size={56} />
+          <Text style={styles.title} numberOfLines={1}>
+            {filename ?? 'Analyzing blueprint'}
+          </Text>
+          <Text style={styles.subtitle}>
+            Drew is analyzing your blueprint
+            <Text style={styles.elapsedSep}>{'  ·  '}</Text>
+            <Text style={styles.elapsed}>{elapsed}</Text>
+          </Text>
         </View>
       );
     }
@@ -271,7 +338,7 @@ export function UploadDropZone({
         </Text>
       </View>
     );
-  }, [phase, progress, filename, stageProgress, error, handlePressClick, onReset, openPicker, startedAtMs]);
+  }, [phase, progress, filename, stageProgress, error, handlePressClick, onReset, openPicker, startedAtMs, nowTick]);
 
   return (
     <Pressable
@@ -329,14 +396,13 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.28)',
   },
   hostBusy: {
-    // Cinematic Drew display needs room to breathe + a solid hairline border
-    // (no dashed "drop zone" treatment while we're processing).
-    minHeight: 600,
+    // Canvas loading state — calm and centered. Same footprint as idle so
+    // there is zero layout shift when phase transitions in/out (CLS = 0).
+    // The cinematic 5-stage timeline lives in the Tim Rail Context tab.
+    minHeight: 320,
     borderStyle: 'solid',
     borderColor: 'rgba(255,255,255,0.08)',
     backgroundColor: 'rgba(255,255,255,0.012)',
-    paddingVertical: 24,
-    justifyContent: 'flex-start',
   },
   hostDragOver: {
     backgroundColor: 'rgba(251,191,36,0.05)',
@@ -410,6 +476,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 19,
     letterSpacing: -0.1,
+  },
+  elapsed: {
+    color: 'rgba(255,255,255,0.85)',
+    fontVariant: ['tabular-nums'],
+    fontWeight: '600',
+    letterSpacing: -0.05,
+  },
+  elapsedSep: {
+    color: 'rgba(255,255,255,0.35)',
   },
   hint: {
     fontSize: 11,
