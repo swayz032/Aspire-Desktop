@@ -219,7 +219,15 @@ function apiRowToAuthorityItem(r: Record<string, unknown>): AuthorityItem {
     draftSummary,
     pandadocDocumentId: (r.pandadocDocumentId as string) || undefined,
     hostedInvoiceUrl: (r.hostedInvoiceUrl as string) || undefined,
-    invoicePdfUrl: (r.invoicePdfUrl as string) || undefined,
+    // Derive the same-origin PDF proxy URL the same way the realtime path
+    // does. Stripe's hosted_invoice_url and invoice_pdf both set
+    // X-Frame-Options: DENY, so we route the iframe at the proxy endpoint
+    // which fetches the PDF server-side and re-serves with SAMEORIGIN.
+    invoicePdfUrl: r.invoicePdfUrl
+      ? (r.invoicePdfUrl as string)
+      : (r.stripeInvoiceId
+          ? `/api/stripe/invoices/${encodeURIComponent(r.stripeInvoiceId as string)}/pdf`
+          : undefined),
     documentPreview,
   };
 }

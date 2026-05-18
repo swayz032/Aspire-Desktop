@@ -4892,7 +4892,16 @@ router.get('/api/authority-queue', async (req: Request, res: Response) => {
              created_at AS "createdAt",
              assigned_agent AS "assignedAgent",
              draft_summary AS "draftSummary",
-             execution_payload->>'invoice_id' AS "stripeInvoiceId",
+             -- The Quinn-finalize payload writes the Stripe invoice ID under
+             -- `stripe_invoice_id` (NOT `invoice_id`), and also exposes it on
+             -- the row's `resource_id` column. Read all three locations so
+             -- the FE can build the same-origin PDF proxy URL.
+             COALESCE(
+               execution_payload->>'stripe_invoice_id',
+               payload_redacted->>'stripe_invoice_id',
+               CASE WHEN operation = 'invoice.create' OR operation = 'invoice.send'
+                    THEN resource_id ELSE NULL END
+             ) AS "stripeInvoiceId",
              execution_payload->>'customer_name' AS "customerName",
              execution_payload->>'document_id' AS "pandadocDocumentId",
              payload_redacted->>'hosted_invoice_url' AS "hostedInvoiceUrl",
