@@ -459,4 +459,142 @@ describe('Visuals Tab — Design Lock v1.0', () => {
       expect(tabSrc).toMatch(/Wave 2\.5/);
     });
   });
+
+  describe('Lock #20: Service Memory pages clone Office Memory at /service-hub/memory/*', () => {
+    // Wave 5.1b-6 + 5.1b-7 (2026-05-17): Service Memory mirrors Office Memory
+    // byte-for-byte at /service-hub/memory/*. This lock asserts:
+    //   (1) The previous ComingSoonStub at app/service-hub/memory.tsx is gone.
+    //   (2) The three sub-pages exist under app/service-hub/memory/.
+    //   (3) The hero title literal is "Service Memory" (not Memory Engine).
+    //   (4) Pages REUSE the office-memory components (no duplication of
+    //       MemoryCard / MemoryResultsGrid / MemoryFilterBar / MemoryGridListToggle
+    //       / MemoryDetailHeader / LedAmbientSearchBar). The 85% reuse target
+    //       is enforced by checking the imports trace back to office-memory.
+    const indexSrc = read('app/service-hub/memory/index.tsx');
+    const resultsSrc = read('app/service-hub/memory/results.tsx');
+    const detailSrc = read('app/service-hub/memory/[memoryId].tsx');
+    const heroSrc = read('components/service-hub/ServiceMemoryHero.tsx');
+
+    it('the old ComingSoonStub at app/service-hub/memory.tsx no longer exists', () => {
+      // The directory-only structure (memory/index.tsx, memory/results.tsx,
+      // memory/[memoryId].tsx) replaces the flat memory.tsx file.
+      const fs = require('node:fs');
+      const stubPath = join(ROOT, 'app/service-hub/memory.tsx');
+      expect(fs.existsSync(stubPath)).toBe(false);
+    });
+
+    it('hero component renders the literal title "Service Memory"', () => {
+      // Anchored as a JSX child between `>` and `<` so doc-comments don't
+      // accidentally satisfy the match.
+      expect(heroSrc).toMatch(/>\s*Service Memory\s*</);
+    });
+
+    it('hero subtitle matches the service desk copy', () => {
+      expect(heroSrc).toMatch(
+        /Search every job, blueprint, material decision, and call your service desk has captured\./,
+      );
+    });
+
+    it('index.tsx imports ServiceMemoryHero (not MemoryEngineHero)', () => {
+      expect(indexSrc).toMatch(/import\s+\{\s*ServiceMemoryHero\s*\}/);
+      expect(indexSrc).not.toMatch(/import\s+\{\s*MemoryEngineHero\s*\}/);
+    });
+
+    it('results.tsx reuses the office-memory grid + filter + toggle components', () => {
+      expect(resultsSrc).toMatch(/from\s+['"]@\/components\/office-memory\/MemoryFilterBar['"]/);
+      expect(resultsSrc).toMatch(
+        /from\s+['"]@\/components\/office-memory\/MemoryGridListToggle['"]/,
+      );
+      expect(resultsSrc).toMatch(
+        /from\s+['"]@\/components\/office-memory\/MemoryResultsGrid['"]/,
+      );
+    });
+
+    it('results.tsx calls useServiceMemorySearch (not useMemorySearch)', () => {
+      expect(resultsSrc).toMatch(
+        /from\s+['"]@\/lib\/service-memory\/useServiceMemorySearch['"]/,
+      );
+      expect(resultsSrc).toMatch(/useServiceMemorySearch\s*\(/);
+    });
+
+    it('results.tsx page header reads "Service Memory Results"', () => {
+      expect(resultsSrc).toMatch(/>\s*Service Memory Results\s*</);
+    });
+
+    it('detail page reuses MemoryDetailHeader from office-memory barrel', () => {
+      expect(detailSrc).toMatch(
+        /from\s+['"]@\/components\/office-memory\/details['"]/,
+      );
+      expect(detailSrc).toMatch(/MemoryDetailHeader/);
+    });
+
+    it('detail page swaps to ServiceMemoryDetailRightRail (not the office rail)', () => {
+      expect(detailSrc).toMatch(
+        /import\s+\{\s*ServiceMemoryDetailRightRail\s*\}/,
+      );
+      expect(detailSrc).toMatch(/<ServiceMemoryDetailRightRail\b/);
+      // The office rail must NOT be imported here — the service rail is
+      // service-specific because its LINKED_MEMORY_TYPES set differs.
+      expect(detailSrc).not.toMatch(
+        /import\s+\{[^}]*\bMemoryDetailRightRail\b[^}]*\}\s+from\s+['"]@\/components\/office-memory\/details['"]/,
+      );
+    });
+
+    it('detail page calls useServiceMemoryDetail and deep-links back to /service-hub/memory', () => {
+      expect(detailSrc).toMatch(
+        /from\s+['"]@\/lib\/service-memory\/useServiceMemoryDetail['"]/,
+      );
+      expect(detailSrc).toMatch(/useServiceMemoryDetail\s*\(/);
+      expect(detailSrc).toMatch(/['"]\/service-hub\/memory['"]/);
+    });
+
+    it('hero reuses the LedAmbientSearchBar from office-memory (no duplication)', () => {
+      expect(heroSrc).toMatch(
+        /from\s+['"]@\/components\/office-memory\/LedAmbientSearchBar['"]/,
+      );
+    });
+  });
+
+  describe('Lock #21: Tim Rail Context renders ServiceBriefCard on Service Hub routes', () => {
+    // Wave 5.1b (2026-05-17): Service Hub views (excluding Estimate Studio
+    // sub-tabs that have their own per-tab Context payload + the Materials
+    // tab) must surface a Service Memory brief summary card in the Tim Rail
+    // Context tab. This lock catches regressions where someone removes the
+    // card or accidentally renders it on the Estimate Studio sub-tabs.
+    const railSrc = read(
+      'components/service-hub/estimate-studio/tim-rail/TimRailContextTab.tsx',
+    );
+    const cardSrc = read('components/service-hub/ServiceBriefCard.tsx');
+
+    it('TimRailContextTab imports and references ServiceBriefCard', () => {
+      expect(railSrc).toMatch(/import\s+\{\s*ServiceBriefCard\s*\}/);
+      expect(railSrc).toMatch(/<ServiceBriefCard\b/);
+    });
+
+    it('TimRailContextTab gates ServiceBriefCard on isServiceHubRoute', () => {
+      expect(railSrc).toMatch(/isServiceHubRoute/);
+      expect(railSrc).toMatch(/pathname\.startsWith\(['"]\/service-hub['"]\)/);
+    });
+
+    it('ServiceBriefCard is suppressed on Estimate Studio sub-tabs', () => {
+      // The render must negate the Estimate Studio sub-tab booleans so each
+      // tab's bespoke Context payload (Plans & Photos / Scope / Takeoff)
+      // continues to render unchanged.
+      expect(railSrc).toMatch(/!isPlansPhotosTab/);
+      expect(railSrc).toMatch(/!isScopeTab/);
+      expect(railSrc).toMatch(/!isTakeoffTab/);
+    });
+
+    it('ServiceBriefCard renders exactly 5 service counters', () => {
+      expect(cardSrc).toMatch(/service-brief-counter-picks/);
+      expect(cardSrc).toMatch(/service-brief-counter-overrides/);
+      expect(cardSrc).toMatch(/service-brief-counter-pending/);
+      expect(cardSrc).toMatch(/service-brief-counter-handoffs/);
+      expect(cardSrc).toMatch(/service-brief-counter-threads/);
+    });
+
+    it('ServiceBriefCard "View all" deep-links to /service-hub/memory', () => {
+      expect(cardSrc).toMatch(/\/service-hub\/memory/);
+    });
+  });
 });
