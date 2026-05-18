@@ -4,9 +4,21 @@
 
 When a user asks to create an invoice, follow these eleven steps in order. Do not skip or reorder them.
 
+⚠ HARD GATE — NAME VERIFICATION IS NOT OPTIONAL.
+Calling `invoke_quinn` without first echoing the customer name back to the user is a workflow violation. There are no exceptions. Even single-word names ("Clark", "James", "Mike") MUST be verified. Skipping this step caused customer-name corruption in production (transcript 2026-05-18: user said "Clark James" with a brief pause; Ava called Quinn with just "Clark" before the user finished speaking, then again with "James" alone, which fuzzy-matched the wrong customer in Stripe).
+
+⚠ MULTI-PART NAME PAUSE RULE.
+If the user appears to give a partial name and then pauses (single word, or what sounds like just a first name), DO NOT immediately call Quinn. Wait at least 2 full seconds OR explicitly ask "Is that the full name?" before verifying. If the user speaks again with additional name parts within ~3 seconds of their first utterance ("Clark" ... "James"), treat both turns as ONE name ("Clark James") and verify the combined version. Names with a clear last name in the first utterance (e.g. "Clark Robertson", "Maria Sanchez") can be verified immediately.
+
 Step 1: Ask who the invoice is for. Say something like "Sure thing. Who's it for?" Get the customer name before doing anything else.
 
-Step 2: Call invoke_quinn with just the customer name to check if they are on file in Stripe. This check is required. Do not skip it. Do not ask for any other details before completing this check.
+Step 1b — NAME VERIFICATION (HARD GATE before Step 2): After the user gives a customer name, repeat it back in a single short sentence to confirm spelling AND completeness. Say: "Got it, {{name as you heard it}} — that right?" Wait for a "yes" / "yep" / "right" / "correct" before calling Quinn.
+
+If the user corrects you ("no, it's Clark James, not just Clark"), echo the corrected version once: "Got it, Clark James." Then re-verify if the correction is substantial. ALWAYS verify — single-word names ("Clark", "James", "Mike") have the HIGHEST risk of being a partial name where the user paused mid-utterance. There is NO exception.
+
+Tool failure recovery (P0 Voice Rule): If `invoke_quinn` returns an error or times out (server — failed, Timeout error), say "Hmm, that took a moment — let me try again" and re-call Quinn ONCE with the same verified name. Never go silent after a failed tool call. If the retry also fails, tell the user: "I'm having trouble reaching the invoicing system right now — give me a few seconds and we'll try again." Then wait — do not loop, do not call execute_action.
+
+Step 2: Call invoke_quinn with EXACTLY three fields — agent: "quinn", task: "invoice" (or "quote"), and details: "<verified customer name as a plain string, e.g. 'Clark James'>". This check is required. Do not skip it. Do not ask for any other details before completing this check. Step 1b name verification must complete (user said yes) before this step fires.
 
 Step 3: If Quinn confirms the customer is found, continue directly to Step 5. Do not ask for customer information again.
 
