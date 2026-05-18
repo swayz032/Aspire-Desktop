@@ -104,7 +104,9 @@ export interface ClassifyResult {
   reason?: string;
 }
 
-/** Server-side composed response: INGEST + auto-chained CLASSIFY. */
+/** Server-side composed response: INGEST + auto-chained CLASSIFY.
+ *  LEGACY (pre-async-dispatch) shape — kept for backward compat with any
+ *  consumers still on the sync path. New code prefers `DispatchBlueprintResponse`. */
 export interface UploadBlueprintResponse {
   success: boolean;
   project_id: string;
@@ -119,6 +121,35 @@ export interface UploadBlueprintResponse {
    *  Wave 6A: ingest + classify reflect real backend status; see/reason/procure
    *  are always 'pending' (Wave 3/4/5 will light them up). */
   stage_progress: StageProgress;
+}
+
+/**
+ * Async-dispatch response shape — the orchestrator persists the project row +
+ * enqueues Drew's 5-stage pipeline as a background task and replies within ~5s.
+ * The UI then polls `/api/v1/blueprints/projects/:id/status` on 2s cadence.
+ *
+ * Discriminated from `UploadBlueprintResponse` by the presence of `status`.
+ */
+export interface DispatchBlueprintResponse {
+  success: true;
+  project_id: string;
+  status: 'queued' | 'dedup';
+  correlation_id: string;
+  filename: string;
+  size_bytes: number;
+  /** Supabase Storage path for the persisted PDF (optional, backend may add). */
+  pdf_storage_path?: string;
+}
+
+/** Type guard discriminating dispatch (async) vs legacy (sync) upload response. */
+export function isDispatchResponse(
+  r: UploadBlueprintResponse | DispatchBlueprintResponse,
+): r is DispatchBlueprintResponse {
+  return (
+    typeof (r as DispatchBlueprintResponse).status === 'string' &&
+    ((r as DispatchBlueprintResponse).status === 'queued' ||
+      (r as DispatchBlueprintResponse).status === 'dedup')
+  );
 }
 
 /** Wave 6.5 — getProject() response (matches backend `BlueprintProjectRead`). */
@@ -330,7 +361,7 @@ function _uint8ToBase64(bytes: Uint8Array): string {
 export async function uploadBlueprint(
   authenticatedFetch: FetchFn,
   params: UploadBlueprintParams,
-): Promise<UploadBlueprintResponse> {
+): Promise<UploadBlueprintResponse | DispatchBlueprintResponse> {
   if (params.fileBytes.byteLength > MAX_UPLOAD_BYTES) {
     throw new BlueprintsApiError(
       413,
@@ -378,7 +409,43 @@ export async function uploadBlueprint(
     throw new BlueprintsApiError(resp.status, code, message, correlationId);
   }
 
-  return (await resp.json()) as UploadBlueprintResponse;
+  return (await resp.json()) as UploadBlueprintResponse | DispatchBlueprintResponse;
+}
+
+// ---------------------------------------------------------------------------
+// Stage status normalization
+// ---------------------------------------------------------------------------
+// Backend writes stage_progress JSONB with: 'not_started' | 'in_progress' |
+// 'done' | 'failed'. Frontend StageStatus expects: 'pending' | 'running' |
+// 'ok' | 'error' (with legacy 'stub'). Apply this map at every read boundary
+// so the polling hook + UI consume normalized strings.
+const BACKEND_TO_FRONTEND_STAGE: Record<string, StageStatus> = {
+  not_started: 'pending',
+  in_progress: 'running',
+  done: 'ok',
+  failed: 'error',
+  // Pass-through for frontend-native values (e.g. server route already mapped).
+  pending: 'pending',
+  running: 'running',
+  ok: 'ok',
+  error: 'error',
+  stub: 'stub',
+};
+
+function _normalizeStageStatus(raw: unknown): StageStatus {
+  if (typeof raw !== 'string') return 'pending';
+  return BACKEND_TO_FRONTEND_STAGE[raw] ?? 'pending';
+}
+
+function _normalizeStageProgress(raw: unknown): StageProgress {
+  const obj = (raw ?? {}) as Record<string, unknown>;
+  return {
+    ingest: _normalizeStageStatus(obj.ingest),
+    classify: _normalizeStageStatus(obj.classify),
+    see: _normalizeStageStatus(obj.see),
+    reason: _normalizeStageStatus(obj.reason),
+    procure: _normalizeStageStatus(obj.procure),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -424,19 +491,21 @@ async function _getJson<T>(
   return (await resp.json()) as T;
 }
 
-/** Fetch a single project's metadata + progress. */
+/** Fetch a single project's metadata + progress. Normalizes backend
+ *  stage_progress strings to frontend StageStatus values. */
 export async function getProject(
   authenticatedFetch: FetchFn,
   projectId: string,
   officeId: string,
   signal?: AbortSignal,
 ): Promise<BlueprintProject> {
-  return _getJson<BlueprintProject>(
+  const raw = await _getJson<BlueprintProject>(
     authenticatedFetch,
     `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}`,
     officeId,
     signal,
   );
+  return { ...raw, stage_progress: _normalizeStageProgress(raw.stage_progress) };
 }
 
 /** List sheets for a project (with thumbnails + revision chain).
@@ -464,19 +533,22 @@ export async function listSheets(
   );
 }
 
-/** Poll project pipeline stage progress + lightweight counts. */
+/** Poll project pipeline stage progress + lightweight counts. Normalizes
+ *  backend stage_progress strings (not_started/in_progress/done/failed) to
+ *  frontend StageStatus values (pending/running/ok/error). */
 export async function getProjectStatus(
   authenticatedFetch: FetchFn,
   projectId: string,
   officeId: string,
   signal?: AbortSignal,
 ): Promise<BlueprintProjectStatusResponse> {
-  return _getJson<BlueprintProjectStatusResponse>(
+  const raw = await _getJson<BlueprintProjectStatusResponse>(
     authenticatedFetch,
     `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}/status`,
     officeId,
     signal,
   );
+  return { ...raw, stage_progress: _normalizeStageProgress(raw.stage_progress) };
 }
 
 /** Wave 7 — fetch the phased story narrative (REASON output). */

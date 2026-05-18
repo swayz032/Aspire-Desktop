@@ -25,6 +25,7 @@ import { useTenant } from '@/providers';
 import { setBlueprintUpload, resetBlueprintUpload } from '@/lib/blueprintUploadStore';
 import {
   uploadBlueprint,
+  isDispatchResponse,
   BlueprintsApiError,
   MAX_UPLOAD_BYTES,
   ACCEPTED_MIME_TYPES,
@@ -252,6 +253,48 @@ export function useBlueprintUpload(): UseBlueprintUploadResult {
           signal: controller.signal,
         });
 
+        // ── New async-dispatch path ──
+        // Backend returned { project_id, status: 'queued'|'dedup' } — Drew's
+        // 5-stage pipeline runs in the background. The polling hook
+        // (useBlueprintProjectPoll) drives terminal state; we just hop into
+        // the ingesting visual state and surface the project_id via the
+        // upload store so Tim Rail Context can begin polling immediately.
+        if (isDispatchResponse(result)) {
+          setStageProgress({
+            ingest: 'running',
+            classify: 'pending',
+            see: 'pending',
+            reason: 'pending',
+            procure: 'pending',
+          });
+          setResponse(null);
+          setPhase('ingesting');
+          // Surface project_id to the store immediately. The publish effect
+          // reads `response?.project_id` for the projectId field; since we
+          // intentionally leave response=null on the queued path, we patch
+          // the store directly via the existing setter (a follow-up render
+          // will reassert this with the same projectId).
+          setBlueprintUpload({
+            phase: 'ingesting',
+            filename: file.name,
+            response: null,
+            stageProgress: {
+              ingest: 'running',
+              classify: 'pending',
+              see: 'pending',
+              reason: 'pending',
+              procure: 'pending',
+            },
+            error: null,
+            uploadedAt: null,
+            uploadRatio: 1,
+            startedAtMs: Date.now(),
+            projectId: result.project_id,
+          });
+          return;
+        }
+
+        // ── Legacy sync path (kept for backward compat) ──
         // Drew may return status:'error' inline (HTTP 200) for in-band failures
         // like missing payload keys; treat that as terminal here.
         if (result.ingest.status === 'error') {

@@ -9812,13 +9812,18 @@ router.get('/api/v1/materials/search', async (req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
-// Wave 6A — Blueprint Story Engine: POST /api/v1/blueprints/upload
+// Wave 6A (async-dispatch refactor) — Blueprint Story Engine:
+//   POST /api/v1/blueprints/upload
 // ---------------------------------------------------------------------------
-// GREEN tier — Drew INGEST + CLASSIFY are read-side (parse the PDF, write
-// blueprint_projects + blueprint_sheets keyed by suite_id with RLS). We mint
-// a capability token (Law #5) and forward to the Python orchestrator via
-// `POST /v1/agents/invoke` — Drew agent — with task=INGEST. On success the
-// proxy auto-chains task=CLASSIFY using the project_id from INGEST.
+// GREEN tier — accepts a base64-encoded blueprint and hands it to the Python
+// orchestrator's NEW async dispatch endpoint:
+//
+//     POST {orchestrator}/v1/blueprints/dispatch
+//
+// The orchestrator returns within ~5s with `{project_id, status, correlation_id}`
+// — it enqueues Drew's 5-stage pipeline as a background task and writes
+// stage_progress to `blueprint_projects.stage_progress` (JSONB). Frontend polls
+// `/api/v1/blueprints/projects/:id/status` on a 2s cadence to drive the UI.
 //
 // Request body (JSON):
 //   { filename: string,
@@ -9830,8 +9835,22 @@ router.get('/api/v1/materials/search', async (req: Request, res: Response) => {
 // can reach ~67 MB. We register a 75 MB JSON parser scoped to this single
 // route (global parser stays at 1 MB).
 //
-// Response: see UploadBlueprintResponse in lib/api/blueprintsApi.ts. Composes
-// the real INGEST + CLASSIFY results into a single stage_progress shape.
+// Response (HTTP 200):
+//   { success: true,
+//     project_id: string,
+//     status: 'queued' | 'dedup',
+//     correlation_id: string,
+//     filename: string,
+//     size_bytes: number,
+//     pdf_storage_path?: string }
+//
+// Failure codes:
+//   400 INVALID_INPUT / INVALID_BASE64 / EMPTY_FILE
+//   413 FILE_TOO_LARGE
+//   415 UNSUPPORTED_MEDIA_TYPE
+//   503 ORCHESTRATOR_UNAVAILABLE / SIGNING_KEY_UNAVAILABLE
+//   504 ORCHESTRATOR_TIMEOUT (dispatch must respond < 30s)
+//   502 ORCHESTRATOR_UNREACHABLE / DISPATCH_UPSTREAM_ERROR
 // ---------------------------------------------------------------------------
 
 const BLUEPRINT_UPLOAD_JSON_LIMIT = '75mb';
@@ -9948,24 +9967,22 @@ router.post(
       return;
     }
 
-    // ── Stage 1: Drew INGEST ──
-    const ingestBody = {
-      agent: 'drew',
-      task: 'INGEST',
+    // ── Single async dispatch to orchestrator ──
+    // The orchestrator persists the project row + enqueues Drew's 5-stage
+    // pipeline as a background task, returning within ~5s with the
+    // project_id + queued status. Drew writes stage_progress JSONB as it
+    // advances; frontend polls /api/v1/blueprints/projects/:id/status.
+    const dispatchBody = {
+      pdf_bytes: pdfB64,
+      filename,
       suite_id: suiteId,
       office_id: officeId,
       correlation_id: correlationId,
       capability_token: minted.token,
-      payload: {
-        pdf_bytes: pdfB64,
-        filename,
-        suite_id: suiteId,
-        office_id: officeId,
-      },
     };
 
     // Structured log — never log pdf bytes or token.
-    logger.info('[BlueprintsUpload] INGEST start', {
+    logger.info('[BlueprintsUpload] dispatch start', {
       suite_id: suiteId,
       office_id: officeId,
       trace_id: traceId,
@@ -9973,13 +9990,13 @@ router.post(
       size_bytes: rawBytesLen,
     });
 
-    const ingestController = new AbortController();
-    // Bumped to 5 min — large PDFs (>30 pages) need 90-180s for PyMuPDF split + OCR.
-    const ingestTimer = setTimeout(() => ingestController.abort(), 300_000);
-    let ingestResult: any = null;
-    let ingestStatus = 0;
+    const dispatchController = new AbortController();
+    // Async dispatch reply target is < 5s. 30s gives generous headroom for
+    // PDF persistence + queue enqueue; anything longer is a real backend bug.
+    const dispatchTimer = setTimeout(() => dispatchController.abort(), 30_000);
+    let dispatchResult: Record<string, unknown> | null = null;
     try {
-      const orchResp = await fetch(`${orchestratorUrl}/v1/agents/invoke`, {
+      const orchResp = await fetch(`${orchestratorUrl}/v1/blueprints/dispatch`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -9989,36 +10006,38 @@ router.post(
           'X-Actor-Id': actorId,
           'X-Correlation-Id': correlationId,
           'X-Trace-Id': traceId,
+          Authorization: `Bearer ${minted.token}`,
         },
-        body: JSON.stringify(ingestBody),
-        signal: ingestController.signal,
+        body: JSON.stringify(dispatchBody),
+        signal: dispatchController.signal,
       });
-      clearTimeout(ingestTimer);
-      ingestStatus = orchResp.status;
+      clearTimeout(dispatchTimer);
       const text = await orchResp.text();
       try {
-        ingestResult = text ? JSON.parse(text) : null;
+        dispatchResult = text ? (JSON.parse(text) as Record<string, unknown>) : null;
       } catch {
-        ingestResult = { status: 'error', stage: 'ingest', reason: 'upstream_non_json' };
+        dispatchResult = null;
       }
       if (!orchResp.ok) {
-        logger.warn('[BlueprintsUpload] INGEST upstream non-2xx', {
+        logger.warn('[BlueprintsUpload] dispatch upstream non-2xx', {
           suite_id: suiteId,
           status: orchResp.status,
         });
+        const upstreamMessage =
+          (dispatchResult &&
+            ((dispatchResult.message as string) || (dispatchResult.error as string))) ||
+          `Backend returned ${orchResp.status}`;
         res.status(orchResp.status).json({
-          error: 'INGEST_UPSTREAM_ERROR',
-          message:
-            (ingestResult && (ingestResult.message || ingestResult.error)) ||
-            `Backend returned ${orchResp.status}`,
+          error: 'DISPATCH_UPSTREAM_ERROR',
+          message: upstreamMessage,
           correlation_id: correlationId,
         });
         return;
       }
     } catch (err: unknown) {
-      clearTimeout(ingestTimer);
+      clearTimeout(dispatchTimer);
       const isTimeout = err instanceof Error && err.name === 'AbortError';
-      logger.error('[BlueprintsUpload] INGEST fetch failed', {
+      logger.error('[BlueprintsUpload] dispatch fetch failed', {
         suite_id: suiteId,
         reason: err instanceof Error ? err.name + ': ' + err.message.slice(0, 120) : 'unknown',
         is_timeout: isTimeout,
@@ -10031,110 +10050,45 @@ router.post(
       return;
     }
 
-    // Compose stage_progress as we go.
-    const stageProgress: Record<string, string> = {
-      ingest: ingestResult?.status === 'error' ? 'error' : 'ok',
-      classify: 'pending',
-      see: 'pending',
-      reason: 'pending',
-      procure: 'pending',
-    };
-
-    // In-band INGEST failure (HTTP 200, status: 'error') — return early.
-    if (ingestResult?.status === 'error' || !ingestResult?.project_id) {
-      logger.warn('[BlueprintsUpload] INGEST in-band error', {
+    const projectIdRaw = dispatchResult?.project_id;
+    const statusRaw = dispatchResult?.status;
+    if (typeof projectIdRaw !== 'string' || !projectIdRaw) {
+      logger.error('[BlueprintsUpload] dispatch missing project_id', {
         suite_id: suiteId,
-        reason: ingestResult?.reason,
-      });
-      res.status(200).json({
-        success: false,
-        project_id: ingestResult?.project_id ?? '',
-        filename,
-        size_bytes: rawBytesLen,
         correlation_id: correlationId,
-        ingest: ingestResult ?? { status: 'error', stage: 'ingest', reason: 'unknown' },
-        classify: null,
-        stage_progress: stageProgress,
+      });
+      res.status(502).json({
+        error: 'DISPATCH_INVALID_RESPONSE',
+        message: 'Backend did not return project_id',
+        correlation_id: correlationId,
       });
       return;
     }
+    const status: 'queued' | 'dedup' =
+      statusRaw === 'dedup' ? 'dedup' : 'queued';
 
-    const projectId: string = String(ingestResult.project_id);
-
-    // ── Stage 2: Drew CLASSIFY (auto-chained) ──
-    const classifyBody = {
-      agent: 'drew',
-      task: 'CLASSIFY',
+    logger.info('[BlueprintsUpload] dispatch accepted', {
       suite_id: suiteId,
       office_id: officeId,
       correlation_id: correlationId,
-      capability_token: minted.token,
-      payload: {
-        project_id: projectId,
-        suite_id: suiteId,
-      },
-    };
-
-    const classifyController = new AbortController();
-    const classifyTimer = setTimeout(() => classifyController.abort(), 60_000);
-    let classifyResult: any = null;
-    try {
-      const orchResp = await fetch(`${orchestratorUrl}/v1/agents/invoke`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Tenant-Id': tenantId,
-          'X-Suite-Id': suiteId,
-          'X-Office-Id': officeId,
-          'X-Actor-Id': actorId,
-          'X-Correlation-Id': correlationId,
-          'X-Trace-Id': traceId,
-        },
-        body: JSON.stringify(classifyBody),
-        signal: classifyController.signal,
-      });
-      clearTimeout(classifyTimer);
-      const text = await orchResp.text();
-      try {
-        classifyResult = text ? JSON.parse(text) : null;
-      } catch {
-        classifyResult = { status: 'error', stage: 'classify', reason: 'upstream_non_json' };
-      }
-      stageProgress.classify =
-        orchResp.ok && classifyResult?.status === 'ok' ? 'ok' : 'error';
-    } catch (err: unknown) {
-      clearTimeout(classifyTimer);
-      logger.warn('[BlueprintsUpload] CLASSIFY fetch failed (non-fatal)', {
-        suite_id: suiteId,
-        reason: err instanceof Error ? err.name : 'unknown',
-      });
-      classifyResult = {
-        status: 'error',
-        stage: 'classify',
-        reason: 'fetch_failed',
-      };
-      stageProgress.classify = 'error';
-    }
-
-    logger.info('[BlueprintsUpload] complete', {
-      suite_id: suiteId,
-      office_id: officeId,
-      trace_id: traceId,
-      correlation_id: correlationId,
-      project_id: projectId,
-      sheet_count: ingestResult?.sheet_count,
-      classify_status: classifyResult?.status,
+      project_id: projectIdRaw,
+      status,
+      size_bytes: rawBytesLen,
     });
+
+    const pdfStoragePath =
+      typeof dispatchResult?.pdf_storage_path === 'string'
+        ? (dispatchResult.pdf_storage_path as string)
+        : undefined;
 
     res.status(200).json({
       success: true,
-      project_id: projectId,
+      project_id: projectIdRaw,
+      status,
       filename,
       size_bytes: rawBytesLen,
       correlation_id: correlationId,
-      ingest: ingestResult,
-      classify: classifyResult,
-      stage_progress: stageProgress,
+      ...(pdfStoragePath ? { pdf_storage_path: pdfStoragePath } : {}),
     });
   },
 );
