@@ -422,13 +422,16 @@ describe('Visuals Tab — Design Lock v1.0', () => {
     });
   });
 
-  describe('Lock #16: Plans & Photos tab uses shared shell (CanvasCardSwitcher + BottomChipStrip)', () => {
-    // Wave 6A (2026-05-17) — Wave 6.5 (2026-05-18): Plans & Photos is the
-    // primary upload entry for the Blueprint Story Engine. It must use the
-    // shared canvas-card switcher shell so future waves (Scope, Takeoff)
-    // inherit the same geometry instead of re-implementing free-form
-    // layouts per tab. Wave 6.5 added the live thumbnail grid + revision
-    // chain UI driven by `useBlueprintProjectPoll`.
+  describe('Lock #16: Plans & Photos canvas (revised 2026-05-18 — Canvas Cleanup)', () => {
+    // 2026-05-18 user lock:
+    //   "ONLY BLUEPRINTS ON CANVAS. Anything else is in the Context tab."
+    //   "Visuals / Plans & Photos / etc tabs should be in Controls tab on Tim Rail."
+    //   "Context tab is not premium enough — make it seamless."
+    //
+    // The Plans & Photos canvas is now a single focused surface: either
+    // UploadDropZone (no project) or SheetThumbnailGrid (project ingested).
+    // All chrome (stat row · view switcher · discipline filter · bottom chips)
+    // moved to the Tim Rail Context tab. State is shared via plansPhotosUiStore.
     const tabSrc = read(
       'components/service-hub/estimate-studio/plans-photos/PlansPhotosTab.tsx',
     );
@@ -437,19 +440,17 @@ describe('Visuals Tab — Design Lock v1.0', () => {
       'components/service-hub/estimate-studio/plans-photos/SheetThumbnailGrid.tsx',
     );
 
-    it('uses <CanvasCardSwitcher /> for the main canvas region', () => {
-      expect(tabSrc).toMatch(/CanvasCardSwitcher/);
-      expect(tabSrc).toMatch(/<CanvasCardSwitcher\b/);
+    it('canvas has NO BottomChipStrip / CanvasCardSwitcher chrome', () => {
+      expect(tabSrc).not.toMatch(/<BottomChipStrip\b/);
+      expect(tabSrc).not.toMatch(/<CanvasCardSwitcher\b/);
     });
 
-    it('uses <BottomChipStrip /> for card selection', () => {
-      expect(tabSrc).toMatch(/BottomChipStrip/);
-      expect(tabSrc).toMatch(/<BottomChipStrip\b/);
-    });
-
-    it('uses <UploadDropZone /> (not a free-form upload form)', () => {
-      expect(tabSrc).toMatch(/UploadDropZone/);
+    it('canvas renders <UploadDropZone /> for the upload card', () => {
       expect(tabSrc).toMatch(/<UploadDropZone\b/);
+    });
+
+    it('canvas renders <SheetThumbnailGrid /> for the populated Sheets card', () => {
+      expect(tabSrc).toMatch(/<SheetThumbnailGrid\b/);
     });
 
     it('plans-photos.tsx route delegates to <PlansPhotosTab /> (no TabPlaceholder)', () => {
@@ -457,20 +458,30 @@ describe('Visuals Tab — Design Lock v1.0', () => {
       expect(pageSrc).not.toMatch(/TabPlaceholder/);
     });
 
-    // Wave 6.5 additions ---------------------------------------------------
-
-    it('renders <SheetThumbnailGrid /> for the populated Sheets card', () => {
-      expect(tabSrc).toMatch(/SheetThumbnailGrid/);
-      expect(tabSrc).toMatch(/<SheetThumbnailGrid\b/);
+    it('canvas tab subscribes to plansPhotosUiStore (active card lifted out)', () => {
+      expect(tabSrc).toMatch(/plansPhotosUiStore/);
+      expect(tabSrc).toMatch(/usePlansPhotosUi\(/);
     });
 
-    it('subscribes to live polled state via useBlueprintProjectPoll', () => {
+    it('canvas tab still subscribes to live polled state', () => {
       expect(tabSrc).toMatch(/useBlueprintProjectPoll/);
     });
 
+    it('SheetThumbnailGrid has NO in-grid stat row or discipline filter strip', () => {
+      expect(gridSrc).not.toMatch(/testID="grid-stat-sheets"/);
+      expect(gridSrc).not.toMatch(/testID="grid-stat-disciplines"/);
+      expect(gridSrc).not.toMatch(/testID="grid-stat-revisions"/);
+      expect(gridSrc).not.toMatch(/discipline-filter-\$\{f\.code\}/);
+      expect(gridSrc).not.toMatch(/function SkeletonStat\b/);
+      expect(gridSrc).not.toMatch(/function AnimatedCount\b/);
+    });
+
+    it('SheetThumbnailGrid consumes filterKey from plansPhotosUiStore', () => {
+      expect(gridSrc).toMatch(/usePlansPhotosUi/);
+      expect(gridSrc).toMatch(/const filterKey = ui\.filterKey/);
+    });
+
     it('grid host flexes + keeps a >= 320 minHeight floor (CLS=0 across viewports)', () => {
-      // Same intent as Locks #13/#14: the grid must never collapse and must
-      // not pin a fixed aspectRatio at the host level.
       const hostMatch = gridSrc.match(/host:\s*\{[\s\S]*?\n\s{2}\}/);
       expect(hostMatch).toBeTruthy();
       expect(hostMatch![0]).toMatch(/\bflex:\s*1\b/);
@@ -480,12 +491,142 @@ describe('Visuals Tab — Design Lock v1.0', () => {
       expect(Number(minH![1])).toBeGreaterThanOrEqual(320);
     });
 
-    it('thumbnail grid exposes a discipline filter chip strip', () => {
-      // The filter strip must include "All" plus the canonical AIA codes.
-      // Each chip is a Pressable whose testID interpolates `f.code`.
-      expect(gridSrc).toMatch(/discipline-filter-\$\{f\.code\}/);
-      // The canonical filter list must declare All + all 8 AIA codes.
-      const declMatch = gridSrc.match(/DISCIPLINE_FILTERS[\s\S]*?\];/);
+    it('renders the CURRENT revision-chain pill on the active sheet', () => {
+      expect(gridSrc).toMatch(/CURRENT/);
+      expect(gridSrc).toMatch(/currentPill:/);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Lock #23 — Plans & Photos canvas is blueprints only.
+  // -------------------------------------------------------------------------
+  describe('Lock #23: Plans & Photos canvas = blueprints only (2026-05-18)', () => {
+    const tabSrc = read(
+      'components/service-hub/estimate-studio/plans-photos/PlansPhotosTab.tsx',
+    );
+    const gridSrc = read(
+      'components/service-hub/estimate-studio/plans-photos/SheetThumbnailGrid.tsx',
+    );
+
+    it('PlansPhotosTab does not render the 6 estimate-studio tab pills', () => {
+      expect(tabSrc).not.toMatch(/EstimateStudioTabBar/);
+    });
+
+    it('PlansPhotosTab does not render an inline stage chip strip', () => {
+      // Stage progress lives in the Context tab (DrewStageProgress +
+      // UploadProgressInline). Canvas no longer narrates the pipeline.
+      expect(tabSrc).not.toMatch(/UploadProgressInline/);
+      expect(tabSrc).not.toMatch(/<DrewStageProgress/);
+    });
+
+    it('PlansPhotosTab does not render a counter row', () => {
+      expect(tabSrc).not.toMatch(/counter-sheets/);
+      expect(tabSrc).not.toMatch(/counter-disciplines/);
+      expect(tabSrc).not.toMatch(/counter-revisions/);
+    });
+
+    it('PlansPhotosTab does not render a discipline filter chip row', () => {
+      expect(tabSrc).not.toMatch(/discipline-filter-/);
+    });
+
+    it('PlansPhotosTab does not render the bottom action chip strip', () => {
+      expect(tabSrc).not.toMatch(/<BottomChipStrip\b/);
+      expect(tabSrc).not.toMatch(/bottom-chip-/);
+    });
+
+    it('SheetThumbnailGrid is grid-only — no embedded chrome', () => {
+      expect(gridSrc).not.toMatch(/filterStripScroll/);
+      expect(gridSrc).not.toMatch(/testID="grid-stat-/);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Lock #24 — Tim Rail Controls tab owns the 6 route pills + Upload + New
+  // -------------------------------------------------------------------------
+  describe('Lock #24: Tim Rail Controls tab is the single source of nav (2026-05-18)', () => {
+    const ctrlSrc = read(
+      'components/service-hub/estimate-studio/tim-rail/TimRailControlsTab.tsx',
+    );
+
+    it('declares all 6 estimate-studio routes in STUDIO_TABS', () => {
+      const declMatch = ctrlSrc.match(/STUDIO_TABS[\s\S]*?\];/);
+      expect(declMatch).toBeTruthy();
+      const decl = declMatch![0];
+      for (const route of [
+        '/service-hub/estimate-studio/visuals',
+        '/service-hub/estimate-studio/plans-photos',
+        '/service-hub/estimate-studio/scope',
+        '/service-hub/estimate-studio/materials',
+        '/service-hub/estimate-studio/takeoff',
+        '/service-hub/estimate-studio/estimate',
+      ]) {
+        expect(decl).toContain(route);
+      }
+    });
+
+    it('renders a PROJECT section, NAVIGATE section, and QUICK ACTIONS section', () => {
+      expect(ctrlSrc).toMatch(/tim-rail-controls-project/);
+      expect(ctrlSrc).toMatch(/tim-rail-controls-navigate/);
+      expect(ctrlSrc).toMatch(/tim-rail-controls-actions/);
+    });
+
+    it('QUICK ACTIONS exposes Upload + New Project (a11y-labelled)', () => {
+      expect(ctrlSrc).toMatch(/tim-rail-controls-upload/);
+      expect(ctrlSrc).toMatch(/tim-rail-controls-new-project/);
+      expect(ctrlSrc).toMatch(/accessibilityLabel="Upload project evidence"/);
+      expect(ctrlSrc).toMatch(/accessibilityLabel="Start a new estimate project"/);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Lock #25 — Tim Rail Context tab payload composition for Plans & Photos
+  // -------------------------------------------------------------------------
+  describe('Lock #25: Plans & Photos Context payload composition (2026-05-18)', () => {
+    const ctxSrc = read(
+      'components/service-hub/estimate-studio/tim-rail/PlansPhotosContextPayload.tsx',
+    );
+
+    it('declares the required section keys in the locked order', () => {
+      // The payload composition is the user-locked seamless premium order.
+      // We anchor on the `key: 'X',\n      title: ...` shape of a
+      // ContextSection literal (title follows key on the next line) so that
+      // VIEW_MODES / DISCIPLINE_FILTERS entries (which carry `icon:` or
+      // `code:` next) are skipped.
+      const sectionKeyRe = /key:\s*'([a-z-]+)',\s*\n\s+title:/g;
+      const keys = Array.from(ctxSrc.matchAll(sectionKeyRe)).map((m) => m[1]);
+      const required = ['counters', 'pipeline', 'view', 'filter', 'disciplines', 'last-upload'];
+      const filteredKeys = keys.filter((k) => required.includes(k));
+      expect(filteredKeys).toEqual(required);
+    });
+
+    it('Live Counters strip includes sheets · disciplines · revisions · materials', () => {
+      expect(ctxSrc).toMatch(/testID="context-counter-sheets"/);
+      expect(ctxSrc).toMatch(/testID="context-counter-disciplines"/);
+      expect(ctxSrc).toMatch(/testID="context-counter-revisions"/);
+      expect(ctxSrc).toMatch(/testID="context-counter-materials"/);
+    });
+
+    it('Pipeline Status section uses the vertical UploadProgressInline', () => {
+      expect(ctxSrc).toMatch(/UploadProgressInline/);
+      expect(ctxSrc).toMatch(/layout="vertical"/);
+    });
+
+    it('View switcher exposes All Sheets · By Discipline · Revisions', () => {
+      expect(ctxSrc).toMatch(/testID="context-view-switcher"/);
+      // Template-literal testID: testID={`context-view-${mode.key}`}
+      expect(ctxSrc).toMatch(/testID=\{`context-view-\$\{mode\.key\}`\}/);
+      // VIEW_MODES declaration must include sheets / disciplines / revisions.
+      const declMatch = ctxSrc.match(/VIEW_MODES[\s\S]*?\];/);
+      expect(declMatch).toBeTruthy();
+      const decl = declMatch![0];
+      expect(decl).toMatch(/key:\s*'sheets'/);
+      expect(decl).toMatch(/key:\s*'disciplines'/);
+      expect(decl).toMatch(/key:\s*'revisions'/);
+    });
+
+    it('Discipline filter strip declares All + 8 AIA codes', () => {
+      expect(ctxSrc).toMatch(/testID="context-filter-strip"/);
+      const declMatch = ctxSrc.match(/DISCIPLINE_FILTERS[\s\S]*?\];/);
       expect(declMatch).toBeTruthy();
       const decl = declMatch![0];
       expect(decl).toMatch(/code:\s*'All'/);
@@ -494,11 +635,10 @@ describe('Visuals Tab — Design Lock v1.0', () => {
       }
     });
 
-    it('renders the CURRENT revision-chain pill on the active sheet', () => {
-      // The amber-gold CURRENT pill is the visual anchor for the revision
-      // timeline. Removing it = silent regression of the revision UX.
-      expect(gridSrc).toMatch(/CURRENT/);
-      expect(gridSrc).toMatch(/currentPill:/);
+    it('mutates active card + filter via the shared plansPhotosUiStore', () => {
+      expect(ctxSrc).toMatch(/plansPhotosUiActions/);
+      expect(ctxSrc).toMatch(/setActiveCard/);
+      expect(ctxSrc).toMatch(/setFilterKey/);
     });
   });
 

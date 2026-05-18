@@ -1,184 +1,146 @@
 /**
- * PlansPhotosTab — Wave 6.5.
+ * PlansPhotosTab — Canvas Cleanup (locked 2026-05-18).
  *
- * Owner of the Plans & Photos UX. Three states:
+ * THE CANVAS IS BLUEPRINTS ONLY.
  *
- *   Empty (no project yet):
- *     - Big <UploadDropZone /> hero takes the canvas
- *     - Bottom chip strip shows only "Upload" enabled
+ * User lock 2026-05-18:
+ *   "ONLY BLUEPRINTS ON CANVAS — anything else is in Context tab"
+ *   "THE CANVAS SCREEN SUPPOSED TO BE BIGGER"
+ *   "VISUALS, PLAN AND PHOTOS TAB ETC SHOULD BE IN CONTROLS TAB IN TIM RAIL"
  *
- *   Busy (upload in flight, no project_id yet):
- *     - UploadDropZone shows the calm loading ring (DrewStageProgress lives
- *       in the Tim Rail Context tab — Lock #15 LEFT INTACT)
+ * Composition (post-lock):
+ *   - Canvas = ONE element. Either:
+ *       a) UploadDropZone (when no project is active), OR
+ *       b) SheetThumbnailGrid (when a project has been ingested), OR
+ *       c) DisciplineBreakdownCard / RevisionsListCard if the Context-tab
+ *          "View" switcher selects them.
+ *   - NO stat row, NO discipline filter strip, NO bottom chip strip on canvas.
+ *   - All chrome (counters · stage progress · view switcher · discipline
+ *     filter · action chips) lives in the Tim Rail Context tab.
  *
- *   Populated (project_id available, polling started):
- *     - CanvasCardSwitcher hosts the chip-selected card
- *     - Default view = "All Sheets" -> <SheetThumbnailGrid /> driven by
- *       `useBlueprintProjectPoll` so counts/thumbnails/revisions tick live
- *     - Bottom chip strip wired to real polled counts; selecting a chip
- *       swaps the canvas card with the 200ms cross-fade (CLS=0).
- *
- * Wave 6.5 plan §1, §3, §4, §6 — see docs/plans/serene-seeking-hollerith.
+ * Active card + discipline filter are owned by `plansPhotosUiStore` so the
+ * Tim Rail Context tab can drive them without prop-drilling.
  *
  * Law #7: render layer only. All polling decisions in the hook.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useBlueprintUpload } from '@/hooks/useBlueprintUpload';
 import { useBlueprintProjectPoll } from '@/hooks/useBlueprintProjectPoll';
-import { CanvasCardSwitcher } from '../shell/CanvasCardSwitcher';
-import { BottomChipStrip, type BottomChip } from '../shell/BottomChipStrip';
+import {
+  plansPhotosUiActions,
+  usePlansPhotosUi,
+  type PlansPhotosCardKey,
+} from '@/lib/plansPhotosUiStore';
 import { UploadDropZone } from './UploadDropZone';
 import { SheetThumbnailGrid } from './SheetThumbnailGrid';
-import { UploadProgressInline } from './UploadProgressInline';
 import { getDisciplineStyle } from './disciplines';
-
-type CardKey = 'upload' | 'sheets' | 'disciplines' | 'revisions';
 
 export function PlansPhotosTab(): React.ReactElement {
   const upload = useBlueprintUpload();
-  const [activeCard, setActiveCard] = useState<CardKey>('upload');
+  const ui = usePlansPhotosUi();
+  const { setActiveCard } = plansPhotosUiActions();
 
-  // Wave 6.5: project_id is published into the upload store once INGEST
-  // returns. The poll hook then runs the live read loop against the
-  // backend's GET endpoints.
   const projectId = upload.response?.ingest?.project_id ?? upload.response?.project_id ?? null;
   const poll = useBlueprintProjectPoll(projectId);
 
   const hasProject = projectId != null;
   const liveSheetCount = poll.status?.sheet_count ?? poll.sheets.length;
-  const liveDisciplineCount = useMemo(() => {
-    const set = new Set<string>();
-    for (const s of poll.sheets) {
-      if (s.discipline) set.add(s.discipline.toLowerCase());
-    }
-    return set.size;
-  }, [poll.sheets]);
-  const liveRevisionCount = poll.revisions.length;
 
   // Auto-jump to Sheets when an upload finishes (premium UX: don't make
   // the user click).
   React.useEffect(() => {
-    if (hasProject && activeCard === 'upload') {
+    if (hasProject && ui.activeCard === 'upload') {
       setActiveCard('sheets');
     }
-  }, [hasProject, activeCard]);
+    // setActiveCard is module-stable; safe to exclude.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasProject, ui.activeCard]);
 
-  const chips: BottomChip<CardKey>[] = useMemo(
-    () => [
-      {
-        key: 'upload',
-        icon: 'cloud-upload-outline',
-        label: 'Upload',
-        stat: hasProject ? 'Add another' : 'Drop a plan set',
-      },
-      {
-        key: 'sheets',
-        icon: 'documents-outline',
-        label: 'All Sheets',
-        stat: hasProject ? `${liveSheetCount} sheets` : 'Upload to enable',
-        badge: hasProject ? `${liveSheetCount}` : undefined,
-        disabled: !hasProject,
-      },
-      {
-        key: 'disciplines',
-        icon: 'color-palette-outline',
-        label: 'By Discipline',
-        stat: hasProject
-          ? `${liveDisciplineCount} tag${liveDisciplineCount === 1 ? '' : 's'}`
-          : 'Upload to enable',
-        disabled: !hasProject || liveDisciplineCount === 0,
-      },
-      {
-        key: 'revisions',
-        icon: 'time-outline',
-        label: 'Revisions',
-        stat: hasProject
-          ? `${liveRevisionCount} chain${liveRevisionCount === 1 ? '' : 's'}`
-          : 'Upload to enable',
-        badge: hasProject && liveRevisionCount > 0 ? `${liveRevisionCount}` : undefined,
-        disabled: !hasProject,
-      },
-    ],
-    [hasProject, liveSheetCount, liveDisciplineCount, liveRevisionCount],
-  );
+  const activeCard: PlansPhotosCardKey = ui.activeCard;
 
-  const cards: Record<CardKey, React.ReactNode> = {
-    upload: (
-      <UploadDropZone
-        phase={upload.phase}
-        progress={upload.progress}
-        filename={upload.filename}
-        stageProgress={upload.stageProgress}
-        error={upload.error}
-        onFile={upload.upload}
-        onReset={upload.reset}
-      />
-    ),
-    sheets: hasProject ? (
-      <SheetThumbnailGrid
-        sheets={poll.sheets}
-        revisions={poll.revisions}
-        isLoading={poll.isFirstLoad}
-        stageProgress={poll.stageProgress}
-        sheetCount={liveSheetCount}
-        testID="plans-photos-thumbnail-grid"
-      />
-    ) : (
-      <EmptyCardPlaceholder
-        icon="documents-outline"
-        title="No sheets yet"
-        body="Upload a plan set to see the roster."
-      />
-    ),
-    disciplines: hasProject ? (
-      <DisciplineBreakdownCard sheets={poll.sheets} />
-    ) : (
-      <EmptyCardPlaceholder
-        icon="color-palette-outline"
-        title="No disciplines yet"
-        body="Upload a plan set so Drew can classify the sheets."
-      />
-    ),
-    revisions: hasProject ? (
-      <RevisionsListCard
-        chainCount={liveRevisionCount}
-        sheets={poll.sheets}
-        revisions={poll.revisions}
-      />
-    ) : (
-      <EmptyCardPlaceholder
-        icon="time-outline"
-        title="No revisions yet"
-        body="Upload a plan set first."
-      />
-    ),
-  };
+  const card = useMemo<React.ReactNode>(() => {
+    switch (activeCard) {
+      case 'upload':
+        return (
+          <UploadDropZone
+            phase={upload.phase}
+            progress={upload.progress}
+            filename={upload.filename}
+            stageProgress={upload.stageProgress}
+            error={upload.error}
+            onFile={upload.upload}
+            onReset={upload.reset}
+          />
+        );
+      case 'sheets':
+        return hasProject ? (
+          <SheetThumbnailGrid
+            sheets={poll.sheets}
+            revisions={poll.revisions}
+            isLoading={poll.isFirstLoad}
+            stageProgress={poll.stageProgress}
+            sheetCount={liveSheetCount}
+            testID="plans-photos-thumbnail-grid"
+          />
+        ) : (
+          <EmptyCardPlaceholder
+            icon="documents-outline"
+            title="No sheets yet"
+            body="Drop a plan set in the Controls tab to begin."
+          />
+        );
+      case 'disciplines':
+        return hasProject ? (
+          <DisciplineBreakdownCard sheets={poll.sheets} />
+        ) : (
+          <EmptyCardPlaceholder
+            icon="color-palette-outline"
+            title="No disciplines yet"
+            body="Upload a plan set so Drew can classify the sheets."
+          />
+        );
+      case 'revisions':
+        return hasProject ? (
+          <RevisionsListCard
+            chainCount={poll.revisions.length}
+            sheets={poll.sheets}
+            revisions={poll.revisions}
+          />
+        ) : (
+          <EmptyCardPlaceholder
+            icon="time-outline"
+            title="No revisions yet"
+            body="Upload a plan set first."
+          />
+        );
+      default:
+        return null;
+    }
+  }, [
+    activeCard,
+    hasProject,
+    upload.phase,
+    upload.progress,
+    upload.filename,
+    upload.stageProgress,
+    upload.error,
+    upload.upload,
+    upload.reset,
+    poll.sheets,
+    poll.revisions,
+    poll.isFirstLoad,
+    poll.stageProgress,
+    liveSheetCount,
+  ]);
 
+  // Canvas is intentionally bare: ONE focused element, edge-to-edge, no
+  // surrounding chrome. The Tim Rail Context tab owns counters, stage
+  // progress, view-switcher, and discipline-filter chrome.
   return (
-    <View style={styles.tab} testID="plans-photos-tab">
-      {/* Inline pipeline indicator — always visible so users see ingest → classify happen. */}
-      {upload.phase !== 'idle' ? (
-        <View style={styles.progressStrip}>
-          <UploadProgressInline stages={poll.project?.stage_progress ?? upload.stageProgress} layout="horizontal" />
-        </View>
-      ) : null}
-
-      <View style={styles.canvas}>
-        <CanvasCardSwitcher
-          activeCardKey={activeCard}
-          cards={cards}
-          testID="plans-photos-canvas-switcher"
-        />
-      </View>
-
-      <BottomChipStrip
-        chips={chips}
-        activeKey={activeCard}
-        onChange={setActiveCard}
-        testID="plans-photos-chip-strip"
-      />
+    <View style={styles.canvas} testID="plans-photos-tab">
+      {card}
     </View>
   );
 }
@@ -208,7 +170,6 @@ function DisciplineBreakdownCard({
 }: {
   sheets: ReadonlyArray<{ discipline: string | null; supersedes_id: string | null; id: string }>;
 }): React.ReactElement {
-  // Current-only counts derived from polled sheet list.
   const counts = useMemo(() => {
     const successorIds = new Set<string>();
     for (const s of sheets) if (s.supersedes_id) successorIds.add(s.supersedes_id);
@@ -329,17 +290,12 @@ function RevisionsListCard({
 }
 
 const styles = StyleSheet.create({
-  tab: {
-    flex: 1,
-    padding: 18,
-    gap: 12,
-  },
-  progressStrip: {
-    paddingHorizontal: 2,
-    paddingVertical: 2,
-  },
+  // Canvas-only: no padding-around-chrome, just a calm edge inset and the
+  // single focused card. CLS=0 — minHeight floor keeps the canvas stable
+  // across state transitions.
   canvas: {
     flex: 1,
+    padding: 16,
     minHeight: 320,
   },
   placeholderHost: {

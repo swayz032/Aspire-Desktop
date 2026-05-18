@@ -40,61 +40,12 @@ import { Ionicons } from '@expo/vector-icons';
 import type { BlueprintSheetRead, StageProgress } from '@/lib/api/blueprintsApi';
 import type { RevisionChain } from '@/hooks/useBlueprintProjectPoll';
 import { getDisciplineStyle } from './disciplines';
+import { usePlansPhotosUi } from '@/lib/plansPhotosUiStore';
 
-// ---------------------------------------------------------------------------
-// Animated count primitive (200ms cross-fade on value change)
-// ---------------------------------------------------------------------------
-
-function AnimatedCount({
-  value,
-  style,
-  testID,
-}: {
-  value: number;
-  style?: any;
-  testID?: string;
-}): React.ReactElement {
-  const [displayed, setDisplayed] = useState(value);
-  const opacity = React.useRef(new Animated.Value(1)).current;
-
-  React.useEffect(() => {
-    if (value === displayed) return;
-    Animated.timing(opacity, {
-      toValue: 0,
-      duration: 100,
-      useNativeDriver: true,
-    }).start(() => {
-      setDisplayed(value);
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }).start();
-    });
-  }, [value, displayed, opacity]);
-
-  return (
-    <Animated.Text style={[style, { opacity }]} testID={testID}>
-      {displayed}
-    </Animated.Text>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Filter strip — "All" + the 8 canonical AIA discipline codes
-// ---------------------------------------------------------------------------
-
-const DISCIPLINE_FILTERS: Array<{ key: string | null; code: string; label: string }> = [
-  { key: null, code: 'All', label: 'All' },
-  { key: 'architectural', code: 'A', label: 'Architectural' },
-  { key: 'structural', code: 'S', label: 'Structural' },
-  { key: 'mechanical', code: 'M', label: 'Mechanical' },
-  { key: 'electrical', code: 'E', label: 'Electrical' },
-  { key: 'plumbing', code: 'P', label: 'Plumbing' },
-  { key: 'fire_protection', code: 'FP', label: 'Fire Protection' },
-  { key: 'civil', code: 'C', label: 'Civil' },
-  { key: 'landscape', code: 'L', label: 'Landscape' },
-];
+// 2026-05-18 lock: stat row + discipline filter strip moved to the Tim Rail
+// Context tab (`PlansPhotosContextPayload`). The canvas grid is now
+// BLUEPRINTS ONLY — thumbnail cards edge-to-edge. The grid reads the
+// active filter key from `plansPhotosUiStore`.
 
 function _normalizeDisc(disc: string | null | undefined): string | null {
   if (!disc) return null;
@@ -371,8 +322,12 @@ export function SheetThumbnailGrid({
   sheetCount,
   testID,
 }: SheetThumbnailGridProps): React.ReactElement {
-  const [filterKey, setFilterKey] = useState<string | null>(null);
+  // Filter key lives in the shared store — Tim Rail Context tab owns the UI
+  // (compact chip row); the canvas grid just consumes the selection.
+  const ui = usePlansPhotosUi();
+  const filterKey = ui.filterKey;
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  void sheetCount; // stat row moved to Context; param kept for API stability
 
   // Index chains by currentSheetId for O(1) lookup.
   const chainByCurrentId = useMemo(() => {
@@ -393,31 +348,10 @@ export function SheetThumbnailGrid({
     [sheets, successorIds],
   );
 
-  // Counts per discipline (across current sheets).
-  const disciplineCounts = useMemo(() => {
-    const m = new Map<string | null, number>();
-    m.set(null, currentSheets.length);
-    for (const s of currentSheets) {
-      const k = _normalizeDisc(s.discipline);
-      m.set(k, (m.get(k) ?? 0) + 1);
-    }
-    return m;
-  }, [currentSheets]);
-
   const filteredSheets = useMemo(() => {
     if (filterKey == null) return currentSheets;
     return currentSheets.filter((s) => _normalizeDisc(s.discipline) === filterKey);
   }, [currentSheets, filterKey]);
-
-  const totalSheetCount = sheetCount ?? currentSheets.length;
-  const totalDisciplineCount = useMemo(() => {
-    const present = new Set<string>();
-    for (const s of currentSheets) {
-      const k = _normalizeDisc(s.discipline);
-      if (k) present.add(k);
-    }
-    return present.size;
-  }, [currentSheets]);
 
   // Determine whether INGEST has reached a terminal state.
   // "done" → sheets were produced (or genuinely 0 sheets); show empty state.
@@ -438,20 +372,6 @@ export function SheetThumbnailGrid({
   if (showShimmer) {
     return (
       <View style={styles.host} testID={testID ?? 'sheet-thumb-grid'}>
-        <View style={styles.statRow} accessibilityRole="summary">
-          <SkeletonStat label="sheets" />
-          <View style={styles.statDivider} />
-          <SkeletonStat label="disciplines" />
-          <View style={styles.statDivider} />
-          <SkeletonStat label="revisions" />
-        </View>
-        <View style={styles.filterStrip}>
-          {DISCIPLINE_FILTERS.slice(0, 4).map((f) => (
-            <View key={f.code} style={[styles.filterChip, styles.filterChipSkel]}>
-              <Text style={styles.filterChipLabel}>{f.code}</Text>
-            </View>
-          ))}
-        </View>
         <View style={styles.grid}>
           {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
             <ShimmerCard key={i} index={i} />
@@ -476,84 +396,8 @@ export function SheetThumbnailGrid({
 
   return (
     <View style={styles.host} testID={testID ?? 'sheet-thumb-grid'}>
-      {/* Stat row */}
-      <View style={styles.statRow} accessibilityRole="summary">
-        <View style={styles.statBlock}>
-          <AnimatedCount
-            value={totalSheetCount}
-            style={styles.statValue}
-            testID="grid-stat-sheets"
-          />
-          <Text style={styles.statLabel}>sheets</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statBlock}>
-          <AnimatedCount
-            value={totalDisciplineCount}
-            style={styles.statValue}
-            testID="grid-stat-disciplines"
-          />
-          <Text style={styles.statLabel}>disciplines</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statBlock}>
-          <AnimatedCount
-            value={revisions.length}
-            style={styles.statValue}
-            testID="grid-stat-revisions"
-          />
-          <Text style={styles.statLabel}>revisions</Text>
-        </View>
-      </View>
-
-      {/* Discipline filter strip */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filterStripScroll}
-        contentContainerStyle={styles.filterStrip}
-      >
-        {DISCIPLINE_FILTERS.map((f) => {
-          const count = disciplineCounts.get(f.key) ?? 0;
-          const isActive = filterKey === f.key;
-          const isEmpty = count === 0 && f.key !== null;
-          return (
-            <Pressable
-              key={f.code}
-              disabled={isEmpty}
-              onPress={() => setFilterKey(f.key)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: isActive, disabled: isEmpty }}
-              testID={`discipline-filter-${f.code}`}
-              style={({ hovered }: { hovered?: boolean }) => [
-                styles.filterChip,
-                isActive && styles.filterChipActive,
-                hovered && !isActive && !isEmpty && styles.filterChipHover,
-                isEmpty && styles.filterChipDisabled,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.filterChipLabel,
-                  isActive && styles.filterChipLabelActive,
-                ]}
-              >
-                {f.code}
-              </Text>
-              <Text
-                style={[
-                  styles.filterChipCount,
-                  isActive && styles.filterChipCountActive,
-                ]}
-              >
-                {count}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-
-      {/* Grid */}
+      {/* Canvas = blueprints only. Stat row + discipline filter strip live
+          in the Tim Rail Context tab (PlansPhotosContextPayload). */}
       <ScrollView
         style={styles.gridScroll}
         contentContainerStyle={styles.grid}
@@ -583,35 +427,6 @@ export function SheetThumbnailGrid({
   );
 }
 
-function SkeletonStat({ label }: { label: string }): React.ReactElement {
-  const pulse = React.useRef(new Animated.Value(0.35)).current;
-  React.useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 0.65,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 0.35,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [pulse]);
-  return (
-    <View style={styles.statBlock}>
-      <Animated.View
-        style={[styles.skelLine, styles.skelStatLine, { opacity: pulse }]}
-      />
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Styles
@@ -626,95 +441,8 @@ const styles = StyleSheet.create({
     // narrow viewports.
     minHeight: 320,
   },
-  // -- stat row ---------------------------------------------------------
-  statRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    paddingHorizontal: 4,
-  },
-  statBlock: {
-    alignItems: 'flex-start',
-    gap: 1,
-    minWidth: 48,
-  },
-  statValue: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.95)',
-    letterSpacing: -0.6,
-    fontVariant: ['tabular-nums'],
-  },
-  statLabel: {
-    fontSize: 9.5,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.55)',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
-  statDivider: {
-    width: 1,
-    height: 28,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  // -- filter strip -----------------------------------------------------
-  filterStripScroll: {
-    flexGrow: 0,
-  },
-  filterStrip: {
-    flexDirection: 'row',
-    gap: 6,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-  },
-  filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 7,
-    backgroundColor: 'rgba(255,255,255,0.025)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    ...(Platform.OS === 'web'
-      ? ({
-          transition: 'background-color 150ms ease, border-color 150ms ease',
-        } as any)
-      : {}),
-  },
-  filterChipActive: {
-    backgroundColor: 'rgba(251,191,36,0.10)',
-    borderColor: 'rgba(251,191,36,0.55)',
-  },
-  filterChipHover: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderColor: 'rgba(255,255,255,0.14)',
-  },
-  filterChipDisabled: {
-    opacity: 0.35,
-  },
-  filterChipSkel: {
-    opacity: 0.45,
-  },
-  filterChipLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.78)',
-    letterSpacing: 0.3,
-  },
-  filterChipLabelActive: {
-    color: '#fbbf24',
-  },
-  filterChipCount: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.45)',
-    fontVariant: ['tabular-nums'],
-  },
-  filterChipCountActive: {
-    color: 'rgba(251,191,36,0.85)',
-  },
+  // (Stat row + filter strip styles removed 2026-05-18 — those surfaces
+  // moved to the Tim Rail Context tab. See PlansPhotosContextPayload.)
   // -- grid -------------------------------------------------------------
   gridScroll: {
     flex: 1,
@@ -861,10 +589,6 @@ const styles = StyleSheet.create({
   },
   skelLineWide: {
     width: '70%',
-  },
-  skelStatLine: {
-    height: 18,
-    width: 44,
   },
   // -- revision timeline ------------------------------------------------
   timelineHost: {

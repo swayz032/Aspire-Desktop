@@ -67,13 +67,15 @@ export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
   const isWide = width >= WORKSPACE_BREAKPOINT;
   const isTablet = width < WORKSPACE_BREAKPOINT && width >= TABLET_BREAKPOINT;
   const isMobile = width < TABLET_BREAKPOINT;
-  // Chrome hoist: ANY width in the laptop/tablet band (768 ≤ w < 1280) moves
-  // the in-canvas chrome (header + slot + tab bar) into the Tim Rail's
-  // Controls tab. Replaces the prior height-dependent isLaptop heuristic —
-  // the user's 958×937 viewport didn't trip it because the trigger was
-  // gated on width >= 1100 AND height < 900.
-  const isLaptopOrTablet =
-    width >= TABLET_BREAKPOINT && width < DESKTOP_BREAKPOINT;
+  // Chrome hoist: ALL widths >= 768 hoist the in-canvas chrome (header + slot
+  // + tab bar) into the Tim Rail's Controls tab. Per user lock 2026-05-18:
+  // "ONLY BLUEPRINTS ON CANVAS — anything else is in Context/Controls tab"
+  // + "THE CANVAS SCREEN SUPPOSED TO BE BIGGER". Hoisting at all desktop+
+  // widths reclaims the ~96px the header/slot/tab-bar were eating so the
+  // sheet thumbnail grid fills the available viewport edge-to-edge.
+  const isLaptopOrTablet = width >= TABLET_BREAKPOINT;
+  // (Mobile <768 keeps the in-canvas chrome because the Tim Rail isn't
+  // reachable there.)
 
   // Responsive canvas width:
   //   Desktop (>=1500)             → 1400 cap (centered with gutter)

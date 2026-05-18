@@ -81,10 +81,14 @@ export function TimRailControlsTab() {
 
   const isMaterialsTab =
     pathname.endsWith('/materials') || pathname.endsWith('/materials/');
-  const isDesktop = width >= DESKTOP_BREAKPOINT;
-  // On desktop the in-canvas chrome is already visible — hide the
-  // duplicate PROJECT and NAVIGATE sections; keep QUICK ACTIONS.
-  const showChromeSections = !isDesktop;
+  // 2026-05-18 lock: the in-canvas chrome is HOISTED at all widths >= 768
+  // (tablet + laptop + desktop), so the Controls tab is the single source of
+  // truth for PROJECT + NAVIGATE + QUICK ACTIONS. Mobile keeps the in-canvas
+  // chrome because the rail isn't reachable below 768. We still gate to
+  // suppress duplication on the (rare) mobile case where rail+canvas could
+  // both render, but at typical desktop+ widths showChromeSections is true.
+  void width;
+  const showChromeSections = true;
 
   return (
     <ScrollView

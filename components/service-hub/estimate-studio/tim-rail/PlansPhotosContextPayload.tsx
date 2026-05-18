@@ -1,28 +1,43 @@
 /**
- * PlansPhotosContextPayload — Wave 6.5.
+ * PlansPhotosContextPayload — Tim Rail Context tab payload for the
+ * Plans & Photos route (Canvas Cleanup, locked 2026-05-18).
  *
- * Tim Rail Context tab payload for the Plans & Photos route. Renders:
- *   - Drew Live Pipeline (only while busy — Lock #15)
- *   - Pipeline Status (vertical 5-stage indicator, live polled stage_progress)
- *   - Live counters: sheets · disciplines · revisions (200ms cross-fade)
- *   - Discipline counts (compact chips, derived from polled sheet list)
- *   - Last upload (filename + relative time)
+ * Composition (top → bottom):
+ *   1. Drew · Live Pipeline   — cinematic 5-stage timeline (only while busy)
+ *   2. Live Counters          — sheets · disciplines · revisions · materials
+ *   3. Pipeline Status        — vertical 5-stage indicator (polled state)
+ *   4. View                   — All Sheets / By Discipline / Revisions chips
+ *                                (canvas-card switcher; drives the canvas)
+ *   5. Filter                 — discipline chip strip (All · A · S · M · E ·
+ *                                P · FP · C · L) — drives the grid filter
+ *   6. Discipline Counts      — per-discipline breakdown (compact pills)
+ *   7. Last Upload            — filename + relative time
  *
- * Wave 6.5 (plan §5): the zeros tick UP in real time as Drew classifies.
- * Uses `useBlueprintProjectPoll(projectId)` for live data once project_id
- * is available; falls back to the upload snapshot's optimistic counts
- * during the brief INGEST-in-flight window.
+ * The View + Filter sections used to live in the canvas. Per the 2026-05-18
+ * canvas-cleanup lock, the canvas now hosts ONLY the blueprint thumbnail
+ * grid; all chrome moves here.
+ *
+ * Aspire Laws:
+ *   - #1 Single Brain: render layer only. No autonomous decisions.
+ *   - #7 Tools Are Hands: store mutations are direct setters.
  */
 import React, { useMemo, useState } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import { Animated, Platform, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useBlueprintUploadSnapshot } from '@/lib/blueprintUploadStore';
 import { useBlueprintProjectPoll } from '@/hooks/useBlueprintProjectPoll';
 import { useTakeoffMaterials } from '@/hooks/useTakeoffMaterials';
+import {
+  plansPhotosUiActions,
+  usePlansPhotosUi,
+  type PlansPhotosCardKey,
+} from '@/lib/plansPhotosUiStore';
 import { ContextTabPayload, type ContextSection } from '../shell/ContextTabPayload';
 import { UploadProgressInline } from '../plans-photos/UploadProgressInline';
 import { DrewStageProgress } from '../plans-photos/DrewStageProgress';
 import { getDisciplineStyle } from '../plans-photos/disciplines';
+
+type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
 
 function _relativeTime(ts: number | null): string {
   if (ts == null) return '—';
@@ -33,7 +48,7 @@ function _relativeTime(ts: number | null): string {
   return `${Math.floor(delta / 86_400_000)}d ago`;
 }
 
-// 200ms cross-fade animated count — matches the locked premium-seamless spec.
+// 200ms cross-fade animated count — locked premium-seamless spec.
 function AnimatedCount({
   value,
   style,
@@ -69,10 +84,38 @@ function AnimatedCount({
   );
 }
 
+// View Mode switcher — the user-facing replacement for the legacy
+// BottomChipStrip that used to live on the canvas.
+const VIEW_MODES: Array<{ key: PlansPhotosCardKey; icon: IoniconsName; label: string }> = [
+  { key: 'sheets', icon: 'documents-outline', label: 'All Sheets' },
+  { key: 'disciplines', icon: 'color-palette-outline', label: 'By Discipline' },
+  { key: 'revisions', icon: 'time-outline', label: 'Revisions' },
+];
+
+// Discipline filter strip — "All" + 8 canonical AIA codes. Drives the
+// canvas thumbnail grid's filter via the shared store.
+const DISCIPLINE_FILTERS: Array<{ key: string | null; code: string; label: string }> = [
+  { key: null, code: 'All', label: 'All disciplines' },
+  { key: 'architectural', code: 'A', label: 'Architectural' },
+  { key: 'structural', code: 'S', label: 'Structural' },
+  { key: 'mechanical', code: 'M', label: 'Mechanical' },
+  { key: 'electrical', code: 'E', label: 'Electrical' },
+  { key: 'plumbing', code: 'P', label: 'Plumbing' },
+  { key: 'fire_protection', code: 'FP', label: 'Fire Protection' },
+  { key: 'civil', code: 'C', label: 'Civil' },
+  { key: 'landscape', code: 'L', label: 'Landscape' },
+];
+
+function _normalizeDisc(disc: string | null | undefined): string | null {
+  if (!disc) return null;
+  return disc.toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+}
+
 export function PlansPhotosContextPayload(): React.ReactElement {
   const snap = useBlueprintUploadSnapshot();
+  const ui = usePlansPhotosUi();
+  const { setActiveCard, setFilterKey } = plansPhotosUiActions();
 
-  // Wave 6.5 — drive live counts from polled data once project_id is available.
   const projectId = snap.projectId;
   const poll = useBlueprintProjectPoll(projectId);
 
@@ -82,8 +125,6 @@ export function PlansPhotosContextPayload(): React.ReactElement {
     snap.phase === 'ingesting' ||
     snap.phase === 'classifying';
 
-  // Live counts (prefer polled status; fall back to optimistic upload state
-  // for the brief window between upload-success and first-poll-response).
   const liveSheetCount =
     poll.status?.sheet_count ??
     poll.sheets.length ??
@@ -106,19 +147,30 @@ export function PlansPhotosContextPayload(): React.ReactElement {
       ? poll.revisions.length
       : snap.response?.classify?.revisions ?? 0;
 
-  // Wave 5.1a-5 — materials counter rolls up Drew's PROCURE picks. Polls the
-  // same backend route used by the Materials tab "From Blueprint" card so
-  // both surfaces stay in sync. Returns 0 until PROCURE finishes.
   const materialsState = useTakeoffMaterials(projectId);
   const liveMaterialCount = materialsState.materials.length;
 
-  // Discipline chips: derive from polled sheets when available, otherwise the
-  // CLASSIFY snapshot (so reviewers see chips appear the moment CLASSIFY
-  // returns, even before the first /sheets fetch).
-  const disciplines = useMemo(() => {
+  // Per-discipline counts derived from polled sheets (current sheets only).
+  const disciplineCounts = useMemo(() => {
+    const successorIds = new Set<string>();
+    for (const s of poll.sheets) if (s.supersedes_id) successorIds.add(s.supersedes_id);
+    const m = new Map<string | null, number>();
+    m.set(null, 0);
+    let total = 0;
+    for (const s of poll.sheets) {
+      if (successorIds.has(s.id)) continue;
+      total += 1;
+      const k = _normalizeDisc(s.discipline);
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    m.set(null, total);
+    return m;
+  }, [poll.sheets]);
+
+  // Discipline pills (sorted) for the Discipline Counts section.
+  const disciplineRows = useMemo(() => {
     if (poll.sheets.length > 0) {
       const m = new Map<string, number>();
-      // Count only "current" sheets (those not superseded).
       const successorIds = new Set<string>();
       for (const s of poll.sheets) if (s.supersedes_id) successorIds.add(s.supersedes_id);
       for (const s of poll.sheets) {
@@ -133,14 +185,9 @@ export function PlansPhotosContextPayload(): React.ReactElement {
     );
   }, [poll.sheets, snap.response]);
 
-  // Effective stage progress: polled when available, optimistic during the
-  // upload-only window.
   const effectiveStageProgress = poll.project?.stage_progress ?? snap.stageProgress;
+  const hasProject = projectId != null;
 
-  // Aspire design rule: cinematic 5-stage timeline + narration + insight
-  // cards + sheet thumbnail rail render HERE in the Tim Rail Context tab,
-  // NEVER on the canvas. Canvas stays calm (loading ring + filename + timer
-  // only). See: UploadDropZone busy block.
   const sections: ContextSection[] = [
     ...(isBusy
       ? [
@@ -160,9 +207,6 @@ export function PlansPhotosContextPayload(): React.ReactElement {
           } as ContextSection,
         ]
       : []),
-    // Live counter strip — the visible heartbeat: the zeros tick up as Drew
-    // works. Wave 6.5 acceptance criterion: 0 sheets · 0 disciplines · 0
-    // revisions transitions to live values without layout shift.
     {
       key: 'counters',
       title: 'Live Counters',
@@ -223,25 +267,136 @@ export function PlansPhotosContextPayload(): React.ReactElement {
         />
       ),
     },
+    // ---------------- VIEW ----------------------------------------------
+    // Replaces the old canvas-bottom chip strip. Tapping a view chip swaps
+    // what the canvas renders (all sheets · by discipline · revisions).
+    {
+      key: 'view',
+      title: 'View',
+      subtitle: hasProject ? 'Choose what the canvas renders' : 'Upload to enable',
+      render: () => (
+        <View style={styles.viewRow} testID="context-view-switcher">
+          {VIEW_MODES.map((mode) => {
+            const isActive = ui.activeCard === mode.key;
+            const isDisabled = !hasProject;
+            return (
+              <Pressable
+                key={mode.key}
+                onPress={() => setActiveCard(mode.key)}
+                disabled={isDisabled}
+                accessibilityRole="button"
+                accessibilityLabel={`Switch canvas to ${mode.label}`}
+                accessibilityState={{ selected: isActive, disabled: isDisabled }}
+                testID={`context-view-${mode.key}`}
+                style={({ hovered, pressed }: { hovered?: boolean; pressed: boolean }) => [
+                  styles.viewChip,
+                  isActive && styles.viewChipActive,
+                  isDisabled && styles.viewChipDisabled,
+                  hovered && !isActive && !isDisabled && styles.viewChipHover,
+                  pressed && !isDisabled && styles.viewChipPressed,
+                ]}
+              >
+                <Ionicons
+                  name={mode.icon}
+                  size={13}
+                  color={
+                    isDisabled
+                      ? 'rgba(255,255,255,0.30)'
+                      : isActive
+                        ? '#fbbf24'
+                        : 'rgba(255,255,255,0.72)'
+                  }
+                />
+                <Text
+                  style={[
+                    styles.viewChipLabel,
+                    isActive && styles.viewChipLabelActive,
+                    isDisabled && styles.viewChipLabelDisabled,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {mode.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ),
+    },
+    // ---------------- FILTER --------------------------------------------
+    // Discipline chip row — drives the canvas thumbnail grid filter.
+    {
+      key: 'filter',
+      title: 'Filter',
+      subtitle: hasProject ? 'Limit the grid to one discipline' : 'Upload to enable',
+      render: () => (
+        <View style={styles.filterWrap} testID="context-filter-strip">
+          {DISCIPLINE_FILTERS.map((f) => {
+            const count = disciplineCounts.get(f.key) ?? 0;
+            const isActive = ui.filterKey === f.key;
+            const isEmpty = (count === 0 && f.key !== null) || !hasProject;
+            return (
+              <Pressable
+                key={f.code}
+                disabled={isEmpty}
+                onPress={() => setFilterKey(f.key)}
+                accessibilityRole="button"
+                accessibilityLabel={`Filter by ${f.label}`}
+                accessibilityState={{ selected: isActive, disabled: isEmpty }}
+                testID={`context-filter-${f.code}`}
+                style={({ hovered, pressed }: { hovered?: boolean; pressed: boolean }) => [
+                  styles.filterChip,
+                  isActive && styles.filterChipActive,
+                  isEmpty && styles.filterChipDisabled,
+                  hovered && !isActive && !isEmpty && styles.filterChipHover,
+                  pressed && !isEmpty && styles.filterChipPressed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.filterChipCode,
+                    isActive && styles.filterChipCodeActive,
+                  ]}
+                >
+                  {f.code}
+                </Text>
+                <Text
+                  style={[
+                    styles.filterChipCount,
+                    isActive && styles.filterChipCountActive,
+                  ]}
+                >
+                  {count}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ),
+    },
     {
       key: 'disciplines',
       title: 'Discipline Counts',
       render: () => {
-        if (disciplines.length === 0) {
+        if (disciplineRows.length === 0) {
           return <Text style={styles.empty}>No classification yet.</Text>;
         }
         return (
           <View style={styles.discWrap}>
-            {disciplines.map(([disc, count]) => {
+            {disciplineRows.map(([disc, count]) => {
               const s = getDisciplineStyle(disc);
               return (
                 <View
                   key={disc}
-                  style={[styles.discChip, { backgroundColor: s.bg, borderColor: s.fg + '55' }]}
+                  style={[styles.discRow, { borderColor: s.fg + '33' }]}
                   testID={`context-disc-${disc}`}
                 >
-                  <Text style={[styles.discCode, { color: s.fg }]}>{s.code}</Text>
-                  <Text style={styles.discLabel}>{s.label}</Text>
+                  <View style={[styles.discCodeWrap, { backgroundColor: s.fg + '22' }]}>
+                    <Text style={[styles.discCode, { color: s.fg }]}>{s.code}</Text>
+                  </View>
+                  <Text style={styles.discLabel} numberOfLines={1}>
+                    {s.label}
+                  </Text>
                   <Text style={[styles.discCount, { color: s.fg }]}>{count}</Text>
                 </View>
               );
@@ -267,7 +422,7 @@ export function PlansPhotosContextPayload(): React.ReactElement {
             <Text style={styles.lastMeta}>
               {snap.filename
                 ? `${liveSheetCount} sheet${liveSheetCount === 1 ? '' : 's'} · ${_relativeTime(snap.uploadedAt)}`
-                : 'Drop a plan set on the canvas.'}
+                : 'Drop a plan set in the Controls tab.'}
             </Text>
           </View>
         </View>
@@ -286,9 +441,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
   },
-  // Premium counter strip — hairline-outlined geometry, 32px ui-serif number,
-  // 11px ui-monospace uppercase label. Tighter rhythm and no solid fill so
-  // the amber-gold counter cross-fade reads as the focal point.
+  // ---- Counter strip ---------------------------------------------------
   counterRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -307,15 +460,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   counterValue: {
-    fontSize: 32,
+    fontSize: 30,
     fontWeight: '600',
     color: '#fbbf24',
     letterSpacing: -1.2,
     fontVariant: ['tabular-nums'],
-    // ui-serif gives the marquee number its premium editorial weight.
     fontFamily: 'ui-serif, Georgia, "Times New Roman", serif',
-    lineHeight: 36,
-    // Subtle glow only on the active marquee numbers (web-only via shadow).
+    lineHeight: 34,
     textShadowColor: 'rgba(251,191,36,0.25)',
     textShadowRadius: 8,
   },
@@ -333,40 +484,157 @@ const styles = StyleSheet.create({
     marginVertical: 6,
     backgroundColor: 'rgba(255,255,255,0.08)',
   },
-  discWrap: {
+  // ---- View switcher --------------------------------------------------
+  viewRow: {
+    flexDirection: 'column',
+    gap: 6,
+    paddingHorizontal: 2,
+  },
+  viewChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 8,
+    backgroundColor: 'transparent',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.08)',
+    minHeight: 38,
+    ...(Platform.OS === 'web'
+      ? (({
+          transition: 'background-color 150ms ease, border-color 150ms ease',
+          cursor: 'pointer',
+        } as unknown) as ViewStyle)
+      : {}),
+  },
+  viewChipActive: {
+    backgroundColor: 'rgba(251,191,36,0.08)',
+    borderColor: 'rgba(251,191,36,0.55)',
+  },
+  viewChipHover: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  viewChipPressed: {
+    opacity: 0.85,
+  },
+  viewChipDisabled: {
+    opacity: 0.45,
+  },
+  viewChipLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.85)',
+    letterSpacing: -0.1,
+    flex: 1,
+  },
+  viewChipLabelActive: {
+    color: '#fbbf24',
+  },
+  viewChipLabelDisabled: {
+    color: 'rgba(255,255,255,0.45)',
+  },
+  // ---- Filter chip strip ---------------------------------------------
+  filterWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
     paddingHorizontal: 2,
   },
-  discChip: {
+  filterChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
+    gap: 5,
     paddingHorizontal: 9,
     paddingVertical: 6,
     borderRadius: 6,
+    backgroundColor: 'transparent',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.10)',
+    minHeight: 28,
+    ...(Platform.OS === 'web'
+      ? (({
+          transition: 'background-color 150ms ease, border-color 150ms ease',
+          cursor: 'pointer',
+        } as unknown) as ViewStyle)
+      : {}),
+  },
+  filterChipActive: {
+    backgroundColor: 'rgba(251,191,36,0.10)',
+    borderColor: 'rgba(251,191,36,0.55)',
+  },
+  filterChipHover: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  filterChipPressed: {
+    opacity: 0.85,
+  },
+  filterChipDisabled: {
+    opacity: 0.35,
+  },
+  filterChipCode: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: 'rgba(255,255,255,0.82)',
+    letterSpacing: 0.4,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  },
+  filterChipCodeActive: {
+    color: '#fbbf24',
+  },
+  filterChipCount: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.42)',
+    fontVariant: ['tabular-nums'],
+  },
+  filterChipCountActive: {
+    color: 'rgba(251,191,36,0.88)',
+  },
+  // ---- Discipline counts (premium per-row breakdown) -----------------
+  discWrap: {
+    flexDirection: 'column',
+    gap: 5,
+    paddingHorizontal: 2,
+  },
+  discRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: 'transparent',
     borderWidth: StyleSheet.hairlineWidth,
   },
+  discCodeWrap: {
+    width: 22,
+    height: 22,
+    borderRadius: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   discCode: {
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: '800',
-    letterSpacing: 0.6,
+    letterSpacing: 0.4,
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
   },
   discLabel: {
-    fontSize: 10.5,
+    flex: 1,
+    fontSize: 11.5,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.88)',
+    color: 'rgba(255,255,255,0.86)',
     letterSpacing: -0.05,
   },
   discCount: {
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
-  // Hairline-outlined geometry — no solid fill. Matches the counter strip
-  // aesthetic so the Context tab reads as a single continuous surface.
+  // ---- Last upload ---------------------------------------------------
   lastRow: {
     flexDirection: 'row',
     alignItems: 'center',
