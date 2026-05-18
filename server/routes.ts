@@ -10541,20 +10541,125 @@ router.post(
 // The orchestrator filters `active_only` as a query string passthrough.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Inline blueprint GET forwarder — FIX 3 (2026-05-18).
+//
+// Mirrors the upload-route header block exactly (X-Tenant-Id / X-Suite-Id /
+// X-Office-Id / X-Actor-Id / X-Correlation-Id / X-Trace-Id + Authorization
+// pass-through) so the three polling GETs cannot drop scope headers under any
+// circumstance. The previous `proxyForward()` invocation was correct in
+// principle but the user observed `401 MISSING_SCOPE_HEADERS` 404-spam in the
+// network tab — bringing the headers inline matches the known-good upload
+// route, removes one indirection, and lets `Authorization` flow through for
+// upstream middleware that may inspect it.
+// ---------------------------------------------------------------------------
+async function _forwardBlueprintGet(
+  req: Request,
+  res: Response,
+  orchestratorPath: string,
+  logTag: string,
+): Promise<void> {
+  const suiteId = requireAuth(req, res);
+  if (!suiteId) return;
+
+  const orchestratorUrl = resolveOrchestratorUrl();
+  if (!orchestratorUrl) {
+    res.status(503).json({
+      error: 'ORCHESTRATOR_UNAVAILABLE',
+      message: 'Backend service is not configured',
+    });
+    return;
+  }
+
+  const officeIdRaw = (req.headers['x-office-id'] as string) || '';
+  const officeId =
+    typeof officeIdRaw === 'string' && officeIdRaw.trim() ? officeIdRaw.trim() : suiteId;
+  const tenantId = suiteId;
+  const actorId = ((req as any).authenticatedUserId as string) || suiteId;
+  const correlationId =
+    (req.headers['x-correlation-id'] as string) || `corr_${crypto.randomUUID()}`;
+  const traceId = (req.headers['x-trace-id'] as string) || correlationId;
+  // Forward the caller's Authorization header so any upstream middleware
+  // (e.g. future capability-token verifier) sees the original session token.
+  const authHeader = (req.headers.authorization as string) || '';
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5_000);
+
+  logger.info(`[${logTag}] proxy`, {
+    suite_id: suiteId,
+    office_id: officeId,
+    method: 'GET',
+    path: orchestratorPath,
+    trace_id: traceId,
+    correlation_id: correlationId,
+  });
+
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-Tenant-Id': tenantId,
+      'X-Suite-Id': suiteId,
+      'X-Office-Id': officeId,
+      'X-Actor-Id': actorId,
+      'X-Correlation-Id': correlationId,
+      'X-Trace-Id': traceId,
+    };
+    if (authHeader) headers.Authorization = authHeader;
+
+    const orchResp = await fetch(`${orchestratorUrl}${orchestratorPath}`, {
+      method: 'GET',
+      headers,
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    const text = await orchResp.text();
+    let data: unknown = null;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { error: 'UPSTREAM_NON_JSON', message: text.slice(0, 200) };
+      }
+    }
+    res.status(orchResp.status).json(data ?? {});
+  } catch (err: any) {
+    clearTimeout(timer);
+    if (err?.name === 'AbortError') {
+      logger.warn(`[${logTag}] timeout`, { suite_id: suiteId, path: orchestratorPath });
+      res.status(504).json({
+        error: 'UPSTREAM_TIMEOUT',
+        message: 'Backend did not respond in time',
+        correlation_id: correlationId,
+      });
+      return;
+    }
+    logger.error(`[${logTag}] upstream error`, {
+      suite_id: suiteId,
+      path: orchestratorPath,
+      error: err?.message ?? String(err),
+    });
+    res.status(502).json({
+      error: 'UPSTREAM_ERROR',
+      message: 'Backend communication failed',
+      correlation_id: correlationId,
+    });
+  }
+}
+
 router.get('/api/v1/blueprints/projects/:id', async (req: Request, res: Response) => {
   const projectId = String(req.params.id ?? '').trim();
   if (!projectId) {
     res.status(400).json({ error: 'INVALID_PROJECT_ID', message: 'project id is required' });
     return;
   }
-  await proxyForward({
-    orchestratorPath: `/v1/blueprints/projects/${encodeURIComponent(projectId)}`,
-    method: 'GET',
-    logTag: 'BlueprintProjectGet',
-    timeoutMs: 5_000,
+  await _forwardBlueprintGet(
     req,
     res,
-  });
+    `/v1/blueprints/projects/${encodeURIComponent(projectId)}`,
+    'BlueprintProjectGet',
+  );
 });
 
 router.get('/api/v1/blueprints/projects/:id/sheets', async (req: Request, res: Response) => {
@@ -10574,16 +10679,12 @@ router.get('/api/v1/blueprints/projects/:id/sheets', async (req: Request, res: R
     params.set('discipline', discipline);
   }
   const qs = params.toString();
-  await proxyForward({
-    orchestratorPath: `/v1/blueprints/projects/${encodeURIComponent(projectId)}/sheets${
-      qs ? `?${qs}` : ''
-    }`,
-    method: 'GET',
-    logTag: 'BlueprintSheetsList',
-    timeoutMs: 5_000,
+  await _forwardBlueprintGet(
     req,
     res,
-  });
+    `/v1/blueprints/projects/${encodeURIComponent(projectId)}/sheets${qs ? `?${qs}` : ''}`,
+    'BlueprintSheetsList',
+  );
 });
 
 router.get('/api/v1/blueprints/projects/:id/status', async (req: Request, res: Response) => {
@@ -10592,14 +10693,12 @@ router.get('/api/v1/blueprints/projects/:id/status', async (req: Request, res: R
     res.status(400).json({ error: 'INVALID_PROJECT_ID', message: 'project id is required' });
     return;
   }
-  await proxyForward({
-    orchestratorPath: `/v1/blueprints/projects/${encodeURIComponent(projectId)}/status`,
-    method: 'GET',
-    logTag: 'BlueprintProjectStatus',
-    timeoutMs: 5_000,
+  await _forwardBlueprintGet(
     req,
     res,
-  });
+    `/v1/blueprints/projects/${encodeURIComponent(projectId)}/status`,
+    'BlueprintProjectStatus',
+  );
 });
 
 // ---------------------------------------------------------------------------

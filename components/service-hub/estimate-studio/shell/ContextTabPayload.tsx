@@ -32,10 +32,15 @@ interface Props {
 }
 
 export function ContextTabPayload({ sections, testID }: Props): React.ReactElement {
+  const lastIdx = sections.length - 1;
   return (
     <View style={styles.payload} testID={testID ?? 'context-tab-payload'}>
-      {sections.map((section) => (
-        <View key={section.key} style={styles.section} testID={`context-section-${section.key}`}>
+      {sections.map((section, idx) => (
+        <View
+          key={section.key}
+          style={[styles.section, idx !== lastIdx && styles.sectionDivider]}
+          testID={`context-section-${section.key}`}
+        >
           <View style={styles.headerRow}>
             <Text style={styles.sectionTitle}>{section.title}</Text>
             {section.subtitle ? (
@@ -49,30 +54,46 @@ export function ContextTabPayload({ sections, testID }: Props): React.ReactEleme
   );
 }
 
+// Premium punch list (LOCKED 2026-05-18):
+//   - Hairline section dividers (1px, 8% white) between blocks — never solid
+//   - Tighter vertical rhythm: section gap 24 / subsection 12 / label-value 4
+//   - Section header label = uppercase, 1.6 tracking, amber dot accent
+//   - Subtitle = ui-monospace telemetry feel (tight, low-emphasis)
 const styles = StyleSheet.create({
   payload: {
-    gap: 16,
+    // 24px between major blocks — section divider hairline gives the visual
+    // separation. Gap controls spacing AROUND the hairline.
+    gap: 0,
   },
   section: {
-    gap: 8,
+    gap: 12, // subsection rhythm
+    paddingTop: 12,
+    paddingBottom: 12,
+  },
+  sectionDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
   },
   headerRow: {
-    gap: 2,
+    gap: 4, // label-to-value rhythm
     paddingHorizontal: 4,
   },
   sectionTitle: {
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: '700',
-    color: 'rgba(255,255,255,0.62)',
-    letterSpacing: 1.4,
+    color: 'rgba(255,255,255,0.72)',
+    letterSpacing: 1.6,
     textTransform: 'uppercase',
   },
   sectionSubtitle: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.48)',
-    letterSpacing: -0.05,
+    fontSize: 10.5,
+    color: 'rgba(255,255,255,0.42)',
+    letterSpacing: 0.2,
+    // Telemetry monospace gives the rail its premium "live console" feel.
+    // RN-Web maps fontFamily strings to CSS — falls back gracefully on iOS.
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
   },
   body: {
-    gap: 6,
+    gap: 8,
   },
 });
