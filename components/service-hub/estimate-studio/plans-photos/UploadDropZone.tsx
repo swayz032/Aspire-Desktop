@@ -35,6 +35,7 @@ import {
   ACCEPTED_MIME_TYPES,
 } from '@/lib/api/blueprintsApi';
 import { UploadProgressInline } from './UploadProgressInline';
+import { DrewStageProgress } from './DrewStageProgress';
 import type { UploadPhase, UploadProgress } from '@/hooks/useBlueprintUpload';
 import type { StageProgress } from '@/lib/api/blueprintsApi';
 
@@ -50,12 +51,6 @@ interface Props {
   onReset: () => void;
 }
 
-function _formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
-}
-
 export function UploadDropZone({
   phase,
   progress,
@@ -68,6 +63,22 @@ export function UploadDropZone({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const fadeAnim = useRef(new Animated.Value(1)).current;
+  // Lock a start timestamp the first frame we transition out of idle so
+  // DrewStageProgress can show real elapsed time. Resets back to null on
+  // any non-busy phase so the next upload starts a fresh clock.
+  const [startedAtMs, setStartedAtMs] = useState<number | null>(null);
+  useEffect(() => {
+    const isBusy =
+      phase === 'reading' ||
+      phase === 'uploading' ||
+      phase === 'ingesting' ||
+      phase === 'classifying';
+    if (isBusy && startedAtMs == null) {
+      setStartedAtMs(Date.now());
+    } else if (!isBusy && startedAtMs != null) {
+      setStartedAtMs(null);
+    }
+  }, [phase, startedAtMs]);
 
   // 200ms cross-fade whenever the phase swaps to a new visual state.
   useEffect(() => {
@@ -216,41 +227,16 @@ export function UploadDropZone({
     }
 
     if (phase === 'reading' || phase === 'uploading' || phase === 'ingesting' || phase === 'classifying') {
-      const pct = Math.min(100, Math.max(0, Math.round(progress.ratio * 100)));
-      const phaseLabel: Record<typeof phase, string> = {
-        reading: 'Reading file…',
-        uploading: 'Uploading…',
-        ingesting: 'Drew is parsing the plan set…',
-        classifying: 'Tagging disciplines…',
-      } as const;
+      // Cinematic Drew Blueprint Engine stage display. Replaces the basic
+      // ring/progress UI per the Wave 6A.1 immersive-loading spec.
       return (
-        <View style={styles.body} testID={`dropzone-${phase}`}>
-          <View style={styles.iconCircleBusy}>
-            <Ionicons name="sync" size={32} color="#fbbf24" />
-          </View>
-          <Text style={styles.title}>{filename ?? 'Working on it…'}</Text>
-          <Text style={styles.subtitle}>{phaseLabel[phase]}</Text>
-          <View style={styles.progressTrack}>
-            <View
-              style={[
-                styles.progressFill,
-                {
-                  width:
-                    phase === 'reading' || phase === 'uploading'
-                      ? `${pct}%`
-                      : phase === 'ingesting'
-                        ? '66%'
-                        : '92%',
-                },
-              ]}
-            />
-          </View>
-          <Text style={styles.progressLabel}>
-            {phase === 'reading' || phase === 'uploading'
-              ? `${_formatBytes(progress.bytesDone)} / ${_formatBytes(progress.bytesTotal)}`
-              : 'Hold tight — Drew is still working.'}
-          </Text>
-          <UploadProgressInline stages={stageProgress} layout="horizontal" />
+        <View style={styles.busyHost} testID={`dropzone-${phase}`}>
+          <DrewStageProgress
+            filename={filename}
+            stageProgress={stageProgress}
+            uploadRatio={progress.ratio}
+            startedAtMs={startedAtMs ?? Date.now()}
+          />
         </View>
       );
     }
@@ -285,7 +271,7 @@ export function UploadDropZone({
         </Text>
       </View>
     );
-  }, [phase, progress, filename, stageProgress, error, handlePressClick, onReset, openPicker]);
+  }, [phase, progress, filename, stageProgress, error, handlePressClick, onReset, openPicker, startedAtMs]);
 
   return (
     <Pressable
@@ -293,6 +279,11 @@ export function UploadDropZone({
       // Keep the host pressable only in idle so success / error CTAs win over it.
       style={({ hovered }: any) => [
         styles.host,
+        (phase === 'reading' ||
+          phase === 'uploading' ||
+          phase === 'ingesting' ||
+          phase === 'classifying') &&
+          styles.hostBusy,
         isDragOver && styles.hostDragOver,
         hovered && phase === 'idle' && styles.hostHover,
       ]}
@@ -337,6 +328,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.035)',
     borderColor: 'rgba(255,255,255,0.28)',
   },
+  hostBusy: {
+    // Cinematic Drew display needs room to breathe + a solid hairline border
+    // (no dashed "drop zone" treatment while we're processing).
+    minHeight: 600,
+    borderStyle: 'solid',
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.012)',
+    paddingVertical: 24,
+    justifyContent: 'flex-start',
+  },
   hostDragOver: {
     backgroundColor: 'rgba(251,191,36,0.05)',
     borderColor: 'rgba(251,191,36,0.65)',
@@ -350,6 +351,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 14,
     maxWidth: 460,
+  },
+  busyHost: {
+    width: '100%',
+    alignItems: 'stretch',
+    paddingHorizontal: 4,
   },
   iconCircleIdle: {
     width: 64,

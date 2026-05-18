@@ -597,4 +597,57 @@ describe('Visuals Tab — Design Lock v1.0', () => {
       expect(cardSrc).toMatch(/\/service-hub\/memory/);
     });
   });
+
+  describe('Lock #15: DrewStageProgress — cinematic 5-stage display geometry', () => {
+    const src = read(
+      'components/service-hub/estimate-studio/plans-photos/DrewStageProgress.tsx',
+    );
+    const dzSrc = read(
+      'components/service-hub/estimate-studio/plans-photos/UploadDropZone.tsx',
+    );
+
+    it('declares all 5 pipeline stages in canonical order', () => {
+      // The STAGES array must contain INGEST → CLASSIFY → SEE → REASON → PROCURE
+      // exactly once each, in order. Order drift here = silent UX regression.
+      const stageKeys = ['ingest', 'classify', 'see', 'reason', 'procure'];
+      let cursor = 0;
+      for (const key of stageKeys) {
+        const idx = src.indexOf(`key: '${key}'`, cursor);
+        expect(idx).toBeGreaterThan(cursor - 1);
+        cursor = idx + 1;
+      }
+    });
+
+    it('keeps host minHeight stable to enforce CLS = 0', () => {
+      // Host minHeight must be >= 520 so narration/insight swaps never
+      // reflow the surrounding canvas.
+      expect(src).toMatch(/minHeight:\s*520/);
+    });
+
+    it('UploadDropZone renders DrewStageProgress during busy phases', () => {
+      // The cinematic card replaces the basic ring/progress UI for the
+      // four busy phases (reading | uploading | ingesting | classifying).
+      expect(dzSrc).toMatch(/<DrewStageProgress/);
+      expect(dzSrc).toMatch(
+        /phase === 'reading' \|\| phase === 'uploading' \|\| phase === 'ingesting' \|\| phase === 'classifying'/,
+      );
+    });
+
+    it('UploadDropZone host expands to >= 600px while busy (room for cinematic card)', () => {
+      expect(dzSrc).toMatch(/hostBusy:\s*\{[\s\S]*?minHeight:\s*600/);
+    });
+
+    it('renders a sheet thumbnail rail (placeholder shimmer for Wave 6A.1)', () => {
+      expect(src).toMatch(/SHEET MANIFEST/);
+      expect(src).toMatch(/thumbRow:/);
+    });
+
+    it('rotates narration in Drews voice (not generic loading copy)', () => {
+      // Verifies the narration strings carry Drew's voice — terse, expert.
+      // Catches accidental swaps to generic "Loading…" placeholders.
+      expect(src).toMatch(/Splitting the PDF/);
+      expect(src).toMatch(/YOLOv11/);
+      expect(src).toMatch(/Section 232/);
+    });
+  });
 });
