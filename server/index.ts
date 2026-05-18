@@ -611,20 +611,23 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use(express.json({
+// Blueprint upload has its own route-level JSON parser with 75mb limit —
+// skip the global 1mb parser so large PDFs reach the route-level middleware.
+const _globalJson = express.json({
   limit: '1mb',
   verify: (req: any, _res, buf) => {
-    // Preserve raw body for webhook signature verification (Plaid, Stripe, etc.)
     if (req.url?.includes('/webhook')) {
       req.rawBody = buf;
     }
-    // Preserve raw body for tool invocation paths so we can recover from
-    // wrong/missing Content-Type from Anam webhook runtime (Round 3 hotfix).
     if (req.url?.startsWith('/v1/tools') || req.url?.startsWith('/v1/agents/invoke-sync')) {
       req.rawBody = buf;
     }
   },
-}));
+});
+app.use((req, res, next) => {
+  if (req.path === '/api/v1/blueprints/upload') return next();
+  return _globalJson(req, res, next);
+});
 // Round 3 hotfix: Anam's webhook runtime occasionally posts /v1/tools/* with a
 // non-application/json Content-Type (or none at all). The global express.json
 // above ignores those, leaving req.body = {} and breaking every tool call with
