@@ -600,7 +600,18 @@ router.get('/api/stripe/invoices/:id/pdf', async (req: Request, res: Response) =
     const buf = Buffer.from(await pdfResp.arrayBuffer());
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="invoice-${id}.pdf"`);
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    // Use CSP frame-ancestors (the modern replacement for X-Frame-Options)
+    // so the PDF iframe loads whether the parent page is on aspireos.app
+    // or www.aspireos.app. SAMEORIGIN previously treated those as
+    // different origins and blocked the iframe with "refused to connect."
+    // Multiple allowed parents are supported by frame-ancestors but NOT by
+    // X-Frame-Options. Drop the legacy header to avoid a conflict — modern
+    // browsers prefer X-Frame-Options when both are set.
+    res.setHeader(
+      'Content-Security-Policy',
+      "frame-ancestors 'self' https://aspireos.app https://www.aspireos.app",
+    );
+    res.removeHeader('X-Frame-Options');
     res.setHeader('Cache-Control', 'private, max-age=60');
     res.send(buf);
   } catch (error: unknown) {
