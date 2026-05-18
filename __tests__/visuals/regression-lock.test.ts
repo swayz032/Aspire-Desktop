@@ -576,6 +576,15 @@ describe('Visuals Tab — Design Lock v1.0', () => {
       expect(ctrlSrc).toMatch(/accessibilityLabel="Upload project evidence"/);
       expect(ctrlSrc).toMatch(/accessibilityLabel="Start a new estimate project"/);
     });
+
+    it('NAVIGATE renders a vertical pill stack (not a 2-col grid)', () => {
+      // The vertical stack is identified by `tim-rail-controls-pill-stack`
+      // and the `tabStack` style block (flexDirection: 'column').
+      expect(ctrlSrc).toMatch(/tim-rail-controls-pill-stack/);
+      expect(ctrlSrc).toMatch(/tabStack:\s*\{[\s\S]*?flexDirection:\s*'column'/);
+      // The old 2-col grid style is gone.
+      expect(ctrlSrc).not.toMatch(/tabGrid:\s*\{/);
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -639,6 +648,54 @@ describe('Visuals Tab — Design Lock v1.0', () => {
       expect(ctxSrc).toMatch(/plansPhotosUiActions/);
       expect(ctxSrc).toMatch(/setActiveCard/);
       expect(ctxSrc).toMatch(/setFilterKey/);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Lock #26 — Estimate Studio canvas header has ZERO chrome buttons.
+  // The property address bar is the ONLY affordance the canvas header owns.
+  // Upload, "+ New Project", and "Recent ▾" all live in Tim Rail Controls.
+  // Lock added 2026-05-18 after the regression where e127801's hide-chrome
+  // pass only suppressed chrome above 768px — the prior shell still mounted
+  // EstimateStudioHeader + EstimateStudioTabBar + ProjectAddressBar (with
+  // Upload + New Project) below 768. This lock prevents that path returning.
+  // -------------------------------------------------------------------------
+  describe('Lock #26: Estimate Studio canvas header is address-only (2026-05-18)', () => {
+    const shellSrc = read(
+      'components/service-hub/estimate-studio/EstimateStudioShell.tsx',
+    );
+    const addrSrc = read(
+      'components/service-hub/estimate-studio/ProjectAddressBar.tsx',
+    );
+
+    it('EstimateStudioShell does not import EstimateStudioHeader', () => {
+      expect(shellSrc).not.toMatch(/import\s*\{[^}]*EstimateStudioHeader[^}]*\}\s*from/);
+    });
+
+    it('EstimateStudioShell does not import EstimateStudioTabBar', () => {
+      expect(shellSrc).not.toMatch(/import\s*\{[^}]*EstimateStudioTabBar[^}]*\}\s*from/);
+    });
+
+    it('EstimateStudioShell does not import ProjectAddressBar into the canvas', () => {
+      // Address bar is owned by Tim Rail Controls now (PROJECT section).
+      expect(shellSrc).not.toMatch(/import\s*\{[^}]*ProjectAddressBar[^}]*\}\s*from/);
+    });
+
+    it('EstimateStudioShell does not render the address / header / tabbar JSX', () => {
+      expect(shellSrc).not.toMatch(/<EstimateStudioHeader\b/);
+      expect(shellSrc).not.toMatch(/<EstimateStudioTabBar\b/);
+      expect(shellSrc).not.toMatch(/<ProjectAddressBar\b/);
+    });
+
+    it('ProjectAddressBar renders ONLY the input — no Upload / New Project / Recent buttons', () => {
+      // Source comments may reference these names (Wave 0 history); the
+      // rendered JSX must not. We check for button labels in JSX text nodes.
+      expect(addrSrc).not.toMatch(/<Text[^>]*>\s*Upload\s*</);
+      expect(addrSrc).not.toMatch(/<Text[^>]*>\s*\+\s*New Project\s*</);
+      expect(addrSrc).not.toMatch(/<Text[^>]*>\s*Recent\s*</);
+      // And no Recent-dropdown chrome anywhere.
+      expect(addrSrc).not.toMatch(/recent-dropdown/i);
+      expect(addrSrc).not.toMatch(/new-project-button/i);
     });
   });
 

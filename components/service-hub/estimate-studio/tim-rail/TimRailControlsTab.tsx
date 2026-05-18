@@ -41,12 +41,12 @@ type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
 // Studio tab list — mirrors `EstimateStudioTabBar.tsx`. Kept in sync via
 // the regression test in __tests__/visuals/.
 const STUDIO_TABS: { id: string; label: string; icon: IoniconsName; route: Href }[] = [
-  { id: 'visuals',       label: 'Visuals',         icon: 'image-outline',           route: '/service-hub/estimate-studio/visuals' as Href },
-  { id: 'plans-photos',  label: 'Plans & Photos',  icon: 'document-attach-outline', route: '/service-hub/estimate-studio/plans-photos' as Href },
+  { id: 'visuals',       label: 'Visuals',         icon: 'eye-outline',             route: '/service-hub/estimate-studio/visuals' as Href },
+  { id: 'plans-photos',  label: 'Plans & Photos',  icon: 'document-text-outline',   route: '/service-hub/estimate-studio/plans-photos' as Href },
   { id: 'scope',         label: 'Scope',           icon: 'list-outline',            route: '/service-hub/estimate-studio/scope' as Href },
-  { id: 'materials',     label: 'Materials',       icon: 'cube-outline',            route: '/service-hub/estimate-studio/materials' as Href },
-  { id: 'takeoff',       label: 'Takeoff',         icon: 'grid-outline',            route: '/service-hub/estimate-studio/takeoff' as Href },
-  { id: 'estimate',      label: 'Estimate',        icon: 'calculator-outline',      route: '/service-hub/estimate-studio/estimate' as Href },
+  { id: 'materials',     label: 'Materials',       icon: 'layers-outline',          route: '/service-hub/estimate-studio/materials' as Href },
+  { id: 'takeoff',       label: 'Takeoff',         icon: 'calculator-outline',      route: '/service-hub/estimate-studio/takeoff' as Href },
+  { id: 'estimate',      label: 'Estimate',        icon: 'receipt-outline',         route: '/service-hub/estimate-studio/estimate' as Href },
 ];
 
 // Desktop threshold — at this width and above, the in-canvas chrome is
@@ -112,7 +112,10 @@ export function TimRailControlsTab() {
 
       {showChromeSections && (
         <Section title="NAVIGATE" testID="tim-rail-controls-navigate">
-          <View style={styles.tabGrid}>
+          {/* Vertical pill stack — premium full-width row per route so the rail
+              reads as a clear "where am I in the studio" map. (Was a 2-col grid
+              pre-2026-05-18; user lock now mandates VerticalRoutePillStack.) */}
+          <View style={styles.tabStack} testID="tim-rail-controls-pill-stack">
             {STUDIO_TABS.map((tab) => {
               const routeStr = String(tab.route);
               const isActive = pathname === routeStr || pathname === routeStr + '/';
@@ -203,8 +206,8 @@ function StudioTabPill({
     >
       <Ionicons
         name={icon}
-        size={13}
-        color={isActive ? '#0A0A0F' : 'rgba(255,255,255,0.65)'}
+        size={15}
+        color={isActive ? '#fbbf24' : 'rgba(255,255,255,0.72)'}
       />
       <Text
         style={[styles.pillLabel, isActive && styles.pillLabelActive]}
@@ -306,34 +309,42 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   sectionTitle: {
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: '700',
-    letterSpacing: 1.4,
+    letterSpacing: 1.6,
     color: 'rgba(255,255,255,0.55)',
     textTransform: 'uppercase',
+    ...(Platform.OS === 'web'
+      ? ({
+          fontFamily:
+            'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+        } as const)
+      : {}),
   },
   sectionBody: {
     gap: 8,
   },
 
-  // 2-col tab grid ---------------------------------------------------------
-  tabGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
+  // Vertical pill stack (VerticalRoutePillStack — 2026-05-18 lock) ---------
+  // Each pill is a full-width row, hairline-outlined when inactive, filled
+  // with the amber-gold accent + subtle glow when active. Tight 4px gap keeps
+  // all 6 visible without scroll in the standard 288/320px rail width.
+  tabStack: {
+    flexDirection: 'column',
+    gap: 4,
   },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    // 2 per row: (100% - 6px gap) / 2 — use flexBasis with grow to fill.
-    flexBasis: '48%',
-    flexGrow: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 7,
+    gap: 9,
+    width: '100%',
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    borderRadius: 8,
     backgroundColor: 'transparent',
-    minHeight: 32,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    minHeight: 36,
     ...(Platform.OS === 'web'
       ? (({
           transition: 'all 180ms ease',
@@ -342,16 +353,20 @@ const styles = StyleSheet.create({
       : {}),
   },
   pillActive: {
-    backgroundColor: '#ffffff',
+    backgroundColor: 'rgba(251,191,36,0.10)',
+    borderColor: 'rgba(251,191,36,0.55)',
     ...(Platform.OS === 'web'
       ? (({
-          backgroundImage: 'linear-gradient(135deg, #ffffff 0%, #e8e8e8 100%)',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
+          backgroundImage:
+            'linear-gradient(135deg, rgba(251,191,36,0.16) 0%, rgba(251,191,36,0.06) 100%)',
+          boxShadow:
+            '0 0 0 1px rgba(251,191,36,0.35), 0 0 16px rgba(251,191,36,0.18)',
         } as unknown) as ViewStyle)
       : {}),
   },
   pillHover: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderColor: 'rgba(255,255,255,0.14)',
   },
   pillPressed: {
     opacity: 0.85,
@@ -363,15 +378,20 @@ const styles = StyleSheet.create({
     outlineOffset: 2,
   },
   pillLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '500',
-    color: 'rgba(255,255,255,0.65)',
+    color: 'rgba(255,255,255,0.72)',
     letterSpacing: -0.1,
     flexShrink: 1,
   },
   pillLabelActive: {
-    color: '#0A0A0F',
-    fontWeight: '600',
+    color: '#fbbf24',
+    fontWeight: '700',
+    ...(Platform.OS === 'web'
+      ? ({
+          textShadow: '0 0 8px rgba(251,191,36,0.35)',
+        } as const)
+      : {}),
   },
 
   // Buttons ----------------------------------------------------------------
