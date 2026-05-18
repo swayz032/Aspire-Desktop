@@ -547,34 +547,55 @@ function DocumentPreviewModalInner({ visible, onClose, type, documentName, panda
 
           {hasLiveUrl ? (
             <View style={p.pandadocBody}>
-              {Platform.OS === 'web' ? (
-                <iframe
-                  // Client-side rewrite: any Stripe-hosted URL gets routed
-                  // through our same-origin proxy. Stripe sets X-Frame-Options:
-                  // DENY on invoice.stripe.com AND pay.stripe.com, so direct
-                  // iframing always shows "refused to connect". The proxy
-                  // endpoint /api/stripe/invoices/{id}/pdf fetches server-side
-                  // and re-serves with SAMEORIGIN. Match either domain and
-                  // extract the Stripe invoice id (in_*) from anywhere in the
-                  // URL path.
-                  src={(() => {
-                    const u = livePreviewUrl || '';
-                    if (/invoice\.stripe\.com|pay\.stripe\.com/.test(u)) {
-                      const m = u.match(/in_[A-Za-z0-9]+/);
-                      if (m) return `/api/stripe/invoices/${m[0]}/pdf`;
-                    }
-                    return u;
-                  })()}
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    border: 'none',
-                    backgroundColor: '#ffffff',
-                  }}
-                  title="Document Preview"
-                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
-                />
-              ) : (
+              {Platform.OS === 'web' ? (() => {
+                // Resolve iframe src defensively. Stripe's hosted_invoice_url
+                // and invoice_pdf URLs both set X-Frame-Options: DENY. The
+                // ONLY safe src for a Stripe invoice is our same-origin proxy
+                // /api/stripe/invoices/{id}/pdf which re-serves the PDF with
+                // CSP frame-ancestors allowing aspireos.app + www.aspireos.app.
+                const u = livePreviewUrl || '';
+                const isStripeUrl = /invoice\.stripe\.com|pay\.stripe\.com/.test(u);
+                const inIdMatch = u.match(/in_[A-Za-z0-9]+/);
+                let resolvedSrc: string | null = null;
+                if (u.startsWith('/api/stripe/invoices/')) {
+                  resolvedSrc = u;
+                } else if (isStripeUrl && inIdMatch) {
+                  resolvedSrc = `/api/stripe/invoices/${inIdMatch[0]}/pdf`;
+                } else if (!isStripeUrl) {
+                  resolvedSrc = u;
+                }
+                if (resolvedSrc) {
+                  return (
+                    <iframe
+                      src={resolvedSrc}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        border: 'none',
+                        backgroundColor: '#ffffff',
+                      }}
+                      title="Document Preview"
+                      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+                    />
+                  );
+                }
+                // Stripe URL with no extractable in_* id — never iframe it,
+                // Stripe would DENY the embed. Show open-in-new-tab fallback.
+                return (
+                  <View style={p.pandadocLoadingContainer}>
+                    <Ionicons name="open-outline" size={32} color="#6e6e73" />
+                    <Text style={p.pandadocLoadingText}>
+                      Stripe blocks inline preview for this invoice. Open it in a new tab to view.
+                    </Text>
+                    <Pressable
+                      onPress={() => livePreviewUrl && typeof window !== 'undefined' && window.open(livePreviewUrl, '_blank', 'noopener,noreferrer')}
+                      style={p.openExternalBtn}
+                    >
+                      <Text style={p.openExternalBtnText}>Open invoice</Text>
+                    </Pressable>
+                  </View>
+                );
+              })() : (
                 <View style={p.pandadocLoadingContainer}>
                   <Ionicons name="open-outline" size={32} color="#6e6e73" />
                   <Text style={p.pandadocLoadingText}>Tap to open the document in your browser.</Text>

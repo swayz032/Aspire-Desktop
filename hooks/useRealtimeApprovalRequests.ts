@@ -172,6 +172,7 @@ function rowToAuthorityItem(row: Record<string, unknown>): AuthorityItem {
     pandadocDocumentId: (row.pandadoc_document_id as string) || undefined,
     hostedInvoiceUrl,
     invoicePdfUrl,
+    stripeInvoiceId,
     documentPreview,
   };
 }
@@ -233,6 +234,7 @@ function apiRowToAuthorityItem(r: Record<string, unknown>): AuthorityItem {
       : (r.stripeInvoiceId
           ? `/api/stripe/invoices/${encodeURIComponent(r.stripeInvoiceId as string)}/pdf`
           : undefined),
+    stripeInvoiceId: (r.stripeInvoiceId as string) || undefined,
     documentPreview,
   };
 }
