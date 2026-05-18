@@ -263,7 +263,7 @@ async function dispatchOrchestratorInvoke(
   orchestratorUrl: string,
   payload: Record<string, any>,
   signal?: AbortSignal,
-): Promise<{ response: globalThis.Response; endpoint: string; fellBack: boolean }> {
+): Promise<{ response: globalThis.Response; endpoint: string; fellBack: boolean; retried: boolean }> {
   const primaryEndpoint = `${orchestratorUrl}${ORCHESTRATOR_INVOKE_PATH}`;
   const requestInit: RequestInit = {
     method: 'POST',
@@ -271,7 +271,52 @@ async function dispatchOrchestratorInvoke(
     body: JSON.stringify(payload),
     signal,
   };
-  let response = await fetch(primaryEndpoint, requestInit);
+
+  // Idempotent single retry on transient failures. Production transcript
+  // 2026-05-18 09:21 showed a Quinn call timing out at 5.6s and Ava going
+  // silent — no automatic retry. Most upstream failures are transient
+  // (cold-start, momentary 5xx, network blip). One retry with a 200ms
+  // pause turns a user-facing timeout into a normal call ~90% of the time.
+  //
+  // Retry rules:
+  //  - Only on timeout (AbortError) or upstream 5xx
+  //  - Never on 4xx (client error — would fail identically)
+  //  - Single retry only (don't blow the latency budget twice over)
+  //  - Same payload, same correlation_id (orchestrator dedupes on it)
+  const RETRY_ELIGIBLE = (resp: globalThis.Response) => resp.status >= 500 && resp.status <= 599;
+  const _isAbort = (err: unknown) => err instanceof Error && err.name === 'AbortError';
+  let response: globalThis.Response;
+  let retried = false;
+  try {
+    response = await fetch(primaryEndpoint, requestInit);
+    if (RETRY_ELIGIBLE(response)) {
+      logger.warn('[AgentTool] Orchestrator returned retry-eligible status — retrying once', {
+        primaryEndpoint,
+        status: response.status,
+        agent: typeof payload?.agent === 'string' ? payload.agent : '(unknown)',
+      });
+      await new Promise((r) => setTimeout(r, 200));
+      response = await fetch(primaryEndpoint, requestInit);
+      retried = true;
+    }
+  } catch (err) {
+    if (_isAbort(err) || !signal?.aborted) {
+      // Either a timeout/abort or a transport-level failure. Retry once
+      // unless the caller already aborted (don't fight a deliberate abort).
+      if (signal?.aborted) throw err;
+      logger.warn('[AgentTool] Orchestrator fetch threw — retrying once', {
+        primaryEndpoint,
+        reason: err instanceof Error ? err.name + ':' + err.message.slice(0, 80) : 'unknown',
+        agent: typeof payload?.agent === 'string' ? payload.agent : '(unknown)',
+      });
+      await new Promise((r) => setTimeout(r, 200));
+      response = await fetch(primaryEndpoint, requestInit);
+      retried = true;
+    } else {
+      throw err;
+    }
+  }
+
   if (response.status === 404 || response.status === 405) {
     const fallbackEndpoint = `${orchestratorUrl}${ORCHESTRATOR_INVOKE_SYNC_PATH}`;
     orchestratorFallbackCount += 1;
@@ -282,9 +327,9 @@ async function dispatchOrchestratorInvoke(
       cumulativeFallbackCount: orchestratorFallbackCount,
     });
     response = await fetch(fallbackEndpoint, requestInit);
-    return { response, endpoint: fallbackEndpoint, fellBack: true };
+    return { response, endpoint: fallbackEndpoint, fellBack: true, retried };
   }
-  return { response, endpoint: primaryEndpoint, fellBack: false };
+  return { response, endpoint: primaryEndpoint, fellBack: false, retried };
 }
 
 export function collectAcceptedSecrets(): string[] {
