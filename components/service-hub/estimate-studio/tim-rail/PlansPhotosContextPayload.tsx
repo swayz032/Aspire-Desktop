@@ -1,23 +1,24 @@
 /**
- * PlansPhotosContextPayload — Wave 6A.
+ * PlansPhotosContextPayload — Wave 6.5.
  *
  * Tim Rail Context tab payload for the Plans & Photos route. Renders:
- *   - Pipeline status (vertical 5-stage indicator)
- *   - Discipline counts (compact chips)
+ *   - Drew Live Pipeline (only while busy — Lock #15)
+ *   - Pipeline Status (vertical 5-stage indicator, live polled stage_progress)
+ *   - Live counters: sheets · disciplines · revisions (200ms cross-fade)
+ *   - Discipline counts (compact chips, derived from polled sheet list)
  *   - Last upload (filename + relative time)
- *   - Revision activity (count)
  *
- * Property facts are NOT rendered here — TimRailContextTab still mounts
- * the shared <PropertySummaryCard /> below this component.
- *
- * Wave 6A reality: ingest + classify carry real data; the remaining 3
- * stages are dimmed placeholders. The PlansPhotosTab also surfaces a
- * banner explaining what's coming in Wave 6.5.
+ * Wave 6.5 (plan §5): the zeros tick UP in real time as Drew classifies.
+ * Uses `useBlueprintProjectPoll(projectId)` for live data once project_id
+ * is available; falls back to the upload snapshot's optimistic counts
+ * during the brief INGEST-in-flight window.
  */
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Animated, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useBlueprintUploadSnapshot } from '@/lib/blueprintUploadStore';
+import { useBlueprintProjectPoll } from '@/hooks/useBlueprintProjectPoll';
+import { useTakeoffMaterials } from '@/hooks/useTakeoffMaterials';
 import { ContextTabPayload, type ContextSection } from '../shell/ContextTabPayload';
 import { UploadProgressInline } from '../plans-photos/UploadProgressInline';
 import { DrewStageProgress } from '../plans-photos/DrewStageProgress';
@@ -32,18 +33,109 @@ function _relativeTime(ts: number | null): string {
   return `${Math.floor(delta / 86_400_000)}d ago`;
 }
 
+// 200ms cross-fade animated count — matches the locked premium-seamless spec.
+function AnimatedCount({
+  value,
+  style,
+  testID,
+}: {
+  value: number;
+  style?: any;
+  testID?: string;
+}): React.ReactElement {
+  const [displayed, setDisplayed] = useState(value);
+  const opacity = React.useRef(new Animated.Value(1)).current;
+
+  React.useEffect(() => {
+    if (value === displayed) return;
+    Animated.timing(opacity, {
+      toValue: 0,
+      duration: 100,
+      useNativeDriver: true,
+    }).start(() => {
+      setDisplayed(value);
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }).start();
+    });
+  }, [value, displayed, opacity]);
+
+  return (
+    <Animated.Text style={[style, { opacity }]} testID={testID}>
+      {displayed}
+    </Animated.Text>
+  );
+}
+
 export function PlansPhotosContextPayload(): React.ReactElement {
   const snap = useBlueprintUploadSnapshot();
-  const disciplines = Object.entries(snap.response?.classify?.discipline_counts ?? {}).sort(
-    (a, b) => b[1] - a[1],
-  );
-  const sheetCount = snap.response?.ingest.sheet_count ?? 0;
-  const revisions = snap.response?.classify?.revisions ?? 0;
+
+  // Wave 6.5 — drive live counts from polled data once project_id is available.
+  const projectId = snap.projectId;
+  const poll = useBlueprintProjectPoll(projectId);
+
   const isBusy =
     snap.phase === 'reading' ||
     snap.phase === 'uploading' ||
     snap.phase === 'ingesting' ||
     snap.phase === 'classifying';
+
+  // Live counts (prefer polled status; fall back to optimistic upload state
+  // for the brief window between upload-success and first-poll-response).
+  const liveSheetCount =
+    poll.status?.sheet_count ??
+    poll.sheets.length ??
+    snap.response?.ingest?.sheet_count ??
+    0;
+
+  const liveDisciplineCount = useMemo(() => {
+    if (poll.sheets.length > 0) {
+      const set = new Set<string>();
+      for (const s of poll.sheets) {
+        if (s.discipline) set.add(s.discipline.toLowerCase());
+      }
+      return set.size;
+    }
+    return Object.keys(snap.response?.classify?.discipline_counts ?? {}).length;
+  }, [poll.sheets, snap.response]);
+
+  const liveRevisionCount =
+    poll.revisions.length > 0
+      ? poll.revisions.length
+      : snap.response?.classify?.revisions ?? 0;
+
+  // Wave 5.1a-5 — materials counter rolls up Drew's PROCURE picks. Polls the
+  // same backend route used by the Materials tab "From Blueprint" card so
+  // both surfaces stay in sync. Returns 0 until PROCURE finishes.
+  const materialsState = useTakeoffMaterials(projectId);
+  const liveMaterialCount = materialsState.materials.length;
+
+  // Discipline chips: derive from polled sheets when available, otherwise the
+  // CLASSIFY snapshot (so reviewers see chips appear the moment CLASSIFY
+  // returns, even before the first /sheets fetch).
+  const disciplines = useMemo(() => {
+    if (poll.sheets.length > 0) {
+      const m = new Map<string, number>();
+      // Count only "current" sheets (those not superseded).
+      const successorIds = new Set<string>();
+      for (const s of poll.sheets) if (s.supersedes_id) successorIds.add(s.supersedes_id);
+      for (const s of poll.sheets) {
+        if (successorIds.has(s.id)) continue;
+        const k = s.discipline ? s.discipline.toLowerCase() : 'unclassified';
+        m.set(k, (m.get(k) ?? 0) + 1);
+      }
+      return Array.from(m.entries()).sort((a, b) => b[1] - a[1]);
+    }
+    return Object.entries(snap.response?.classify?.discipline_counts ?? {}).sort(
+      (a, b) => b[1] - a[1],
+    );
+  }, [poll.sheets, snap.response]);
+
+  // Effective stage progress: polled when available, optimistic during the
+  // upload-only window.
+  const effectiveStageProgress = poll.project?.stage_progress ?? snap.stageProgress;
 
   // Aspire design rule: cinematic 5-stage timeline + narration + insight
   // cards + sheet thumbnail rail render HERE in the Tim Rail Context tab,
@@ -59,7 +151,7 @@ export function PlansPhotosContextPayload(): React.ReactElement {
             render: () => (
               <DrewStageProgress
                 filename={snap.filename}
-                stageProgress={snap.stageProgress}
+                stageProgress={effectiveStageProgress}
                 uploadRatio={snap.uploadRatio}
                 startedAtMs={snap.startedAtMs ?? Date.now()}
                 testID="context-drew-stage-progress"
@@ -68,13 +160,64 @@ export function PlansPhotosContextPayload(): React.ReactElement {
           } as ContextSection,
         ]
       : []),
+    // Live counter strip — the visible heartbeat: the zeros tick up as Drew
+    // works. Wave 6.5 acceptance criterion: 0 sheets · 0 disciplines · 0
+    // revisions transitions to live values without layout shift.
+    {
+      key: 'counters',
+      title: 'Live Counters',
+      subtitle: poll.isPolling
+        ? `Polling every ${poll.stageProgress.procure === 'ok' ? '10' : '2'}s`
+        : projectId
+          ? 'All stages complete'
+          : 'Awaiting upload',
+      render: () => (
+        <View style={styles.counterRow} testID="context-live-counters">
+          <View style={styles.counterCell}>
+            <AnimatedCount
+              value={liveSheetCount}
+              style={styles.counterValue}
+              testID="context-counter-sheets"
+            />
+            <Text style={styles.counterLabel}>sheets</Text>
+          </View>
+          <View style={styles.counterDivider} />
+          <View style={styles.counterCell}>
+            <AnimatedCount
+              value={liveDisciplineCount}
+              style={styles.counterValue}
+              testID="context-counter-disciplines"
+            />
+            <Text style={styles.counterLabel}>disciplines</Text>
+          </View>
+          <View style={styles.counterDivider} />
+          <View style={styles.counterCell}>
+            <AnimatedCount
+              value={liveRevisionCount}
+              style={styles.counterValue}
+              testID="context-counter-revisions"
+            />
+            <Text style={styles.counterLabel}>revisions</Text>
+          </View>
+          <View style={styles.counterDivider} />
+          <View style={styles.counterCell}>
+            <AnimatedCount
+              value={liveMaterialCount}
+              style={styles.counterValue}
+              testID="context-counter-materials"
+            />
+            <Text style={styles.counterLabel}>materials</Text>
+          </View>
+        </View>
+      ),
+    },
     {
       key: 'pipeline',
       title: 'Pipeline Status',
-      subtitle: 'Wave 6A: Ingest + Classify real · See/Reason/Procure ship in Wave 3+',
+      subtitle: poll.isPolling ? 'Live · auto-refreshing' : 'Idle',
       render: () => (
         <UploadProgressInline
-          stages={snap.stageProgress}
+          stages={effectiveStageProgress}
           layout="vertical"
           testID="context-pipeline-status"
         />
@@ -123,27 +266,10 @@ export function PlansPhotosContextPayload(): React.ReactElement {
             </Text>
             <Text style={styles.lastMeta}>
               {snap.filename
-                ? `${sheetCount} sheet${sheetCount === 1 ? '' : 's'} · ${_relativeTime(snap.uploadedAt)}`
+                ? `${liveSheetCount} sheet${liveSheetCount === 1 ? '' : 's'} · ${_relativeTime(snap.uploadedAt)}`
                 : 'Drop a plan set on the canvas.'}
             </Text>
           </View>
-        </View>
-      ),
-    },
-    {
-      key: 'revisions',
-      title: 'Revision Activity',
-      render: () => (
-        <View style={styles.revRow} testID="context-revisions">
-          <View style={styles.revStat}>
-            <Text style={styles.revValue}>{revisions}</Text>
-            <Text style={styles.revLabel}>superseded</Text>
-          </View>
-          <Text style={styles.revHint}>
-            {revisions === 0
-              ? 'No revisions detected.'
-              : 'Per-sheet revision chain ships in Wave 6.5.'}
-          </Text>
         </View>
       ),
     },
@@ -158,6 +284,41 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.45)',
     letterSpacing: -0.05,
     paddingHorizontal: 4,
+  },
+  counterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.025)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  counterCell: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+  },
+  counterValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.95)',
+    letterSpacing: -0.6,
+    fontVariant: ['tabular-nums'],
+  },
+  counterLabel: {
+    fontSize: 8.5,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.55)',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  counterDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   discWrap: {
     flexDirection: 'row',
@@ -215,36 +376,5 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: 'rgba(255,255,255,0.50)',
     letterSpacing: -0.05,
-  },
-  revRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  revStat: {
-    alignItems: 'center',
-    minWidth: 40,
-  },
-  revValue: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.95)',
-    fontVariant: ['tabular-nums'],
-  },
-  revLabel: {
-    fontSize: 8.5,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.55)',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  revHint: {
-    flex: 1,
-    fontSize: 10.5,
-    color: 'rgba(255,255,255,0.50)',
-    letterSpacing: -0.05,
-    lineHeight: 14,
   },
 });

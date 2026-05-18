@@ -26,6 +26,12 @@ export interface BlueprintUploadSnapshot {
   uploadRatio: number;
   /** Epoch ms when the current busy run started; null when idle/done/error. */
   startedAtMs: number | null;
+  /**
+   * Wave 6.5 — Project ID once INGEST succeeds. Drives `useBlueprintProjectPoll`
+   * so the Tim Rail Context tab can fetch live sheets / counts / revision
+   * chain while SEE / REASON / PROCURE complete asynchronously.
+   */
+  projectId: string | null;
 }
 
 const INITIAL_STAGE: StageProgress = {
@@ -45,6 +51,7 @@ const INITIAL: BlueprintUploadSnapshot = {
   error: null,
   uploadRatio: 0,
   startedAtMs: null,
+  projectId: null,
 };
 
 let state: BlueprintUploadSnapshot = INITIAL;

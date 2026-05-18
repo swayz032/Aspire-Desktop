@@ -423,14 +423,19 @@ describe('Visuals Tab — Design Lock v1.0', () => {
   });
 
   describe('Lock #16: Plans & Photos tab uses shared shell (CanvasCardSwitcher + BottomChipStrip)', () => {
-    // Wave 6A (2026-05-17): Plans & Photos is the primary upload entry for
-    // the Blueprint Story Engine. It must use the shared canvas-card switcher
-    // shell so future waves (Scope, Takeoff) inherit the same geometry
-    // instead of re-implementing free-form layouts per tab.
+    // Wave 6A (2026-05-17) — Wave 6.5 (2026-05-18): Plans & Photos is the
+    // primary upload entry for the Blueprint Story Engine. It must use the
+    // shared canvas-card switcher shell so future waves (Scope, Takeoff)
+    // inherit the same geometry instead of re-implementing free-form
+    // layouts per tab. Wave 6.5 added the live thumbnail grid + revision
+    // chain UI driven by `useBlueprintProjectPoll`.
     const tabSrc = read(
       'components/service-hub/estimate-studio/plans-photos/PlansPhotosTab.tsx',
     );
     const pageSrc = read('app/service-hub/estimate-studio/plans-photos.tsx');
+    const gridSrc = read(
+      'components/service-hub/estimate-studio/plans-photos/SheetThumbnailGrid.tsx',
+    );
 
     it('uses <CanvasCardSwitcher /> for the main canvas region', () => {
       expect(tabSrc).toMatch(/CanvasCardSwitcher/);
@@ -452,11 +457,48 @@ describe('Visuals Tab — Design Lock v1.0', () => {
       expect(pageSrc).not.toMatch(/TabPlaceholder/);
     });
 
-    it('renders the Wave 6.5 coming-soon banner so reviewers know what is deferred', () => {
-      // The banner explains thumbnails + 5-stage progress land in Wave 6.5.
-      // The literal string must remain so the visible UX matches the contract.
-      expect(tabSrc).toMatch(/Wave 6\.5/);
-      expect(tabSrc).toMatch(/Wave 2\.5/);
+    // Wave 6.5 additions ---------------------------------------------------
+
+    it('renders <SheetThumbnailGrid /> for the populated Sheets card', () => {
+      expect(tabSrc).toMatch(/SheetThumbnailGrid/);
+      expect(tabSrc).toMatch(/<SheetThumbnailGrid\b/);
+    });
+
+    it('subscribes to live polled state via useBlueprintProjectPoll', () => {
+      expect(tabSrc).toMatch(/useBlueprintProjectPoll/);
+    });
+
+    it('grid host flexes + keeps a >= 320 minHeight floor (CLS=0 across viewports)', () => {
+      // Same intent as Locks #13/#14: the grid must never collapse and must
+      // not pin a fixed aspectRatio at the host level.
+      const hostMatch = gridSrc.match(/host:\s*\{[\s\S]*?\n\s{2}\}/);
+      expect(hostMatch).toBeTruthy();
+      expect(hostMatch![0]).toMatch(/\bflex:\s*1\b/);
+      expect(hostMatch![0]).not.toMatch(/\baspectRatio\s*:/);
+      const minH = hostMatch![0].match(/minHeight:\s*(\d+)/);
+      expect(minH).toBeTruthy();
+      expect(Number(minH![1])).toBeGreaterThanOrEqual(320);
+    });
+
+    it('thumbnail grid exposes a discipline filter chip strip', () => {
+      // The filter strip must include "All" plus the canonical AIA codes.
+      // Each chip is a Pressable whose testID interpolates `f.code`.
+      expect(gridSrc).toMatch(/discipline-filter-\$\{f\.code\}/);
+      // The canonical filter list must declare All + all 8 AIA codes.
+      const declMatch = gridSrc.match(/DISCIPLINE_FILTERS[\s\S]*?\];/);
+      expect(declMatch).toBeTruthy();
+      const decl = declMatch![0];
+      expect(decl).toMatch(/code:\s*'All'/);
+      for (const code of ['A', 'S', 'M', 'E', 'P', 'FP', 'C', 'L']) {
+        expect(decl).toMatch(new RegExp(`code:\\s*'${code}'`));
+      }
+    });
+
+    it('renders the CURRENT revision-chain pill on the active sheet', () => {
+      // The amber-gold CURRENT pill is the visual anchor for the revision
+      // timeline. Removing it = silent regression of the revision UX.
+      expect(gridSrc).toMatch(/CURRENT/);
+      expect(gridSrc).toMatch(/currentPill:/);
     });
   });
 
@@ -675,6 +717,106 @@ describe('Visuals Tab — Design Lock v1.0', () => {
       expect(src).toMatch(/Splitting the PDF/);
       expect(src).toMatch(/YOLOv11/);
       expect(src).toMatch(/Section 232/);
+    });
+  });
+
+  describe('Lock #22: Materials tab "From Blueprint" surface (Wave 5.1a-5)', () => {
+    // Wave 5.1a-5 (2026-05-18): the Materials tab gains a "From Blueprint"
+    // chip that lets the contractor pivot between manual search and Drew's
+    // PROCURE picks. The chip is project-gated (deny-by-default per Law #3 —
+    // when no blueprint_project_id exists, the surface is hidden entirely).
+    // The canvas card renders Drew's picks with Confirm · Override · Skip
+    // actions; Override opens a modal panel that calls the YELLOW override
+    // proxy. Tim Rail Context counters extend to include "materials" so the
+    // contractor sees PROCURE output land in real time.
+    const tabSrc = read(
+      'components/service-hub/estimate-studio/materials/MaterialsTab.tsx',
+    );
+    const cardSrc = read(
+      'components/service-hub/estimate-studio/materials/FromBlueprintCard.tsx',
+    );
+    const panelSrc = read(
+      'components/service-hub/estimate-studio/materials/MaterialOverridePanel.tsx',
+    );
+    const ctxSrc = read(
+      'components/service-hub/estimate-studio/tim-rail/PlansPhotosContextPayload.tsx',
+    );
+    const routesSrc = read('server/routes.ts');
+
+    it('From Blueprint chip is rendered ONLY when a blueprint project exists', () => {
+      // Project-gated: the chip strip JSX must be guarded by
+      // `blueprintProjectId ?` to enforce deny-by-default (Law #3).
+      expect(tabSrc).toMatch(/blueprintProjectId\s*\?/);
+      expect(tabSrc).toMatch(/testID="materials-source-chip-from-blueprint"/);
+    });
+
+    it('chip carries a count badge of Drew picks', () => {
+      expect(tabSrc).toMatch(/materials-source-chip-from-blueprint-badge/);
+      expect(tabSrc).toMatch(/fromBlueprintCount\s*>\s*0/);
+    });
+
+    it('toggling the From Blueprint chip mounts FromBlueprintCard on the canvas', () => {
+      // The active-chip state controls which canvas surface renders. When
+      // fromBlueprintActive AND a project exists, the FromBlueprintCard
+      // replaces the search canvas; manual-search branches are gated off.
+      expect(tabSrc).toMatch(/<FromBlueprintCard\b/);
+      expect(tabSrc).toMatch(/!fromBlueprintActive && !showEmptyState && mode === 'supplier'/);
+      expect(tabSrc).toMatch(/!fromBlueprintActive && !showEmptyState && mode === 'tool'/);
+    });
+
+    it('FromBlueprintCard exposes Confirm · Override · Skip actions per row', () => {
+      // The three per-row actions must be present as discrete pressables so
+      // contractors can act on Drew's picks without leaving the canvas.
+      expect(cardSrc).toMatch(/from-blueprint-confirm-/);
+      expect(cardSrc).toMatch(/from-blueprint-override-/);
+      expect(cardSrc).toMatch(/from-blueprint-skip-/);
+    });
+
+    it('FromBlueprintCard groups picks by category (deny-by-default category map)', () => {
+      // The five PROCURE categories MUST be enumerated explicitly. Adding a
+      // new category requires updating CATEGORY_LABEL + ICON in lockstep so
+      // the rendering never silently drops an unknown bucket.
+      expect(cardSrc).toMatch(/commodity:\s*['"]Commodity['"]/);
+      expect(cardSrc).toMatch(/commercial_plumbing:\s*['"]Commercial Plumbing['"]/);
+      expect(cardSrc).toMatch(/appliance_finish:\s*['"]Appliance & Finish['"]/);
+      expect(cardSrc).toMatch(/local_trade:\s*['"]Local Trade['"]/);
+      expect(cardSrc).toMatch(/specialty_hardware:\s*['"]Specialty Hardware['"]/);
+    });
+
+    it('Override panel mounts a Modal and presents a Confirm Override CTA', () => {
+      // The slide-in panel acts as the YELLOW UX gate (Law #4). It must use
+      // a Modal so the canvas behind dims, and the Confirm Override CTA is
+      // the only path that fires the mutation.
+      expect(panelSrc).toMatch(/<Modal\b/);
+      expect(panelSrc).toMatch(/material-override-confirm/);
+      expect(panelSrc).toMatch(/material-override-cancel/);
+      expect(panelSrc).toMatch(/Confirm override/);
+    });
+
+    it('Tim Rail counter strip now includes a "materials" cell', () => {
+      // The Live Counters strip gains a 4th cell so contractors see Drew's
+      // PROCURE output land in real time without leaving Plans & Photos.
+      expect(ctxSrc).toMatch(/testID="context-counter-materials"/);
+      expect(ctxSrc).toMatch(/useTakeoffMaterials/);
+    });
+
+    it('Express proxy registers the YELLOW material-override route', () => {
+      // The thin proxy is required so Drew's MATERIAL_OVERRIDE task can be
+      // invoked with a minted capability token (Law #5). Without this route
+      // the FE override panel would 404.
+      expect(routesSrc).toMatch(
+        /\/api\/v1\/blueprints\/projects\/:id\/materials\/:material_id\/override/,
+      );
+      expect(routesSrc).toMatch(/scope:\s*['"]blueprints:material_override['"]/);
+      expect(routesSrc).toMatch(/task:\s*['"]MATERIAL_OVERRIDE['"]/);
+    });
+
+    it('Express proxy registers the YELLOW material-skip route', () => {
+      expect(routesSrc).toMatch(
+        /\/api\/v1\/blueprints\/projects\/:id\/materials\/:material_id\/skip/,
+      );
+      expect(routesSrc).toMatch(/scope:\s*['"]blueprints:material_skip['"]/);
+      expect(routesSrc).toMatch(/task:\s*['"]MATERIAL_SKIP['"]/);
     });
   });
 });

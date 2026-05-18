@@ -1,51 +1,61 @@
 /**
- * PlansPhotosTab — Wave 6A.
+ * PlansPhotosTab — Wave 6.5.
  *
- * Owner of the Plans & Photos UX. Two states:
+ * Owner of the Plans & Photos UX. Three states:
  *
  *   Empty (no project yet):
  *     - Big <UploadDropZone /> hero takes the canvas
- *     - Bottom chip strip shows only "📤 Upload" enabled; the other chips
- *       are disabled placeholders for future views
+ *     - Bottom chip strip shows only "Upload" enabled
  *
- *   Populated (a project landed):
- *     - <CanvasCardSwitcher /> hosts the chip-selected card
- *     - Default view = "📑 All Sheets" (the SheetRoster)
- *     - Bottom chip strip switches between Upload / All Sheets /
- *       By Discipline / Revisions
+ *   Busy (upload in flight, no project_id yet):
+ *     - UploadDropZone shows the calm loading ring (DrewStageProgress lives
+ *       in the Tim Rail Context tab — Lock #15 LEFT INTACT)
  *
- * Wave 6A reality: thumbnails, polling, and per-sheet discipline tags
- * land in Wave 6.5. A wave-coming-soon banner makes this visible to
- * localhost reviewers (per Tonio's directive).
+ *   Populated (project_id available, polling started):
+ *     - CanvasCardSwitcher hosts the chip-selected card
+ *     - Default view = "All Sheets" -> <SheetThumbnailGrid /> driven by
+ *       `useBlueprintProjectPoll` so counts/thumbnails/revisions tick live
+ *     - Bottom chip strip wired to real polled counts; selecting a chip
+ *       swaps the canvas card with the 200ms cross-fade (CLS=0).
  *
- * Law #7: render layer only. All decisions happen in the hook.
+ * Wave 6.5 plan §1, §3, §4, §6 — see docs/plans/serene-seeking-hollerith.
+ *
+ * Law #7: render layer only. All polling decisions in the hook.
  */
 import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useBlueprintUpload } from '@/hooks/useBlueprintUpload';
+import { useBlueprintProjectPoll } from '@/hooks/useBlueprintProjectPoll';
 import { CanvasCardSwitcher } from '../shell/CanvasCardSwitcher';
 import { BottomChipStrip, type BottomChip } from '../shell/BottomChipStrip';
 import { UploadDropZone } from './UploadDropZone';
-import { SheetRoster } from './SheetRoster';
+import { SheetThumbnailGrid } from './SheetThumbnailGrid';
 import { UploadProgressInline } from './UploadProgressInline';
 import { getDisciplineStyle } from './disciplines';
 
 type CardKey = 'upload' | 'sheets' | 'disciplines' | 'revisions';
 
-const COMING_SOON_NOTE =
-  'Thumbnails + 5-stage progress land in Wave 6.5 (waiting on Wave 2.5 backend reads + Wave 3 SEE).';
-
 export function PlansPhotosTab(): React.ReactElement {
   const upload = useBlueprintUpload();
   const [activeCard, setActiveCard] = useState<CardKey>('upload');
 
-  const hasProject = upload.phase === 'success' && upload.response != null;
-  const sheetCount = upload.response?.ingest.sheet_count ?? 0;
-  const disciplineCounts = upload.response?.classify?.discipline_counts ?? {};
-  const revisions = upload.response?.classify?.revisions ?? 0;
-  const needsReview = upload.response?.classify?.needs_review_count ?? 0;
-  const sheetIds = upload.response?.ingest.sheet_ids ?? [];
+  // Wave 6.5: project_id is published into the upload store once INGEST
+  // returns. The poll hook then runs the live read loop against the
+  // backend's GET endpoints.
+  const projectId = upload.response?.ingest?.project_id ?? upload.response?.project_id ?? null;
+  const poll = useBlueprintProjectPoll(projectId);
+
+  const hasProject = projectId != null;
+  const liveSheetCount = poll.status?.sheet_count ?? poll.sheets.length;
+  const liveDisciplineCount = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of poll.sheets) {
+      if (s.discipline) set.add(s.discipline.toLowerCase());
+    }
+    return set.size;
+  }, [poll.sheets]);
+  const liveRevisionCount = poll.revisions.length;
 
   // Auto-jump to Sheets when an upload finishes (premium UX: don't make
   // the user click).
@@ -67,8 +77,8 @@ export function PlansPhotosTab(): React.ReactElement {
         key: 'sheets',
         icon: 'documents-outline',
         label: 'All Sheets',
-        stat: hasProject ? `${sheetCount} sheets` : 'Upload to enable',
-        badge: hasProject ? `${sheetCount}` : undefined,
+        stat: hasProject ? `${liveSheetCount} sheets` : 'Upload to enable',
+        badge: hasProject ? `${liveSheetCount}` : undefined,
         disabled: !hasProject,
       },
       {
@@ -76,19 +86,22 @@ export function PlansPhotosTab(): React.ReactElement {
         icon: 'color-palette-outline',
         label: 'By Discipline',
         stat: hasProject
-          ? `${Object.keys(disciplineCounts).length} tags`
+          ? `${liveDisciplineCount} tag${liveDisciplineCount === 1 ? '' : 's'}`
           : 'Upload to enable',
-        disabled: !hasProject || Object.keys(disciplineCounts).length === 0,
+        disabled: !hasProject || liveDisciplineCount === 0,
       },
       {
         key: 'revisions',
         icon: 'time-outline',
         label: 'Revisions',
-        stat: hasProject ? `${revisions} found` : 'Upload to enable',
+        stat: hasProject
+          ? `${liveRevisionCount} chain${liveRevisionCount === 1 ? '' : 's'}`
+          : 'Upload to enable',
+        badge: hasProject && liveRevisionCount > 0 ? `${liveRevisionCount}` : undefined,
         disabled: !hasProject,
       },
     ],
-    [hasProject, sheetCount, disciplineCounts, revisions],
+    [hasProject, liveSheetCount, liveDisciplineCount, liveRevisionCount],
   );
 
   const cards: Record<CardKey, React.ReactNode> = {
@@ -104,11 +117,12 @@ export function PlansPhotosTab(): React.ReactElement {
       />
     ),
     sheets: hasProject ? (
-      <SheetRoster
-        sheetIds={sheetIds}
-        disciplineCounts={disciplineCounts}
-        revisions={revisions}
-        needsReviewCount={needsReview}
+      <SheetThumbnailGrid
+        sheets={poll.sheets}
+        revisions={poll.revisions}
+        isLoading={poll.isLoading}
+        sheetCount={liveSheetCount}
+        testID="plans-photos-thumbnail-grid"
       />
     ) : (
       <EmptyCardPlaceholder
@@ -118,7 +132,7 @@ export function PlansPhotosTab(): React.ReactElement {
       />
     ),
     disciplines: hasProject ? (
-      <DisciplineBreakdownCard counts={disciplineCounts} />
+      <DisciplineBreakdownCard sheets={poll.sheets} />
     ) : (
       <EmptyCardPlaceholder
         icon="color-palette-outline"
@@ -127,10 +141,10 @@ export function PlansPhotosTab(): React.ReactElement {
       />
     ),
     revisions: hasProject ? (
-      <EmptyCardPlaceholder
-        icon="time-outline"
-        title={`${revisions} revision${revisions === 1 ? '' : 's'} detected`}
-        body="Full revision-chain UI (per-sheet supersedes + tooltips) ships in Wave 6.5."
+      <RevisionsListCard
+        chainCount={liveRevisionCount}
+        sheets={poll.sheets}
+        revisions={poll.revisions}
       />
     ) : (
       <EmptyCardPlaceholder
@@ -143,16 +157,10 @@ export function PlansPhotosTab(): React.ReactElement {
 
   return (
     <View style={styles.tab} testID="plans-photos-tab">
-      {/* Wave 6A coming-soon banner so localhost reviewers know what's deferred. */}
-      <View style={styles.banner} accessibilityRole="alert" testID="plans-photos-wave-banner">
-        <Ionicons name="information-circle-outline" size={13} color="#fbbf24" />
-        <Text style={styles.bannerText}>{COMING_SOON_NOTE}</Text>
-      </View>
-
       {/* Inline pipeline indicator — always visible so users see ingest → classify happen. */}
       {upload.phase !== 'idle' ? (
         <View style={styles.progressStrip}>
-          <UploadProgressInline stages={upload.stageProgress} layout="horizontal" />
+          <UploadProgressInline stages={poll.project?.stage_progress ?? upload.stageProgress} layout="horizontal" />
         </View>
       ) : null}
 
@@ -194,9 +202,25 @@ function EmptyCardPlaceholder({
   );
 }
 
-function DisciplineBreakdownCard({ counts }: { counts: Record<string, number> }): React.ReactElement {
-  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  if (entries.length === 0) {
+function DisciplineBreakdownCard({
+  sheets,
+}: {
+  sheets: ReadonlyArray<{ discipline: string | null; supersedes_id: string | null; id: string }>;
+}): React.ReactElement {
+  // Current-only counts derived from polled sheet list.
+  const counts = useMemo(() => {
+    const successorIds = new Set<string>();
+    for (const s of sheets) if (s.supersedes_id) successorIds.add(s.supersedes_id);
+    const map = new Map<string, number>();
+    for (const s of sheets) {
+      if (successorIds.has(s.id)) continue;
+      const k = s.discipline ? s.discipline.toLowerCase() : 'unclassified';
+      map.set(k, (map.get(k) ?? 0) + 1);
+    }
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+  }, [sheets]);
+
+  if (counts.length === 0) {
     return (
       <EmptyCardPlaceholder
         icon="color-palette-outline"
@@ -205,16 +229,16 @@ function DisciplineBreakdownCard({ counts }: { counts: Record<string, number> })
       />
     );
   }
-  const total = entries.reduce((sum, [, n]) => sum + n, 0);
+  const total = counts.reduce((sum, [, n]) => sum + n, 0);
   return (
     <View style={styles.discHost} testID="discipline-breakdown-card">
       <Text style={styles.discTitle}>Discipline Breakdown</Text>
       <Text style={styles.discSubtitle}>
-        {total} classified entr{total === 1 ? 'y' : 'ies'} across {entries.length} discipline
-        {entries.length === 1 ? '' : 's'}.
+        {total} classified sheet{total === 1 ? '' : 's'} across {counts.length} discipline
+        {counts.length === 1 ? '' : 's'}.
       </Text>
       <View style={styles.discList}>
-        {entries.map(([disc, count]) => {
+        {counts.map(([disc, count]) => {
           const style = getDisciplineStyle(disc);
           const pct = total > 0 ? (count / total) * 100 : 0;
           return (
@@ -248,29 +272,66 @@ function DisciplineBreakdownCard({ counts }: { counts: Record<string, number> })
   );
 }
 
+function RevisionsListCard({
+  chainCount,
+  sheets,
+  revisions,
+}: {
+  chainCount: number;
+  sheets: ReadonlyArray<{ discipline: string | null; supersedes_id: string | null; id: string; sheet_number: string | null }>;
+  revisions: ReadonlyArray<{ currentSheetId: string; sheets: ReadonlyArray<{ id: string; sheet_number: string | null; revision: number | null }> }>;
+}): React.ReactElement {
+  if (chainCount === 0) {
+    return (
+      <EmptyCardPlaceholder
+        icon="time-outline"
+        title="No revisions detected"
+        body="When Drew finds a sheet that supersedes another, the chain will appear here."
+      />
+    );
+  }
+  return (
+    <View style={styles.discHost} testID="revisions-list-card">
+      <Text style={styles.discTitle}>Revision Chains</Text>
+      <Text style={styles.discSubtitle}>
+        {chainCount} chain{chainCount === 1 ? '' : 's'} found.{' '}
+        Tap a sheet in the All Sheets grid to expand its chain.
+      </Text>
+      <View style={styles.revList}>
+        {revisions.map((chain) => {
+          const current = chain.sheets[chain.sheets.length - 1];
+          const root = chain.sheets[0];
+          const currentSheetMeta = sheets.find((s) => s.id === chain.currentSheetId);
+          return (
+            <View key={chain.currentSheetId} style={styles.revListRow}>
+              <Ionicons name="git-branch-outline" size={14} color="#fbbf24" />
+              <View style={styles.revListBody}>
+                <Text style={styles.revListSheetNum}>
+                  {currentSheetMeta?.sheet_number ?? current.sheet_number ?? 'Sheet'}
+                </Text>
+                <Text style={styles.revListMeta}>
+                  {root.sheet_number ?? 'original'} → {current.sheet_number ?? 'current'}{' · '}
+                  {chain.sheets.length} versions
+                </Text>
+              </View>
+              <View style={styles.revListPill}>
+                <Text style={styles.revListPillText}>
+                  REV {current.revision ?? chain.sheets.length - 1}
+                </Text>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   tab: {
     flex: 1,
     padding: 18,
     gap: 12,
-  },
-  banner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(251,191,36,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(251,191,36,0.22)',
-  },
-  bannerText: {
-    flex: 1,
-    fontSize: 10.5,
-    color: 'rgba(251,191,36,0.85)',
-    letterSpacing: -0.05,
-    lineHeight: 14,
   },
   progressStrip: {
     paddingHorizontal: 2,
@@ -376,5 +437,47 @@ const styles = StyleSheet.create({
   discRowFill: {
     height: '100%',
     borderRadius: 3,
+  },
+
+  revList: {
+    gap: 8,
+  },
+  revListRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 9,
+    backgroundColor: 'rgba(251,191,36,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.20)',
+  },
+  revListBody: {
+    flex: 1,
+    gap: 2,
+  },
+  revListSheetNum: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.95)',
+  },
+  revListMeta: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.55)',
+  },
+  revListPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    backgroundColor: 'rgba(251,191,36,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.55)',
+  },
+  revListPillText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: '#fbbf24',
+    letterSpacing: 0.6,
   },
 });

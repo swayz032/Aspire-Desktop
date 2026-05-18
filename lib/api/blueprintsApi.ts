@@ -121,26 +121,69 @@ export interface UploadBlueprintResponse {
   stage_progress: StageProgress;
 }
 
-/** Wave 6.5 — getProject() response (declared early for type-stability). */
+/** Wave 6.5 — getProject() response (matches backend `BlueprintProjectRead`). */
 export interface BlueprintProject {
-  project_id: string;
-  suite_id: string;
-  office_id: string;
-  filename: string;
-  uploaded_at: string;
-  sheet_count: number;
+  /** Project UUID. */
+  id: string;
+  /** Optional canonical address Drew extracted from the title block. */
+  address: string | null;
+  /** ISO 8601. */
+  created_at: string;
+  created_by: string | null;
   stage_progress: StageProgress;
+  sheet_count: number;
 }
 
-/** Wave 6.5 — listSheets() response item. */
+/**
+ * Wave 6.5 — listSheets() response item (matches backend `BlueprintSheetRead`).
+ *
+ * Use this shape in NEW code. Legacy `BlueprintSheet` (defined below) is kept
+ * for Wave 8 Takeoff components that already wire `sheet_id` / `sheet_number`
+ * fields — those will be refactored to `BlueprintSheetRead` in a follow-up.
+ */
+export interface BlueprintSheetRead {
+  id: string;
+  sheet_number: string | null;
+  discipline: string | null;
+  scale: string | null;
+  /** Integer revision. 0/null = original; 1+ = revised. */
+  revision: number | null;
+  /** UUID of the sheet THIS one supersedes (i.e., the predecessor). null = current. */
+  supersedes_id: string | null;
+  thumbnail_url: string | null;
+  seal_detected: boolean;
+  created_at: string;
+}
+
+/**
+ * Legacy listSheets() shape — Wave 8 Takeoff still imports this. New code
+ * must use `BlueprintSheetRead`. Kept as-is to avoid breaking Takeoff
+ * components that wire `.sheet_id` / `.sheet_number` directly.
+ */
 export interface BlueprintSheet {
   sheet_id: string;
   sheet_number: string;
   discipline: string | null;
-  /** Higher = newer; superseded sheets have `superseded_by_sheet_id` set. */
   revision: number;
   superseded_by_sheet_id?: string | null;
   thumbnail_url?: string | null;
+}
+
+/** Wave 6.5 — getProjectStatus() response (matches backend `BlueprintProjectStatus`). */
+export interface BlueprintProjectStatusResponse {
+  project_id: string;
+  stage_progress: StageProgress;
+  updated_at: string;
+  sheet_count: number;
+  symbol_count: number;
+  missing_input_count: number;
+}
+
+export interface ListSheetsOptions {
+  /** When false, includes superseded sheets so the revision chain can be derived. */
+  activeOnly?: boolean;
+  /** Filter to one discipline code (e.g. "architectural"). */
+  discipline?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -396,29 +439,39 @@ export async function getProject(
   );
 }
 
-/** List sheets for a project (with thumbnails + revision chain). */
+/** List sheets for a project (with thumbnails + revision chain).
+ *  Pass `activeOnly: false` to include superseded sheets — required to render
+ *  the revision-chain timeline in `<SheetThumbnailGrid />`. */
 export async function listSheets(
   authenticatedFetch: FetchFn,
   projectId: string,
   officeId: string,
+  options: ListSheetsOptions = {},
   signal?: AbortSignal,
-): Promise<BlueprintSheet[]> {
-  return _getJson<BlueprintSheet[]>(
+): Promise<BlueprintSheetRead[]> {
+  const params = new URLSearchParams();
+  if (options.activeOnly === false) params.set('active_only', 'false');
+  if (options.activeOnly === true) params.set('active_only', 'true');
+  if (options.discipline) params.set('discipline', options.discipline);
+  const qs = params.toString();
+  return _getJson<BlueprintSheetRead[]>(
     authenticatedFetch,
-    `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}/sheets`,
+    `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}/sheets${
+      qs ? `?${qs}` : ''
+    }`,
     officeId,
     signal,
   );
 }
 
-/** Poll project pipeline stage progress. */
+/** Poll project pipeline stage progress + lightweight counts. */
 export async function getProjectStatus(
   authenticatedFetch: FetchFn,
   projectId: string,
   officeId: string,
   signal?: AbortSignal,
-): Promise<{ stage_progress: StageProgress }> {
-  return _getJson<{ stage_progress: StageProgress }>(
+): Promise<BlueprintProjectStatusResponse> {
+  return _getJson<BlueprintProjectStatusResponse>(
     authenticatedFetch,
     `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}/status`,
     officeId,
@@ -734,6 +787,143 @@ export async function getTakeoffMaterials(
   return {
     materials: Array.isArray(data.materials) ? data.materials : [],
     endpointMissing: false,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Wave 5.1a-5 — Material override + skip (YELLOW tier)
+// ---------------------------------------------------------------------------
+
+export type MaterialOverrideReason =
+  | 'spec_mismatch'
+  | 'vendor_pref'
+  | 'price'
+  | 'availability'
+  | 'other';
+
+export interface MaterialOverridePayload {
+  label?: string;
+  quantity?: number;
+  unit?: string;
+  supplier_name?: string;
+  supplier_id?: string;
+  price_usd?: number;
+  notes?: string;
+}
+
+export interface MaterialOverrideResult {
+  success: boolean;
+  material_id: string;
+  override_id?: string;
+  receipt_id?: string;
+  correlation_id?: string;
+}
+
+/** Wave 5.1a-5 — override a Drew-sourced material pick. YELLOW tier: the
+ *  Express proxy mints a capability token with scope=`blueprints:material_override`
+ *  (Law #5). Caller MUST have shown a confirmation gesture BEFORE invoking. */
+export async function overrideMaterial(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  materialId: string,
+  override: MaterialOverridePayload,
+  reason: MaterialOverrideReason,
+  officeId: string,
+  signal?: AbortSignal,
+): Promise<MaterialOverrideResult> {
+  if (!projectId || !materialId) {
+    throw new BlueprintsApiError(400, 'INVALID_PARAMS', 'projectId and materialId are required');
+  }
+  const filtered: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(override)) {
+    if (v != null && v !== '') filtered[k] = v;
+  }
+  if (Object.keys(filtered).length === 0) {
+    throw new BlueprintsApiError(
+      400,
+      'EMPTY_OVERRIDE',
+      'override must include at least one non-empty field',
+    );
+  }
+  const url = `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(
+    projectId,
+  )}/materials/${encodeURIComponent(materialId)}/override`;
+  const resp = await authenticatedFetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Office-Id': officeId,
+    },
+    body: JSON.stringify({ override: filtered, reason }),
+    signal,
+  });
+  if (!resp.ok) {
+    let code = 'OVERRIDE_MATERIAL_FAILED';
+    let message = `overrideMaterial failed (${resp.status})`;
+    let correlationId: string | undefined;
+    try {
+      const parsed = await resp.json();
+      code = parsed?.error ?? parsed?.code ?? code;
+      message = parsed?.message ?? parsed?.detail?.message ?? message;
+      correlationId = parsed?.correlation_id;
+    } catch {
+      /* non-JSON */
+    }
+    throw new BlueprintsApiError(resp.status, code, message, correlationId);
+  }
+  const data = (await resp.json()) as Partial<MaterialOverrideResult>;
+  return {
+    success: data.success ?? true,
+    material_id: materialId,
+    override_id: data.override_id,
+    receipt_id: data.receipt_id,
+    correlation_id: data.correlation_id,
+  };
+}
+
+/** Wave 5.1a-5 — skip a Drew-sourced material pick (won't flow to bundle). */
+export async function skipMaterial(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  materialId: string,
+  officeId: string,
+  reason: string = 'user_skipped',
+  signal?: AbortSignal,
+): Promise<{ success: boolean; material_id: string; correlation_id?: string }> {
+  if (!projectId || !materialId) {
+    throw new BlueprintsApiError(400, 'INVALID_PARAMS', 'projectId and materialId are required');
+  }
+  const url = `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(
+    projectId,
+  )}/materials/${encodeURIComponent(materialId)}/skip`;
+  const resp = await authenticatedFetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Office-Id': officeId,
+    },
+    body: JSON.stringify({ reason }),
+    signal,
+  });
+  if (!resp.ok) {
+    let code = 'SKIP_MATERIAL_FAILED';
+    let message = `skipMaterial failed (${resp.status})`;
+    let correlationId: string | undefined;
+    try {
+      const parsed = await resp.json();
+      code = parsed?.error ?? parsed?.code ?? code;
+      message = parsed?.message ?? message;
+      correlationId = parsed?.correlation_id;
+    } catch {
+      /* non-JSON */
+    }
+    throw new BlueprintsApiError(resp.status, code, message, correlationId);
+  }
+  const data = (await resp.json()) as { success?: boolean; correlation_id?: string };
+  return {
+    success: data.success ?? true,
+    material_id: materialId,
+    correlation_id: data.correlation_id,
   };
 }
 

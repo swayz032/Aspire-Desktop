@@ -9974,7 +9974,8 @@ router.post(
     });
 
     const ingestController = new AbortController();
-    const ingestTimer = setTimeout(() => ingestController.abort(), 120_000);
+    // Bumped to 5 min — large PDFs (>30 pages) need 90-180s for PyMuPDF split + OCR.
+    const ingestTimer = setTimeout(() => ingestController.abort(), 300_000);
     let ingestResult: any = null;
     let ingestStatus = 0;
     try {
@@ -10521,6 +10522,191 @@ router.post(
         correlation_id: correlationId,
       });
     }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Wave 6.5 — Blueprint read proxies (GREEN tier — no capability token)
+// ---------------------------------------------------------------------------
+// Three same-origin GET proxies powering the live polling loop in
+// `useBlueprintProjectPoll`:
+//
+//   GET /api/v1/blueprints/projects/:id           -> project + stage_progress + sheet_count
+//   GET /api/v1/blueprints/projects/:id/sheets    -> sheets (full chain when active_only=false)
+//   GET /api/v1/blueprints/projects/:id/status    -> lightweight pipeline status for polling
+//
+// All three are read-side (GREEN tier — Law #4). No capability token minted.
+// `proxyForward()` still enforces JWT auth + scopes suite_id from the token.
+// Backend route auto-enforces suite_id filter (Law #6) on every query.
+// The orchestrator filters `active_only` as a query string passthrough.
+// ---------------------------------------------------------------------------
+
+router.get('/api/v1/blueprints/projects/:id', async (req: Request, res: Response) => {
+  const projectId = String(req.params.id ?? '').trim();
+  if (!projectId) {
+    res.status(400).json({ error: 'INVALID_PROJECT_ID', message: 'project id is required' });
+    return;
+  }
+  await proxyForward({
+    orchestratorPath: `/v1/blueprints/projects/${encodeURIComponent(projectId)}`,
+    method: 'GET',
+    logTag: 'BlueprintProjectGet',
+    timeoutMs: 5_000,
+    req,
+    res,
+  });
+});
+
+router.get('/api/v1/blueprints/projects/:id/sheets', async (req: Request, res: Response) => {
+  const projectId = String(req.params.id ?? '').trim();
+  if (!projectId) {
+    res.status(400).json({ error: 'INVALID_PROJECT_ID', message: 'project id is required' });
+    return;
+  }
+  // Pass through `active_only` + `discipline` query strings verbatim.
+  const params = new URLSearchParams();
+  const activeOnly = req.query.active_only;
+  if (typeof activeOnly === 'string' && activeOnly.length > 0) {
+    params.set('active_only', activeOnly === 'true' ? 'true' : 'false');
+  }
+  const discipline = req.query.discipline;
+  if (typeof discipline === 'string' && discipline.length > 0 && discipline.length < 32) {
+    params.set('discipline', discipline);
+  }
+  const qs = params.toString();
+  await proxyForward({
+    orchestratorPath: `/v1/blueprints/projects/${encodeURIComponent(projectId)}/sheets${
+      qs ? `?${qs}` : ''
+    }`,
+    method: 'GET',
+    logTag: 'BlueprintSheetsList',
+    timeoutMs: 5_000,
+    req,
+    res,
+  });
+});
+
+router.get('/api/v1/blueprints/projects/:id/status', async (req: Request, res: Response) => {
+  const projectId = String(req.params.id ?? '').trim();
+  if (!projectId) {
+    res.status(400).json({ error: 'INVALID_PROJECT_ID', message: 'project id is required' });
+    return;
+  }
+  await proxyForward({
+    orchestratorPath: `/v1/blueprints/projects/${encodeURIComponent(projectId)}/status`,
+    method: 'GET',
+    logTag: 'BlueprintProjectStatus',
+    timeoutMs: 5_000,
+    req,
+    res,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Wave 5.1a-5 — POST /api/v1/blueprints/projects/:id/materials/:mid/override
+// ---------------------------------------------------------------------------
+// Body: { override: { label?, quantity?, unit?, supplier_name?, supplier_id?,
+//                     price_usd?, notes? }, reason?: 'spec_mismatch' | 'vendor_pref'
+//                     | 'price' | 'availability' | 'other' }
+//
+// Mints a YELLOW capability token with scope `blueprints:material_override`
+// (Law #5) and forwards to the Python orchestrator via /v1/agents/invoke with
+// task=MATERIAL_OVERRIDE. Drew rewrites the material_pick memory entry +
+// emits a blueprint_receipt (Law #2). Caller MUST present a confirmation
+// gesture (clicking "Confirm Override" in the side panel) BEFORE invoking.
+// ---------------------------------------------------------------------------
+router.post(
+  '/api/v1/blueprints/projects/:id/materials/:material_id/override',
+  express.json({ limit: '64kb' }),
+  async (req: Request, res: Response) => {
+    const projectId = String(req.params.id ?? '').trim();
+    const materialId = String(req.params.material_id ?? '').trim();
+    if (!projectId || !materialId) {
+      res.status(400).json({
+        error: 'INVALID_PARAMS',
+        message: 'project_id and material_id are required',
+      });
+      return;
+    }
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const override = (body.override ?? {}) as Record<string, unknown>;
+    if (!override || typeof override !== 'object' || Array.isArray(override)) {
+      res.status(400).json({
+        error: 'INVALID_OVERRIDE',
+        message: 'override must be an object with at least one field',
+      });
+      return;
+    }
+    // Reject empty overrides (no field changes) — would be a no-op receipt.
+    const overrideKeys = Object.keys(override).filter(
+      (k) => override[k] != null && override[k] !== '',
+    );
+    if (overrideKeys.length === 0) {
+      res.status(400).json({
+        error: 'EMPTY_OVERRIDE',
+        message: 'override must include at least one non-empty field',
+      });
+      return;
+    }
+
+    await proxyForward({
+      orchestratorPath: '/v1/agents/invoke',
+      method: 'POST',
+      scope: 'blueprints:material_override',
+      logTag: 'BlueprintsMaterialOverride',
+      timeoutMs: 15_000,
+      body: {
+        agent: 'drew',
+        task: 'MATERIAL_OVERRIDE',
+        project_id: projectId,
+        material_id: materialId,
+        override,
+        reason: typeof body.reason === 'string' ? body.reason : 'other',
+      },
+      req,
+      res,
+    });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Wave 5.1a-5 — POST /api/v1/blueprints/projects/:id/materials/:mid/skip
+// ---------------------------------------------------------------------------
+// Marks a Drew-sourced material as user-skipped (won't propagate to bundle /
+// estimate). Capability scope `blueprints:material_skip` (YELLOW — still a
+// state mutation that affects downstream invoices).
+// ---------------------------------------------------------------------------
+router.post(
+  '/api/v1/blueprints/projects/:id/materials/:material_id/skip',
+  express.json({ limit: '8kb' }),
+  async (req: Request, res: Response) => {
+    const projectId = String(req.params.id ?? '').trim();
+    const materialId = String(req.params.material_id ?? '').trim();
+    if (!projectId || !materialId) {
+      res.status(400).json({
+        error: 'INVALID_PARAMS',
+        message: 'project_id and material_id are required',
+      });
+      return;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    await proxyForward({
+      orchestratorPath: '/v1/agents/invoke',
+      method: 'POST',
+      scope: 'blueprints:material_skip',
+      logTag: 'BlueprintsMaterialSkip',
+      timeoutMs: 10_000,
+      body: {
+        agent: 'drew',
+        task: 'MATERIAL_SKIP',
+        project_id: projectId,
+        material_id: materialId,
+        reason: typeof body.reason === 'string' ? body.reason : 'user_skipped',
+      },
+      req,
+      res,
+    });
   },
 );
 

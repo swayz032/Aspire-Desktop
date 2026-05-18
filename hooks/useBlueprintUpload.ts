@@ -162,6 +162,10 @@ export function useBlueprintUpload(): UseBlueprintUploadResult {
   // Publish state changes to the module-level store so the Tim Rail Context
   // tab can observe them without a provider.
   useEffect(() => {
+    // project_id appears on the response as soon as INGEST returns 'ok' or
+    // 'dedup'; fall back to the top-level project_id the proxy echoes.
+    const projectId =
+      response?.ingest?.project_id ?? response?.project_id ?? null;
     setBlueprintUpload({
       phase,
       filename,
@@ -171,6 +175,7 @@ export function useBlueprintUpload(): UseBlueprintUploadResult {
       uploadedAt: phase === 'success' ? Date.now() : null,
       uploadRatio: progress.ratio,
       startedAtMs,
+      projectId,
     });
   }, [phase, filename, response, stageProgress, error, progress.ratio, startedAtMs]);
 
