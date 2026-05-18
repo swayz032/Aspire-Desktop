@@ -120,7 +120,8 @@ export function PlansPhotosTab(): React.ReactElement {
       <SheetThumbnailGrid
         sheets={poll.sheets}
         revisions={poll.revisions}
-        isLoading={poll.isLoading}
+        isLoading={poll.isFirstLoad}
+        stageProgress={poll.stageProgress}
         sheetCount={liveSheetCount}
         testID="plans-photos-thumbnail-grid"
       />

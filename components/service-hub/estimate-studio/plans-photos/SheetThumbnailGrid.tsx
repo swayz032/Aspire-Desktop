@@ -37,7 +37,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import type { BlueprintSheetRead } from '@/lib/api/blueprintsApi';
+import type { BlueprintSheetRead, StageProgress } from '@/lib/api/blueprintsApi';
 import type { RevisionChain } from '@/hooks/useBlueprintProjectPoll';
 import { getDisciplineStyle } from './disciplines';
 
@@ -345,8 +345,19 @@ export interface SheetThumbnailGridProps {
   sheets: BlueprintSheetRead[];
   /** Derived revision chains (one per current sheet that has predecessors). */
   revisions: RevisionChain[];
-  /** True while the first poll is still in flight and we have no data yet. */
+  /**
+   * True while the FIRST poll is still in flight and we have no data yet
+   * (sheets === undefined from the hook, rendered here as []).
+   * Drives shimmer display.  Must NOT be set to true between polls once the
+   * first response has been received (pass `false` after first successful fetch).
+   */
   isLoading: boolean;
+  /**
+   * Current pipeline stage progress.  Used to decide whether an empty sheets
+   * array means "INGEST is still running" (show shimmer) or "INGEST completed
+   * with no results" (show empty state).
+   */
+  stageProgress: StageProgress;
   /** Total sheet count for the stat row (may include yet-unrendered sheets). */
   sheetCount?: number;
   testID?: string;
@@ -356,6 +367,7 @@ export function SheetThumbnailGrid({
   sheets,
   revisions,
   isLoading,
+  stageProgress,
   sheetCount,
   testID,
 }: SheetThumbnailGridProps): React.ReactElement {
@@ -407,8 +419,23 @@ export function SheetThumbnailGrid({
     return present.size;
   }, [currentSheets]);
 
-  // Loading: no sheets yet, but a fetch is in flight.
-  if (isLoading && sheets.length === 0) {
+  // Determine whether INGEST has reached a terminal state.
+  // "done" → sheets were produced (or genuinely 0 sheets); show empty state.
+  // "failed" → pipeline failed; show empty state with failure message.
+  // Anything else (not_started, in_progress, pending, undefined) → pipeline
+  // is still running; keep the shimmer so the UI never flickers to empty state
+  // while Drew is still working.
+  const ingestState: string = (stageProgress as Record<string, string>).ingest ?? 'pending';
+  const ingestTerminal = ingestState === 'done' || ingestState === 'failed';
+
+  // Shimmer conditions:
+  //   1. First load — isLoading=true and we have zero sheets (undefined→[]).
+  //   2. Mid-pipeline — ingest not yet terminal and we still have zero sheets.
+  //      This prevents the empty-state flash between polls while INGEST runs.
+  const showShimmer =
+    currentSheets.length === 0 && (isLoading || !ingestTerminal);
+
+  if (showShimmer) {
     return (
       <View style={styles.host} testID={testID ?? 'sheet-thumb-grid'}>
         <View style={styles.statRow} accessibilityRole="summary">
@@ -434,10 +461,15 @@ export function SheetThumbnailGrid({
     );
   }
 
+  // Empty state: ingest has terminated and we genuinely have no sheets.
   if (currentSheets.length === 0) {
+    const emptyMessage =
+      ingestState === 'failed'
+        ? 'INGEST failed. Re-upload the blueprint to try again.'
+        : 'Drew processed this blueprint but found no sheets.';
     return (
       <View style={styles.host} testID={testID ?? 'sheet-thumb-grid'}>
-        <EmptyState message="Drew hasn't classified any sheets yet. Hang tight — INGEST is running." />
+        <EmptyState message={emptyMessage} />
       </View>
     );
   }

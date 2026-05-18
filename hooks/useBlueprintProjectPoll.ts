@@ -66,6 +66,12 @@ export interface UseBlueprintProjectPollResult {
   status: BlueprintProjectStatusResponse | null;
   /** True while at least one fetch is in flight. */
   isLoading: boolean;
+  /**
+   * True until the first successful poll response is received for the current
+   * projectId.  Pass this (not `isLoading`) to SheetThumbnailGrid.isLoading so
+   * the shimmer only renders on initial mount, never between subsequent polls.
+   */
+  isFirstLoad: boolean;
   /** True while the periodic timer is active. */
   isPolling: boolean;
   error: { code: string; message: string } | null;
@@ -182,6 +188,11 @@ export function useBlueprintProjectPoll(
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isPolling, setIsPolling] = useState<boolean>(false);
+  // True until the very first successful poll response is received for the
+  // current projectId.  Resets to true whenever projectId changes.  Controls
+  // whether SheetThumbnailGrid renders the shimmer (first load) vs. retaining
+  // the last-known data between subsequent polls.
+  const [isFirstLoad, setIsFirstLoad] = useState<boolean>(true);
 
   const abortRef = useRef<AbortController | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -221,6 +232,8 @@ export function useBlueprintProjectPoll(
     setError(null);
     setIsLoading(false);
     setIsPolling(false);
+    // Mark as first load so shimmer shows immediately for the new project.
+    setIsFirstLoad(true);
   }, [projectId]);
 
   // Main fetch loop.
@@ -251,9 +264,20 @@ export function useBlueprintProjectPoll(
         ]);
         if (cancelled || !mountedRef.current) return;
         setProject(proj);
-        setSheets(sheetList);
+        // Only update sheets when the new list is non-empty, OR when the
+        // pipeline has reached a terminal ingest state.  This prevents the
+        // empty-array flash that occurs when a poll returns [] mid-pipeline
+        // (network latency, race with background task) — the previous non-empty
+        // list is retained until INGEST finishes or real sheets arrive.
+        const newIngestState: string =
+          (proj?.stage_progress as Record<string, string> | undefined)?.ingest ?? 'pending';
+        const newIngestTerminal = newIngestState === 'done' || newIngestState === 'failed';
+        if (sheetList.length > 0 || newIngestTerminal) {
+          setSheets(sheetList);
+        }
         setStatusResp(stat);
         setError(null);
+        setIsFirstLoad(false);
       } catch (err) {
         if (cancelled || !mountedRef.current) return;
         if (controller.signal.aborted) return;
@@ -331,6 +355,7 @@ export function useBlueprintProjectPoll(
     stageProgress,
     status: statusResp,
     isLoading,
+    isFirstLoad,
     isPolling,
     error,
     refresh,
