@@ -219,7 +219,19 @@ function apiRowToAuthorityItem(r: Record<string, unknown>): AuthorityItem {
     draftSummary,
     pandadocDocumentId: (r.pandadocDocumentId as string) || undefined,
     hostedInvoiceUrl: (r.hostedInvoiceUrl as string) || undefined,
-    invoicePdfUrl: (r.invoicePdfUrl as string) || undefined,
+    // Derive the same-origin PDF proxy URL when the API returned a Stripe
+    // invoice id. Stripe's hosted_invoice_url and invoice_pdf both set
+    // X-Frame-Options: DENY, so we MUST iframe the proxy at
+    // /api/stripe/invoices/{id}/pdf which re-serves the PDF with a CSP
+    // frame-ancestors that includes both aspireos.app and www.aspireos.app.
+    // This derivation MUST stay — without it the drawer falls back to
+    // hostedInvoiceUrl and the iframe shows "invoice.stripe.com refused to
+    // connect" (production 2026-05-18 17:21).
+    invoicePdfUrl: r.invoicePdfUrl
+      ? (r.invoicePdfUrl as string)
+      : (r.stripeInvoiceId
+          ? `/api/stripe/invoices/${encodeURIComponent(r.stripeInvoiceId as string)}/pdf`
+          : undefined),
     documentPreview,
   };
 }
