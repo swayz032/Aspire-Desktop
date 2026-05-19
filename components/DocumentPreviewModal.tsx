@@ -679,60 +679,33 @@ function DocumentPreviewModalInner({ visible, onClose, type, documentName, panda
                     );
                   }
                   if (stripePdfBlobUrl) {
-                    // <object> instead of <iframe>. The iframe approach kept
-                    // emitting CSP "Framing ''" violations on Chrome even when
-                    // the element was conditionally rendered with a real blob
-                    // URL (likely React-DOM reconciliation race under
-                    // StrictMode where the iframe element flashes empty src
-                    // between renders). <object data=... type="application/pdf">
-                    // goes through object-src CSP (now: 'self' blob:) instead
-                    // of frame-src, uses Chrome's native PDF plugin directly,
-                    // and never produces an empty-src state. key={blobUrl}
-                    // forces a clean unmount/remount on URL swap.
+                    // <iframe> with the blob URL. We previously tried <object
+                    // type="application/pdf"> after seeing "Framing ''" CSP
+                    // errors, but Chrome's PDFium viewer renders application/pdf
+                    // only via <iframe> and direct navigation — <object> and
+                    // <embed> fall through to the fallback children for blob:
+                    // URLs (confirmed in prod 2026-05-19 bundle 2e4fe9d2).
+                    //
+                    // CSP frame-src already includes 'blob:' (server/index.ts).
+                    // The empty-src race that produced the original "Framing ''"
+                    // turned out to be from another iframe component on the
+                    // page (AvaDeskPanel's Anam frame, fixed in e415424),
+                    // not this modal — confirmed by absence of CSP errors in
+                    // the <object> deploy (bundle 2e4fe9d2).
+                    //
+                    // key={blobUrl} forces a clean unmount/remount on URL swap.
                     return (
-                      <object
+                      <iframe
                         key={stripePdfBlobUrl}
-                        data={stripePdfBlobUrl}
-                        type="application/pdf"
-                        aria-label={documentName || 'Invoice PDF Preview'}
+                        src={stripePdfBlobUrl}
+                        title={documentName || 'Invoice PDF Preview'}
                         style={{
                           width: '100%',
                           height: '100%',
                           border: 'none',
                           backgroundColor: '#ffffff',
                         }}
-                      >
-                        {/* Fallback shown only if the browser cannot render
-                            application/pdf inline (rare on desktop). */}
-                        <div style={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: 12,
-                          padding: 24,
-                          height: '100%',
-                          color: '#6e6e73',
-                          fontFamily: 'inherit',
-                        }}>
-                          <span>Your browser cannot display this PDF inline.</span>
-                          <a
-                            href={stripePdfBlobUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                              padding: '10px 18px',
-                              borderRadius: 10,
-                              backgroundColor: '#3B82F6',
-                              color: '#ffffff',
-                              fontWeight: 600,
-                              textDecoration: 'none',
-                            }}
-                          >
-                            Open invoice PDF
-                          </a>
-                        </div>
-                      </object>
+                      />
                     );
                   }
                   return null;
