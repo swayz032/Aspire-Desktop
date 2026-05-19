@@ -551,7 +551,12 @@ app.use(helmet({
         "wss://*.twilio.com",
       ],
       mediaSrc: ["'self'", "data:", "blob:", "https://zoom.us", "https://*.zoom.us", "https://storage.googleapis.com"],
-      frameSrc: ["'self'", "https://*.pandadoc.com", "https://*.stripe.com", "https://*.plaid.com", "https://zoom.us", "https://*.zoom.us"],
+      // `blob:` required for inline PDF preview. The Stripe-invoice modal
+      // fetches the PDF via authenticated fetch, builds a same-origin blob:
+      // URL, and iframes it — without `blob:` in frame-src, helmet's CSP
+      // blocks the embed with "Framing 'blob:...' violates frame-src" even
+      // though the blob is same-origin. See DocumentPreviewModal.tsx.
+      frameSrc: ["'self'", "blob:", "https://*.pandadoc.com", "https://*.stripe.com", "https://*.plaid.com", "https://zoom.us", "https://*.zoom.us"],
       workerSrc: ["'self'", "blob:", "https://source.zoom.us", "https://cdn.jsdelivr.net"],
       fontSrc: ["'self'", "data:", "https://cdn.jsdelivr.net", "https://unpkg.com", "https://source.zoom.us"],
       objectSrc: ["'none'"],
