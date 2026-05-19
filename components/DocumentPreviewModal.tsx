@@ -387,6 +387,61 @@ function DocumentPreviewModalInner({ visible, onClose, type, documentName, panda
   const [pdSessionUrl, setPdSessionUrl] = useState<string | null>(null);
   const [pdError, setPdError] = useState<string | null>(null);
 
+  // Authenticated PDF blob state for Stripe-proxy URLs. iframe loads do NOT
+  // send custom Authorization headers (only cookies), so directly setting
+  // src="/api/stripe/invoices/in_xxx/pdf" 401s because our auth middleware
+  // expects a Bearer JWT. Fix: fetch the PDF here with the JWT in headers,
+  // turn the response into a same-origin blob: URL, iframe THAT instead.
+  // Blob URLs require no auth and are exempt from CSP frame-ancestors.
+  const [stripePdfBlobUrl, setStripePdfBlobUrl] = useState<string | null>(null);
+  const [stripePdfLoading, setStripePdfLoading] = useState(false);
+  const [stripePdfError, setStripePdfError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!visible || !livePreviewUrl || !livePreviewUrl.startsWith('/api/stripe/invoices/')) {
+      setStripePdfBlobUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      setStripePdfError(null);
+      setStripePdfLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    let createdUrl: string | null = null;
+    setStripePdfLoading(true);
+    setStripePdfError(null);
+
+    (async () => {
+      try {
+        const headers: Record<string, string> = { Accept: 'application/pdf' };
+        if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+        const resp = await fetch(livePreviewUrl, { headers, credentials: 'include' });
+        if (cancelled) return;
+        if (!resp.ok) {
+          setStripePdfError(`PDF fetch failed (${resp.status})`);
+          return;
+        }
+        const blob = await resp.blob();
+        if (cancelled) return;
+        createdUrl = URL.createObjectURL(blob);
+        setStripePdfBlobUrl(createdUrl);
+      } catch (err) {
+        if (cancelled) return;
+        setStripePdfError(err instanceof Error ? err.message : 'PDF fetch failed');
+      } finally {
+        if (!cancelled) setStripePdfLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
+    };
+  }, [visible, livePreviewUrl, session?.access_token]);
+
 
   // When modal opens with a pandadocDocumentId, fetch a preview session
   useEffect(() => {
@@ -548,52 +603,87 @@ function DocumentPreviewModalInner({ visible, onClose, type, documentName, panda
           {hasLiveUrl ? (
             <View style={p.pandadocBody}>
               {Platform.OS === 'web' ? (() => {
-                // Resolve iframe src defensively. Stripe's hosted_invoice_url
-                // and invoice_pdf URLs both set X-Frame-Options: DENY. The
-                // ONLY safe src for a Stripe invoice is our same-origin proxy
-                // /api/stripe/invoices/{id}/pdf which re-serves the PDF with
-                // CSP frame-ancestors allowing aspireos.app + www.aspireos.app.
+                // iframe loads do NOT carry the Bearer JWT — only cookies.
+                // Direct src="/api/stripe/invoices/in_xxx/pdf" 401s because
+                // our auth middleware requires the JWT. Workaround: fetch
+                // the PDF via authenticated fetch (see stripePdfBlobUrl
+                // useEffect above), build a same-origin blob: URL, iframe
+                // THAT. Blob URLs need no auth and bypass CSP frame-ancestors.
                 const u = livePreviewUrl || '';
-                const isStripeUrl = /invoice\.stripe\.com|pay\.stripe\.com/.test(u);
+                const isStripeHostedUrl = /invoice\.stripe\.com|pay\.stripe\.com/.test(u);
+                const isProxyUrl = u.startsWith('/api/stripe/invoices/');
                 const inIdMatch = u.match(/in_[A-Za-z0-9]+/);
-                let resolvedSrc: string | null = null;
-                if (u.startsWith('/api/stripe/invoices/')) {
-                  resolvedSrc = u;
-                } else if (isStripeUrl && inIdMatch) {
-                  resolvedSrc = `/api/stripe/invoices/${inIdMatch[0]}/pdf`;
-                } else if (!isStripeUrl) {
-                  resolvedSrc = u;
+                const willUseBlob = isProxyUrl || (isStripeHostedUrl && !!inIdMatch);
+
+                if (willUseBlob) {
+                  if (stripePdfLoading) {
+                    return (
+                      <View style={p.pandadocLoadingContainer}>
+                        <ActivityIndicator size="large" color={meta.accent} />
+                        <Text style={p.pandadocLoadingText}>Loading invoice…</Text>
+                      </View>
+                    );
+                  }
+                  if (stripePdfError) {
+                    return (
+                      <View style={p.pandadocLoadingContainer}>
+                        <Ionicons name="alert-circle-outline" size={32} color="#6e6e73" />
+                        <Text style={p.pandadocLoadingText}>{stripePdfError}</Text>
+                        <Pressable
+                          onPress={() => livePreviewUrl && typeof window !== 'undefined' && window.open(livePreviewUrl, '_blank', 'noopener,noreferrer')}
+                          style={p.openExternalBtn}
+                        >
+                          <Text style={p.openExternalBtnText}>Open in new tab</Text>
+                        </Pressable>
+                      </View>
+                    );
+                  }
+                  if (stripePdfBlobUrl) {
+                    return (
+                      <iframe
+                        src={stripePdfBlobUrl}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          border: 'none',
+                          backgroundColor: '#ffffff',
+                        }}
+                        title="Document Preview"
+                      />
+                    );
+                  }
+                  return null;
                 }
-                if (resolvedSrc) {
+
+                if (isStripeHostedUrl) {
                   return (
-                    <iframe
-                      src={resolvedSrc}
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        border: 'none',
-                        backgroundColor: '#ffffff',
-                      }}
-                      title="Document Preview"
-                      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
-                    />
+                    <View style={p.pandadocLoadingContainer}>
+                      <Ionicons name="open-outline" size={32} color="#6e6e73" />
+                      <Text style={p.pandadocLoadingText}>
+                        Stripe blocks inline preview for this invoice. Open it in a new tab to view.
+                      </Text>
+                      <Pressable
+                        onPress={() => livePreviewUrl && typeof window !== 'undefined' && window.open(livePreviewUrl, '_blank', 'noopener,noreferrer')}
+                        style={p.openExternalBtn}
+                      >
+                        <Text style={p.openExternalBtnText}>Open invoice</Text>
+                      </Pressable>
+                    </View>
                   );
                 }
-                // Stripe URL with no extractable in_* id — never iframe it,
-                // Stripe would DENY the embed. Show open-in-new-tab fallback.
+
                 return (
-                  <View style={p.pandadocLoadingContainer}>
-                    <Ionicons name="open-outline" size={32} color="#6e6e73" />
-                    <Text style={p.pandadocLoadingText}>
-                      Stripe blocks inline preview for this invoice. Open it in a new tab to view.
-                    </Text>
-                    <Pressable
-                      onPress={() => livePreviewUrl && typeof window !== 'undefined' && window.open(livePreviewUrl, '_blank', 'noopener,noreferrer')}
-                      style={p.openExternalBtn}
-                    >
-                      <Text style={p.openExternalBtnText}>Open invoice</Text>
-                    </Pressable>
-                  </View>
+                  <iframe
+                    src={u}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      border: 'none',
+                      backgroundColor: '#ffffff',
+                    }}
+                    title="Document Preview"
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+                  />
                 );
               })() : (
                 <View style={p.pandadocLoadingContainer}>
