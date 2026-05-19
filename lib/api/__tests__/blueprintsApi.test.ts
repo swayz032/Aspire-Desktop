@@ -58,7 +58,7 @@ describe('requestSignedUpload', () => {
     const successBody = {
       upload_id: 'upl_abc',
       storage_path: 'blueprint-raw-pdfs/suite/upl_abc/raw.pdf',
-      upload_url: 'https://example.supabase.co/storage/v1/upload/sign/xyz',
+      signed_url: 'https://example.supabase.co/storage/v1/upload/sign/xyz',
       correlation_id: 'corr_1',
       receipt_id: 'rcpt_1',
     };

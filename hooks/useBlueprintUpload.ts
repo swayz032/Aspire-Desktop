@@ -312,7 +312,7 @@ export function useBlueprintUpload(): UseBlueprintUploadResult {
       setProgress({ ratio: 0, bytesDone: 0, bytesTotal: file.size });
       try {
         await _putFileXhr(
-          init.upload_url,
+          init.signed_url,
           file,
           (loaded, total) => {
             setProgress({
