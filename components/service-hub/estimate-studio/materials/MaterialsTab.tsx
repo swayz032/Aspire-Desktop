@@ -27,6 +27,16 @@ import { View, Text, StyleSheet, ScrollView, Platform, Pressable } from 'react-n
 import { Ionicons } from '@expo/vector-icons';
 import { getPredictiveAddons, type Product } from '@/hooks/useMaterialsSearch';
 import { useMaterialsSearchContext } from './MaterialsSearchContext';
+// Wave 5.1a-5 — Drew's PROCURE picks land in the "From Blueprint" card-chip
+// surface alongside the manual-search canvas. The chip + canvas live in the
+// same tab so contractors never lose their search; pivoting between sources
+// is one tap.
+import { useBlueprintUploadSnapshot } from '@/lib/blueprintUploadStore';
+import { useTakeoffMaterials } from '@/hooks/useTakeoffMaterials';
+import { useMaterialOverride } from '@/hooks/useMaterialOverride';
+import type { TakeoffMaterial } from '@/lib/api/blueprintsApi';
+import { FromBlueprintCard } from './FromBlueprintCard';
+import { MaterialOverridePanel } from './MaterialOverridePanel';
 
 import { MaterialsEmptyState } from './MaterialsEmptyState';
 import { ProductGrid } from './ProductGrid';
@@ -80,6 +90,39 @@ function MaterialsTabResults() {
   const [activeFilter, setActiveFilter] = useState<
     { type: 'brand' | 'stock' | 'price'; value: string } | null
   >(null);
+
+  // ───────── Wave 5.1a-5: From Blueprint surface ─────────
+  // Active blueprint project (if any). When null, the From Blueprint chip is
+  // hidden — we never expose a Drew surface for a non-existent project.
+  const blueprintSnap = useBlueprintUploadSnapshot();
+  // Wave 6.5 introduced `snap.projectId` as the canonical project marker
+  // (set the moment INGEST returns ok). Fall back to the older response
+  // shape in case a session-cached snapshot lacks the new field.
+  const blueprintProjectId =
+    blueprintSnap.projectId ?? blueprintSnap.response?.project_id ?? null;
+  const blueprintMaterials = useTakeoffMaterials(blueprintProjectId);
+  const overrideController = useMaterialOverride(blueprintProjectId);
+  const [fromBlueprintActive, setFromBlueprintActive] = useState(false);
+  const [overrideTarget, setOverrideTarget] = useState<TakeoffMaterial | null>(null);
+  const procureStatus = blueprintSnap.response?.stage_progress?.procure ?? 'pending';
+  const procureDone = procureStatus === 'ok';
+
+  // Auto-deactivate the chip if the active blueprint project goes away
+  // (e.g. user reset the upload). Keep canvas honest.
+  useEffect(() => {
+    if (!blueprintProjectId && fromBlueprintActive) {
+      setFromBlueprintActive(false);
+      setOverrideTarget(null);
+    }
+  }, [blueprintProjectId, fromBlueprintActive]);
+
+  const handleOpenOverride = useCallback((m: TakeoffMaterial) => {
+    setOverrideTarget(m);
+  }, []);
+  const handleCloseOverride = useCallback(() => {
+    setOverrideTarget(null);
+  }, []);
+  const fromBlueprintCount = blueprintMaterials.materials.length;
 
   // Pass D: BundleItem.product.id replaces Pass B BundleItem.productId
   const bundleIds = useMemo(() => new Set(bundle.map((b) => b.product.id)), [bundle]);
@@ -214,11 +257,95 @@ function MaterialsTabResults() {
           </View>
         )}
 
-        {showEmptyState && (
+        {/* Wave 5.1a-5: From Blueprint chip — visible only when there's an
+            active blueprint project on this session. */}
+        {blueprintProjectId ? (
+          <View style={styles.sourceChipRow} testID="materials-source-chips">
+            <Pressable
+              onPress={() => setFromBlueprintActive(false)}
+              accessibilityRole="button"
+              accessibilityLabel="View manual search"
+              accessibilityState={{ selected: !fromBlueprintActive }}
+              testID="materials-source-chip-search"
+              style={({ hovered, pressed }: any) => [
+                styles.sourceChip,
+                !fromBlueprintActive && styles.sourceChipActive,
+                hovered && fromBlueprintActive && styles.sourceChipHover,
+                pressed && styles.sourceChipPressed,
+              ]}
+            >
+              <Ionicons
+                name="search-outline"
+                size={12}
+                color={!fromBlueprintActive ? '#fbbf24' : 'rgba(255,255,255,0.70)'}
+              />
+              <Text
+                style={[
+                  styles.sourceChipText,
+                  !fromBlueprintActive && styles.sourceChipTextActive,
+                ]}
+              >
+                Search
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setFromBlueprintActive(true)}
+              accessibilityRole="button"
+              accessibilityLabel={`From Blueprint, ${fromBlueprintCount} picks`}
+              accessibilityState={{ selected: fromBlueprintActive }}
+              testID="materials-source-chip-from-blueprint"
+              style={({ hovered, pressed }: any) => [
+                styles.sourceChip,
+                fromBlueprintActive && styles.sourceChipActive,
+                hovered && !fromBlueprintActive && styles.sourceChipHover,
+                pressed && styles.sourceChipPressed,
+              ]}
+            >
+              <Ionicons
+                name="hammer-outline"
+                size={12}
+                color={fromBlueprintActive ? '#fbbf24' : 'rgba(255,255,255,0.70)'}
+              />
+              <Text
+                style={[
+                  styles.sourceChipText,
+                  fromBlueprintActive && styles.sourceChipTextActive,
+                ]}
+              >
+                From Blueprint
+              </Text>
+              {fromBlueprintCount > 0 ? (
+                <Text
+                  style={[
+                    styles.sourceChipBadge,
+                    fromBlueprintActive && styles.sourceChipBadgeActive,
+                  ]}
+                  testID="materials-source-chip-from-blueprint-badge"
+                >
+                  {fromBlueprintCount}
+                </Text>
+              ) : null}
+            </Pressable>
+          </View>
+        ) : null}
+
+        {fromBlueprintActive && blueprintProjectId ? (
+          <FromBlueprintCard
+            materials={blueprintMaterials.materials}
+            isLoading={blueprintMaterials.isLoading}
+            error={blueprintMaterials.error}
+            endpointMissing={blueprintMaterials.endpointMissing}
+            procureDone={procureDone}
+            controller={overrideController}
+            onOpenOverride={handleOpenOverride}
+          />
+        ) : null}
+
+        {!fromBlueprintActive && showEmptyState && (
           <MaterialsEmptyState suggestions={suggestedQueries} onPick={handleSuggestionPick} />
         )}
 
-        {!showEmptyState && mode === 'supplier' && (
+        {!fromBlueprintActive && !showEmptyState && mode === 'supplier' && (
           <SupplierGrid
             suppliers={suppliers}
             isLoading={isLoading && suppliers === null}
@@ -231,7 +358,7 @@ function MaterialsTabResults() {
           />
         )}
 
-        {!showEmptyState && mode === 'tool' && (
+        {!fromBlueprintActive && !showEmptyState && mode === 'tool' && (
           <>
             {filters.length > 0 && (
               <View style={styles.filtersBar} testID="materials-filters-bar">
@@ -337,6 +464,19 @@ function MaterialsTabResults() {
         onClose={() => setCompareProduct(null)}
         onUseAlt={handleUseAlt}
       />
+
+      {/* Wave 5.1a-5: override panel — YELLOW gate before mutation hits net. */}
+      <MaterialOverridePanel
+        visible={overrideTarget !== null}
+        material={overrideTarget}
+        controller={overrideController}
+        onClose={handleCloseOverride}
+        onOverrideApplied={(materialId) => {
+          // Optimistic: mark as overridden in the cached materials list so
+          // the row re-renders as "Overridden" without an explicit refetch.
+          blueprintMaterials.markInBundle([materialId]);
+        }}
+      />
     </View>
   );
 }
@@ -426,6 +566,63 @@ const styles = StyleSheet.create({
   },
   filterChipCountActive: {
     color: 'rgba(251,191,36,0.85)',
+  },
+
+  // Wave 5.1a-5: From Blueprint source-chip strip
+  sourceChipRow: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+    paddingVertical: 2,
+  },
+  sourceChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 7,
+    backgroundColor: 'rgba(255,255,255,0.025)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    ...(Platform.OS === 'web'
+      ? ({ transition: 'background-color 150ms ease, border-color 150ms ease' } as any)
+      : {}),
+  },
+  sourceChipActive: {
+    backgroundColor: 'rgba(251,191,36,0.10)',
+    borderColor: 'rgba(251,191,36,0.55)',
+  },
+  sourceChipHover: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  sourceChipPressed: {
+    opacity: 0.82,
+  },
+  sourceChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.78)',
+    letterSpacing: -0.05,
+  },
+  sourceChipTextActive: {
+    color: '#fbbf24',
+    fontWeight: '700',
+  },
+  sourceChipBadge: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.50)',
+    fontVariant: ['tabular-nums'],
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  sourceChipBadgeActive: {
+    color: '#fbbf24',
+    backgroundColor: 'rgba(251,191,36,0.15)',
   },
 
   // No results inline

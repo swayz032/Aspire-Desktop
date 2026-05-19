@@ -1,0 +1,1112 @@
+/**
+ * Blueprints API client — Wave 6A (Plans & Photos production upload).
+ *
+ * Wraps `POST /api/v1/blueprints/upload` (Express proxy that mints a
+ * capability token + forwards to Drew via the Python orchestrator's
+ * `/v1/agents/invoke` endpoint).
+ *
+ * Wave 6A scope:
+ *   - uploadBlueprint(): full INGEST + auto-chained CLASSIFY in one call.
+ *
+ * Wave 7 scope (this file):
+ *   - Project/sheet/status GETs (Wave 2.5 backend reads)
+ *   - Story / assemblies / materials / missing_inputs GETs (Wave 2.7)
+ *   - resolveMissingInput POST (Wave 2.7 — YELLOW tier; scope=
+ *     `blueprints:resolve_missing_input`)
+ *
+ * Until Wave 2.5 / 2.7 backend PRs merge, the Express proxy returns 404 for
+ * these routes. Callers (hooks) MUST catch `BlueprintsApiError.status === 404`
+ * and degrade to an empty render path. See docs/plans/serene-seeking-hollerith.
+ *
+ * Law compliance:
+ *   Law #5 — capability token minted server-side by the Express proxy.
+ *   Law #6 — suite_id derives from authenticated session; client never sets it.
+ *   Law #3 — 50 MB file cap enforced client + server side (fail-closed).
+ *   Law #9 — file contents never logged; only filename + size.
+ */
+
+import { API_BASE } from './officeMemory';
+
+// ---------------------------------------------------------------------------
+// Error class
+// ---------------------------------------------------------------------------
+
+export class BlueprintsApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly code: string,
+    message: string,
+    public readonly correlationId?: string,
+  ) {
+    super(message);
+    this.name = 'BlueprintsApiError';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Max raw file size (50 MB). Base64 inflates ~33% so the JSON body cap on
+ *  the server route is set higher — see server/routes.ts blueprints upload. */
+export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+
+/** MIME types accepted by the upload route. */
+export const ACCEPTED_MIME_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/heic',
+  'image/heif',
+] as const;
+
+export type AcceptedMimeType = (typeof ACCEPTED_MIME_TYPES)[number];
+
+// ---------------------------------------------------------------------------
+// Stage progress — 5-stage pipeline (Wave 6A real: ingest, classify;
+// Wave 3/4/5: see, reason, procure)
+// ---------------------------------------------------------------------------
+
+export type StageKey = 'ingest' | 'classify' | 'see' | 'reason' | 'procure';
+export type StageStatus = 'pending' | 'running' | 'ok' | 'error' | 'stub';
+
+export interface StageProgress {
+  ingest: StageStatus;
+  classify: StageStatus;
+  see: StageStatus;
+  reason: StageStatus;
+  procure: StageStatus;
+}
+
+// ---------------------------------------------------------------------------
+// Wire types (Drew via /api/v1/blueprints/upload)
+// ---------------------------------------------------------------------------
+
+/** Drew INGEST result (Wave 2A real implementation). */
+export interface IngestResult {
+  status: 'ok' | 'error' | 'dedup';
+  stage: 'ingest';
+  project_id?: string;
+  sheet_count?: number;
+  sheet_ids?: string[];
+  provider_mix?: Record<string, number>;
+  reason?: string;
+}
+
+/** Drew CLASSIFY result (Wave 2A real implementation). */
+export interface ClassifyResult {
+  status: 'ok' | 'error';
+  stage: 'classify';
+  project_id?: string;
+  discipline_counts?: Record<string, number>;
+  revisions?: number;
+  needs_review_count?: number;
+  reason?: string;
+}
+
+/** Server-side composed response: INGEST + auto-chained CLASSIFY.
+ *  LEGACY (pre-async-dispatch) shape — kept for backward compat with any
+ *  consumers still on the sync path. New code prefers `DispatchBlueprintResponse`. */
+export interface UploadBlueprintResponse {
+  success: boolean;
+  project_id: string;
+  filename: string;
+  size_bytes: number;
+  correlation_id: string;
+  /** Real raw INGEST result from Drew (Wave 2A). */
+  ingest: IngestResult;
+  /** CLASSIFY auto-chained on the server. May be `null` if INGEST errored. */
+  classify: ClassifyResult | null;
+  /** Composed 5-stage indicator the UI can hand straight to UploadProgressInline.
+   *  Wave 6A: ingest + classify reflect real backend status; see/reason/procure
+   *  are always 'pending' (Wave 3/4/5 will light them up). */
+  stage_progress: StageProgress;
+}
+
+/**
+ * Async-dispatch response shape — the orchestrator persists the project row +
+ * enqueues Drew's 5-stage pipeline as a background task and replies within ~5s.
+ * The UI then polls `/api/v1/blueprints/projects/:id/status` on 2s cadence.
+ *
+ * Discriminated from `UploadBlueprintResponse` by the presence of `status`.
+ */
+export interface DispatchBlueprintResponse {
+  success: true;
+  project_id: string;
+  status: 'queued' | 'dedup';
+  correlation_id: string;
+  filename: string;
+  size_bytes: number;
+  /** Supabase Storage path for the persisted PDF (optional, backend may add). */
+  pdf_storage_path?: string;
+}
+
+/** Type guard discriminating dispatch (async) vs legacy (sync) upload response. */
+export function isDispatchResponse(
+  r: UploadBlueprintResponse | DispatchBlueprintResponse,
+): r is DispatchBlueprintResponse {
+  return (
+    typeof (r as DispatchBlueprintResponse).status === 'string' &&
+    ((r as DispatchBlueprintResponse).status === 'queued' ||
+      (r as DispatchBlueprintResponse).status === 'dedup')
+  );
+}
+
+/**
+ * Structured failure summary the backend MAY include on getProject /
+ * getProjectStatus responses once a stage fails. Frontend MUST degrade
+ * gracefully when absent — backend hardening is in flight and will land
+ * these fields incrementally. When missing, the canvas falls back to
+ * generic per-stage copy (see `BlueprintFailureCard.tsx`).
+ */
+export interface BlueprintFailureSummary {
+  stage: StageKey;
+  error_class: string | null;
+  error_message: string | null;
+  correlation_id: string | null;
+  /** ISO 8601 — when the failure was recorded (server clock). */
+  occurred_at: string | null;
+}
+
+/** Wave 6.5 — getProject() response (matches backend `BlueprintProjectRead`). */
+export interface BlueprintProject {
+  /** Project UUID. */
+  id: string;
+  /** Optional canonical address Drew extracted from the title block. */
+  address: string | null;
+  /** ISO 8601. */
+  created_at: string;
+  created_by: string | null;
+  stage_progress: StageProgress;
+  sheet_count: number;
+  /** Optional — present once any stage fails. May be absent on older backends. */
+  failure_summary?: BlueprintFailureSummary | null;
+}
+
+/**
+ * Wave 6.5 — listSheets() response item (matches backend `BlueprintSheetRead`).
+ *
+ * Use this shape in NEW code. Legacy `BlueprintSheet` (defined below) is kept
+ * for Wave 8 Takeoff components that already wire `sheet_id` / `sheet_number`
+ * fields — those will be refactored to `BlueprintSheetRead` in a follow-up.
+ */
+export interface BlueprintSheetRead {
+  id: string;
+  sheet_number: string | null;
+  discipline: string | null;
+  scale: string | null;
+  /** Integer revision. 0/null = original; 1+ = revised. */
+  revision: number | null;
+  /** UUID of the sheet THIS one supersedes (i.e., the predecessor). null = current. */
+  supersedes_id: string | null;
+  thumbnail_url: string | null;
+  seal_detected: boolean;
+  created_at: string;
+}
+
+/**
+ * Legacy listSheets() shape — Wave 8 Takeoff still imports this. New code
+ * must use `BlueprintSheetRead`. Kept as-is to avoid breaking Takeoff
+ * components that wire `.sheet_id` / `.sheet_number` directly.
+ */
+export interface BlueprintSheet {
+  sheet_id: string;
+  sheet_number: string;
+  discipline: string | null;
+  revision: number;
+  superseded_by_sheet_id?: string | null;
+  thumbnail_url?: string | null;
+}
+
+/** Wave 6.5 — getProjectStatus() response (matches backend `BlueprintProjectStatus`). */
+export interface BlueprintProjectStatusResponse {
+  project_id: string;
+  stage_progress: StageProgress;
+  updated_at: string;
+  sheet_count: number;
+  symbol_count: number;
+  missing_input_count: number;
+  /** Optional — present once any stage fails. May be absent on older backends. */
+  failure_summary?: BlueprintFailureSummary | null;
+}
+
+export interface ListSheetsOptions {
+  /** When false, includes superseded sheets so the revision chain can be derived. */
+  activeOnly?: boolean;
+  /** Filter to one discipline code (e.g. "architectural"). */
+  discipline?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Wave 7 — Story / Assemblies / Materials / Missing Inputs (REASON + PROCURE)
+// ---------------------------------------------------------------------------
+
+/** Confidence class for a fact in the story / assembly / material chain. */
+export type TruthClass =
+  | 'observed'
+  | 'derived'
+  | 'assumed'
+  | 'missing'
+  | 'field_confirmed'
+  | 'vendor_confirmed'
+  | 'permit_confirmed';
+
+/** A single phase of the project's work narrative. */
+export interface BlueprintStoryPhase {
+  key: string;
+  title: string;
+  /** Plain-English narrative markdown body. */
+  body_md: string;
+  facts: BlueprintStoryFact[];
+}
+
+/** A single inline fact in a phase narrative. Renders as a TruthBadge chip. */
+export interface BlueprintStoryFact {
+  key: string;
+  label: string;
+  truth: TruthClass;
+  /** Optional 0..1 confidence (derived / assumed). */
+  confidence?: number;
+  /** Optional missing_input_id when truth === 'assumed' or 'missing'. */
+  missing_input_id?: string | null;
+}
+
+export interface BlueprintStory {
+  project_id: string;
+  /** Overall project mean confidence (0..1). */
+  mean_confidence: number;
+  /** Counts by truth class for the truth-distribution bar. */
+  truth_distribution: Record<TruthClass, number>;
+  phases: BlueprintStoryPhase[];
+  updated_at: string | null;
+  /** REASON pipeline stage state — UI polls until 'done' or 'error'. */
+  status: 'pending' | 'in_progress' | 'done' | 'error';
+}
+
+/** An assembly line item Drew identified (e.g. "drywall partition"). */
+export interface BlueprintAssembly {
+  assembly_id: string;
+  assembly_type: string;
+  label: string;
+  quantity: number;
+  unit: string;
+  truth: TruthClass;
+  confidence?: number;
+  /** True if part of the base scope; false if alternate / not-in-base. */
+  in_base_scope: boolean;
+  alternate_note?: string | null;
+}
+
+/** A material line item Drew / PROCURE identified. */
+export interface BlueprintMaterial {
+  material_id: string;
+  label: string;
+  quantity: number;
+  unit: string;
+  truth: TruthClass;
+  tariff_flagged: boolean;
+  tariff_note?: string | null;
+  /** Estimated $ impact for the tariff line (PROCURE; null until Wave 5). */
+  tariff_impact_usd?: number | null;
+  supplier_hint?: string | null;
+}
+
+/** A known-unknown that needs field confirmation / RFI / owner input. */
+export interface BlueprintMissingInput {
+  input_id: string;
+  description: string;
+  suggested_resolution?: string | null;
+  status: 'open' | 'resolved';
+  resolved_value?: string | null;
+  resolved_at?: string | null;
+}
+
+export interface GetAssembliesOptions {
+  activeOnly?: boolean;
+}
+
+export interface GetMaterialsOptions {
+  tariffOnly?: boolean;
+  hasSupplier?: boolean;
+}
+
+export interface GetMissingInputsOptions {
+  unresolvedOnly?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// API functions
+// ---------------------------------------------------------------------------
+
+type FetchFn = (url: string, options?: RequestInit) => Promise<Response>;
+
+export interface UploadBlueprintParams {
+  /** Raw file bytes — already validated client-side for size + MIME type. */
+  fileBytes: Uint8Array;
+  filename: string;
+  mimeType: AcceptedMimeType;
+  officeId: string;
+  /** Optional client-generated idempotency key for retry safety. */
+  idempotencyKey?: string;
+  /** Optional abort signal. */
+  signal?: AbortSignal;
+}
+
+/** Base64-encode a Uint8Array without blowing the call stack on large files.
+ *  apply() with a 50MB array hits "Maximum call stack size exceeded" on V8;
+ *  chunk to ~64KB and concat. */
+function _uint8ToBase64(bytes: Uint8Array): string {
+  // Use Buffer on Node (server-side) for speed; on browser fall back to chunked btoa.
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(bytes).toString('base64');
+  }
+  let bin = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode.apply(
+      null,
+      Array.from(bytes.subarray(i, i + chunk)),
+    );
+  }
+  // eslint-disable-next-line no-restricted-globals
+  return btoa(bin);
+}
+
+/** Upload a blueprint PDF/image. Server-side proxy:
+ *    1) Validates size + MIME.
+ *    2) Mints capability token (Law #5).
+ *    3) Calls Drew INGEST.
+ *    4) On INGEST ok → auto-chains Drew CLASSIFY.
+ *    5) Returns the composed response. */
+export async function uploadBlueprint(
+  authenticatedFetch: FetchFn,
+  params: UploadBlueprintParams,
+): Promise<UploadBlueprintResponse | DispatchBlueprintResponse> {
+  if (params.fileBytes.byteLength > MAX_UPLOAD_BYTES) {
+    throw new BlueprintsApiError(
+      413,
+      'FILE_TOO_LARGE',
+      `File exceeds ${(MAX_UPLOAD_BYTES / 1024 / 1024).toFixed(0)} MB cap`,
+    );
+  }
+  if (!ACCEPTED_MIME_TYPES.includes(params.mimeType)) {
+    throw new BlueprintsApiError(
+      415,
+      'UNSUPPORTED_MEDIA_TYPE',
+      `MIME type ${params.mimeType} not supported`,
+    );
+  }
+
+  const body = {
+    filename: params.filename,
+    mime_type: params.mimeType,
+    pdf_b64: _uint8ToBase64(params.fileBytes),
+    idempotency_key: params.idempotencyKey,
+  };
+
+  const resp = await authenticatedFetch(`${API_BASE}/api/v1/blueprints/upload`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Office-Id': params.officeId,
+    },
+    body: JSON.stringify(body),
+    signal: params.signal,
+  });
+
+  if (!resp.ok) {
+    let code = 'BLUEPRINT_UPLOAD_FAILED';
+    let message = `Blueprint upload failed (${resp.status})`;
+    let correlationId: string | undefined;
+    try {
+      const parsed = await resp.json();
+      code = parsed?.detail?.error ?? parsed?.error ?? parsed?.code ?? code;
+      message = parsed?.detail?.message ?? parsed?.message ?? message;
+      correlationId = parsed?.correlation_id;
+    } catch {
+      // non-JSON error body
+    }
+    throw new BlueprintsApiError(resp.status, code, message, correlationId);
+  }
+
+  return (await resp.json()) as UploadBlueprintResponse | DispatchBlueprintResponse;
+}
+
+// ---------------------------------------------------------------------------
+// Stage status normalization
+// ---------------------------------------------------------------------------
+// Backend writes stage_progress JSONB with: 'not_started' | 'in_progress' |
+// 'done' | 'failed'. Frontend StageStatus expects: 'pending' | 'running' |
+// 'ok' | 'error' (with legacy 'stub'). Apply this map at every read boundary
+// so the polling hook + UI consume normalized strings.
+const BACKEND_TO_FRONTEND_STAGE: Record<string, StageStatus> = {
+  not_started: 'pending',
+  in_progress: 'running',
+  done: 'ok',
+  failed: 'error',
+  // Pass-through for frontend-native values (e.g. server route already mapped).
+  pending: 'pending',
+  running: 'running',
+  ok: 'ok',
+  error: 'error',
+  stub: 'stub',
+};
+
+function _normalizeStageStatus(raw: unknown): StageStatus {
+  if (typeof raw !== 'string') return 'pending';
+  return BACKEND_TO_FRONTEND_STAGE[raw] ?? 'pending';
+}
+
+/**
+ * Normalize an optional `failure_summary` blob from the backend. Degrades
+ * gracefully when the backend hasn't yet emitted structured error fields:
+ * if any are missing, returns nulls so the UI renders generic copy.
+ * Returns `null` when the blob is absent or not an object.
+ */
+function _normalizeFailureSummary(raw: unknown): BlueprintFailureSummary | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  const stage = typeof obj.stage === 'string' ? (obj.stage as StageKey) : null;
+  // stage is the one load-bearing field — without it we can't render the
+  // failed-stage chip. Bail to null and let the hook derive from stage_progress.
+  if (!stage || !STAGE_KEYS_NORMALIZE.includes(stage)) return null;
+  return {
+    stage,
+    error_class: typeof obj.error_class === 'string' ? obj.error_class : null,
+    error_message: typeof obj.error_message === 'string' ? obj.error_message : null,
+    correlation_id: typeof obj.correlation_id === 'string' ? obj.correlation_id : null,
+    occurred_at: typeof obj.occurred_at === 'string' ? obj.occurred_at : null,
+  };
+}
+
+const STAGE_KEYS_NORMALIZE: ReadonlyArray<StageKey> = [
+  'ingest',
+  'classify',
+  'see',
+  'reason',
+  'procure',
+];
+
+function _normalizeStageProgress(raw: unknown): StageProgress {
+  const obj = (raw ?? {}) as Record<string, unknown>;
+  return {
+    ingest: _normalizeStageStatus(obj.ingest),
+    classify: _normalizeStageStatus(obj.classify),
+    see: _normalizeStageStatus(obj.see),
+    reason: _normalizeStageStatus(obj.reason),
+    procure: _normalizeStageStatus(obj.procure),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Wave 6.5 / Wave 7 — real GET clients (graceful 404 via BlueprintsApiError)
+//
+// The Express proxy + Python orchestrator endpoints land in:
+//   Wave 2.5 — GET /api/v1/blueprints/projects/:id, /sheets, /status
+//   Wave 2.7 — GET /story, /assemblies, /materials, /missing_inputs +
+//              POST /missing_inputs/:input_id/resolve
+//
+// Until those PRs merge, the proxy returns 404. Callers (hooks) must catch
+// `BlueprintsApiError.status === 404` and degrade to an empty render path
+// rather than treating it as a real failure.
+// ---------------------------------------------------------------------------
+
+async function _getJson<T>(
+  authenticatedFetch: FetchFn,
+  url: string,
+  officeId: string,
+  signal?: AbortSignal,
+): Promise<T> {
+  const resp = await authenticatedFetch(url, {
+    method: 'GET',
+    headers: { 'X-Office-Id': officeId },
+    signal,
+  });
+
+  if (!resp.ok) {
+    let code = 'BLUEPRINT_GET_FAILED';
+    let message = `Blueprint GET failed (${resp.status})`;
+    let correlationId: string | undefined;
+    try {
+      const parsed = await resp.json();
+      code = parsed?.error ?? parsed?.code ?? code;
+      message = parsed?.message ?? parsed?.detail?.message ?? message;
+      correlationId = parsed?.correlation_id;
+    } catch {
+      // non-JSON error body
+    }
+    throw new BlueprintsApiError(resp.status, code, message, correlationId);
+  }
+
+  return (await resp.json()) as T;
+}
+
+/** Fetch a single project's metadata + progress. Normalizes backend
+ *  stage_progress strings to frontend StageStatus values. */
+export async function getProject(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  officeId: string,
+  signal?: AbortSignal,
+): Promise<BlueprintProject> {
+  const raw = await _getJson<BlueprintProject>(
+    authenticatedFetch,
+    `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}`,
+    officeId,
+    signal,
+  );
+  return {
+    ...raw,
+    stage_progress: _normalizeStageProgress(raw.stage_progress),
+    failure_summary: _normalizeFailureSummary(
+      (raw as unknown as { failure_summary?: unknown }).failure_summary,
+    ),
+  };
+}
+
+/** List sheets for a project (with thumbnails + revision chain).
+ *  Pass `activeOnly: false` to include superseded sheets — required to render
+ *  the revision-chain timeline in `<SheetThumbnailGrid />`. */
+export async function listSheets(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  officeId: string,
+  options: ListSheetsOptions = {},
+  signal?: AbortSignal,
+): Promise<BlueprintSheetRead[]> {
+  const params = new URLSearchParams();
+  if (options.activeOnly === false) params.set('active_only', 'false');
+  if (options.activeOnly === true) params.set('active_only', 'true');
+  if (options.discipline) params.set('discipline', options.discipline);
+  const qs = params.toString();
+  return _getJson<BlueprintSheetRead[]>(
+    authenticatedFetch,
+    `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}/sheets${
+      qs ? `?${qs}` : ''
+    }`,
+    officeId,
+    signal,
+  );
+}
+
+/** Poll project pipeline stage progress + lightweight counts. Normalizes
+ *  backend stage_progress strings (not_started/in_progress/done/failed) to
+ *  frontend StageStatus values (pending/running/ok/error). */
+export async function getProjectStatus(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  officeId: string,
+  signal?: AbortSignal,
+): Promise<BlueprintProjectStatusResponse> {
+  const raw = await _getJson<BlueprintProjectStatusResponse>(
+    authenticatedFetch,
+    `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}/status`,
+    officeId,
+    signal,
+  );
+  return {
+    ...raw,
+    stage_progress: _normalizeStageProgress(raw.stage_progress),
+    failure_summary: _normalizeFailureSummary(
+      (raw as unknown as { failure_summary?: unknown }).failure_summary,
+    ),
+  };
+}
+
+/** Wave 7 — fetch the phased story narrative (REASON output). */
+export async function getStory(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  officeId: string,
+  signal?: AbortSignal,
+): Promise<BlueprintStory> {
+  return _getJson<BlueprintStory>(
+    authenticatedFetch,
+    `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}/story`,
+    officeId,
+    signal,
+  );
+}
+
+/** Wave 7 — fetch project assemblies. */
+export async function getAssemblies(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  officeId: string,
+  options: GetAssembliesOptions = {},
+  signal?: AbortSignal,
+): Promise<BlueprintAssembly[]> {
+  const params = new URLSearchParams();
+  if (options.activeOnly) params.set('active_only', 'true');
+  const qs = params.toString();
+  const url = `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(
+    projectId,
+  )}/assemblies${qs ? `?${qs}` : ''}`;
+  return _getJson<BlueprintAssembly[]>(authenticatedFetch, url, officeId, signal);
+}
+
+/** Wave 7 — fetch project materials. */
+export async function getMaterials(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  officeId: string,
+  options: GetMaterialsOptions = {},
+  signal?: AbortSignal,
+): Promise<BlueprintMaterial[]> {
+  const params = new URLSearchParams();
+  if (options.tariffOnly) params.set('tariff_only', 'true');
+  if (options.hasSupplier) params.set('has_supplier', 'true');
+  const qs = params.toString();
+  const url = `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(
+    projectId,
+  )}/materials${qs ? `?${qs}` : ''}`;
+  return _getJson<BlueprintMaterial[]>(authenticatedFetch, url, officeId, signal);
+}
+
+/** Wave 7 — fetch project missing inputs. */
+export async function getMissingInputs(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  officeId: string,
+  options: GetMissingInputsOptions = {},
+  signal?: AbortSignal,
+): Promise<BlueprintMissingInput[]> {
+  const params = new URLSearchParams();
+  if (options.unresolvedOnly) params.set('unresolved_only', 'true');
+  const qs = params.toString();
+  const url = `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(
+    projectId,
+  )}/missing_inputs${qs ? `?${qs}` : ''}`;
+  return _getJson<BlueprintMissingInput[]>(authenticatedFetch, url, officeId, signal);
+}
+
+/** Wave 7 — confirm a missing input with a field-collected value (YELLOW tier).
+ *
+ *  Server-side proxy (Wave 2.7):
+ *    1) Validates JWT.
+ *    2) Mints capability token (scope=`blueprints:resolve_missing_input`).
+ *    3) Forwards to Drew with task=RESOLVE_MISSING_INPUT.
+ *    4) Writes blueprint_receipt (Law #2) + returns the updated row. */
+export async function resolveMissingInput(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  inputId: string,
+  value: string,
+  officeId: string,
+  signal?: AbortSignal,
+): Promise<BlueprintMissingInput> {
+  const url = `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(
+    projectId,
+  )}/missing_inputs/${encodeURIComponent(inputId)}/resolve`;
+
+  const resp = await authenticatedFetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Office-Id': officeId,
+    },
+    body: JSON.stringify({ value }),
+    signal,
+  });
+
+  if (!resp.ok) {
+    let code = 'RESOLVE_MISSING_INPUT_FAILED';
+    let message = `Resolve missing input failed (${resp.status})`;
+    let correlationId: string | undefined;
+    try {
+      const parsed = await resp.json();
+      code = parsed?.error ?? parsed?.code ?? code;
+      message = parsed?.message ?? parsed?.detail?.message ?? message;
+      correlationId = parsed?.correlation_id;
+    } catch {
+      // non-JSON error body
+    }
+    throw new BlueprintsApiError(resp.status, code, message, correlationId);
+  }
+
+  return (await resp.json()) as BlueprintMissingInput;
+}
+// ---------------------------------------------------------------------------
+// Wave 8 additions — Takeoff (Commercial Blueprint mode)
+// ---------------------------------------------------------------------------
+//
+// Wave 8 reads + push-to-materials. Depends on Wave 2.7 backend (symbols,
+// assemblies, materials). Reads degrade gracefully — when the backend
+// returns 404/501 the call returns `{ endpointMissing: true, ...empty }`
+// and the Takeoff tab shows a "Wave 2.7 pending" banner.
+//
+// Push-to-materials is YELLOW: Express proxy mints a `materials.bundle.add`
+// capability token (Law #5). The caller must show a confirmation modal
+// BEFORE invoking. Server-side scope enforcement is the real gate.
+//
+// NOTE on naming: Wave 7 (parallel branch) also adds `BlueprintAssembly`
+// and `BlueprintMaterial` interfaces with a different shape (REASON/PROCURE
+// truth model). To avoid collision at merge time, Wave 8 prefixes its types
+// with `Takeoff*` (TakeoffSymbol, TakeoffAssembly, TakeoffMaterial).
+// ---------------------------------------------------------------------------
+
+export type TakeoffSymbolTruth = 'asserted' | 'derived' | 'assumed';
+export type TakeoffTariffFlag =
+  | 'steel'
+  | 'aluminum'
+  | 'softwood'
+  | 'hardwood'
+  | 'copper'
+  | 'none';
+
+/** Wave 8 — one detected symbol on a sheet. Bbox is normalised 0-1 to the
+ *  parent sheet's rendered image, so the overlay scales with zoom. */
+export interface TakeoffSymbol {
+  symbol_id: string;
+  sheet_id: string;
+  /** e.g. "electrical.outlet.duplex", "plumbing.fixture.toilet", "structural.column.steel". */
+  class: string;
+  /** 0..1 — drives overlay opacity. */
+  confidence: number;
+  /** Normalised 0..1 bounding box. */
+  bbox: { x: number; y: number; w: number; h: number };
+  /** Optional user override label after Confirm/Reclassify. */
+  override_class?: string;
+  /** Detection lifecycle status. */
+  status?: 'detected' | 'confirmed' | 'reclassified' | 'dropped';
+}
+
+/** Wave 8 — one derived assembly. */
+export interface TakeoffAssembly {
+  assembly_id: string;
+  /** Display label, e.g. 'Type A interior partition'. */
+  type: string;
+  quantity: number;
+  unit: string;
+  truth: TakeoffSymbolTruth;
+  /** Sheet that anchors this assembly's derivation. */
+  source_sheet_id?: string | null;
+  /** When truth=assumed, confidence reflects derivation strength. */
+  confidence?: number;
+}
+
+/** Wave 8 — one derived material line item. */
+export interface TakeoffMaterial {
+  material_id: string;
+  line_item: string;
+  quantity: number;
+  unit: string;
+  truth: TakeoffSymbolTruth;
+  /** Mapped tariff exposure category. */
+  tariff_flag: TakeoffTariffFlag;
+  /** Supplier preview if a default is suggested (procure not yet run = null). */
+  supplier_name?: string | null;
+  /** True if this material has been pushed to the bundle already. */
+  in_bundle?: boolean;
+}
+
+export interface ListTakeoffSymbolsOptions {
+  sheet_id?: string;
+  /** Filter to confidences >= floor (0..1). */
+  confidence_floor?: number;
+  /** Filter by class-prefix, e.g. "electrical." or "plumbing.fixture.". */
+  class_prefix?: string;
+}
+
+export interface PushToMaterialsResult {
+  success: boolean;
+  added_count: number;
+  /** Material IDs successfully added to the bundle. */
+  added_material_ids: string[];
+  /** Material IDs that the server rejected (already in bundle, malformed, etc.). */
+  rejected: Array<{ material_id: string; reason: string }>;
+  bundle_id?: string;
+  correlation_id?: string;
+}
+
+/** Wave 8 — fetch symbols for a project / single sheet. Degrades gracefully. */
+export async function getTakeoffSymbols(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  officeId: string,
+  opts: ListTakeoffSymbolsOptions = {},
+): Promise<{ symbols: TakeoffSymbol[]; endpointMissing: boolean }> {
+  const qs = new URLSearchParams();
+  if (opts.sheet_id) qs.set('sheet_id', opts.sheet_id);
+  if (opts.confidence_floor != null) qs.set('confidence_floor', String(opts.confidence_floor));
+  if (opts.class_prefix) qs.set('class_prefix', opts.class_prefix);
+  const url = `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}/symbols${
+    qs.toString() ? `?${qs.toString()}` : ''
+  }`;
+
+  const resp = await authenticatedFetch(url, {
+    method: 'GET',
+    headers: { 'X-Office-Id': officeId },
+  });
+
+  if (resp.status === 404 || resp.status === 501) {
+    return { symbols: [], endpointMissing: true };
+  }
+  if (!resp.ok) {
+    let code = 'GET_SYMBOLS_FAILED';
+    let message = `getTakeoffSymbols failed (${resp.status})`;
+    try {
+      const parsed = await resp.json();
+      code = parsed?.error ?? parsed?.code ?? code;
+      message = parsed?.message ?? message;
+    } catch {
+      /* non-JSON */
+    }
+    throw new BlueprintsApiError(resp.status, code, message);
+  }
+  const data = (await resp.json()) as { symbols?: TakeoffSymbol[] };
+  return { symbols: Array.isArray(data.symbols) ? data.symbols : [], endpointMissing: false };
+}
+
+/** Wave 8 — fetch derived assemblies for a project. Degrades gracefully. */
+export async function getTakeoffAssemblies(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  officeId: string,
+): Promise<{ assemblies: TakeoffAssembly[]; endpointMissing: boolean }> {
+  const url = `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}/assemblies`;
+  const resp = await authenticatedFetch(url, {
+    method: 'GET',
+    headers: { 'X-Office-Id': officeId },
+  });
+  if (resp.status === 404 || resp.status === 501) {
+    return { assemblies: [], endpointMissing: true };
+  }
+  if (!resp.ok) {
+    let code = 'GET_ASSEMBLIES_FAILED';
+    let message = `getTakeoffAssemblies failed (${resp.status})`;
+    try {
+      const parsed = await resp.json();
+      code = parsed?.error ?? code;
+      message = parsed?.message ?? message;
+    } catch {
+      /* non-JSON */
+    }
+    throw new BlueprintsApiError(resp.status, code, message);
+  }
+  const data = (await resp.json()) as { assemblies?: TakeoffAssembly[] };
+  return {
+    assemblies: Array.isArray(data.assemblies) ? data.assemblies : [],
+    endpointMissing: false,
+  };
+}
+
+/** Wave 8 — fetch derived materials for a project. Degrades gracefully. */
+export async function getTakeoffMaterials(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  officeId: string,
+): Promise<{ materials: TakeoffMaterial[]; endpointMissing: boolean }> {
+  const url = `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}/materials`;
+  const resp = await authenticatedFetch(url, {
+    method: 'GET',
+    headers: { 'X-Office-Id': officeId },
+  });
+  if (resp.status === 404 || resp.status === 501) {
+    return { materials: [], endpointMissing: true };
+  }
+  if (!resp.ok) {
+    let code = 'GET_MATERIALS_FAILED';
+    let message = `getTakeoffMaterials failed (${resp.status})`;
+    try {
+      const parsed = await resp.json();
+      code = parsed?.error ?? code;
+      message = parsed?.message ?? message;
+    } catch {
+      /* non-JSON */
+    }
+    throw new BlueprintsApiError(resp.status, code, message);
+  }
+  const data = (await resp.json()) as { materials?: TakeoffMaterial[] };
+  return {
+    materials: Array.isArray(data.materials) ? data.materials : [],
+    endpointMissing: false,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Wave 5.1a-5 — Material override + skip (YELLOW tier)
+// ---------------------------------------------------------------------------
+
+export type MaterialOverrideReason =
+  | 'spec_mismatch'
+  | 'vendor_pref'
+  | 'price'
+  | 'availability'
+  | 'other';
+
+export interface MaterialOverridePayload {
+  label?: string;
+  quantity?: number;
+  unit?: string;
+  supplier_name?: string;
+  supplier_id?: string;
+  price_usd?: number;
+  notes?: string;
+}
+
+export interface MaterialOverrideResult {
+  success: boolean;
+  material_id: string;
+  override_id?: string;
+  receipt_id?: string;
+  correlation_id?: string;
+}
+
+/** Wave 5.1a-5 — override a Drew-sourced material pick. YELLOW tier: the
+ *  Express proxy mints a capability token with scope=`blueprints:material_override`
+ *  (Law #5). Caller MUST have shown a confirmation gesture BEFORE invoking. */
+export async function overrideMaterial(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  materialId: string,
+  override: MaterialOverridePayload,
+  reason: MaterialOverrideReason,
+  officeId: string,
+  signal?: AbortSignal,
+): Promise<MaterialOverrideResult> {
+  if (!projectId || !materialId) {
+    throw new BlueprintsApiError(400, 'INVALID_PARAMS', 'projectId and materialId are required');
+  }
+  const filtered: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(override)) {
+    if (v != null && v !== '') filtered[k] = v;
+  }
+  if (Object.keys(filtered).length === 0) {
+    throw new BlueprintsApiError(
+      400,
+      'EMPTY_OVERRIDE',
+      'override must include at least one non-empty field',
+    );
+  }
+  const url = `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(
+    projectId,
+  )}/materials/${encodeURIComponent(materialId)}/override`;
+  const resp = await authenticatedFetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Office-Id': officeId,
+    },
+    body: JSON.stringify({ override: filtered, reason }),
+    signal,
+  });
+  if (!resp.ok) {
+    let code = 'OVERRIDE_MATERIAL_FAILED';
+    let message = `overrideMaterial failed (${resp.status})`;
+    let correlationId: string | undefined;
+    try {
+      const parsed = await resp.json();
+      code = parsed?.error ?? parsed?.code ?? code;
+      message = parsed?.message ?? parsed?.detail?.message ?? message;
+      correlationId = parsed?.correlation_id;
+    } catch {
+      /* non-JSON */
+    }
+    throw new BlueprintsApiError(resp.status, code, message, correlationId);
+  }
+  const data = (await resp.json()) as Partial<MaterialOverrideResult>;
+  return {
+    success: data.success ?? true,
+    material_id: materialId,
+    override_id: data.override_id,
+    receipt_id: data.receipt_id,
+    correlation_id: data.correlation_id,
+  };
+}
+
+/** Wave 5.1a-5 — skip a Drew-sourced material pick (won't flow to bundle). */
+export async function skipMaterial(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  materialId: string,
+  officeId: string,
+  reason: string = 'user_skipped',
+  signal?: AbortSignal,
+): Promise<{ success: boolean; material_id: string; correlation_id?: string }> {
+  if (!projectId || !materialId) {
+    throw new BlueprintsApiError(400, 'INVALID_PARAMS', 'projectId and materialId are required');
+  }
+  const url = `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(
+    projectId,
+  )}/materials/${encodeURIComponent(materialId)}/skip`;
+  const resp = await authenticatedFetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Office-Id': officeId,
+    },
+    body: JSON.stringify({ reason }),
+    signal,
+  });
+  if (!resp.ok) {
+    let code = 'SKIP_MATERIAL_FAILED';
+    let message = `skipMaterial failed (${resp.status})`;
+    let correlationId: string | undefined;
+    try {
+      const parsed = await resp.json();
+      code = parsed?.error ?? parsed?.code ?? code;
+      message = parsed?.message ?? message;
+      correlationId = parsed?.correlation_id;
+    } catch {
+      /* non-JSON */
+    }
+    throw new BlueprintsApiError(resp.status, code, message, correlationId);
+  }
+  const data = (await resp.json()) as { success?: boolean; correlation_id?: string };
+  return {
+    success: data.success ?? true,
+    material_id: materialId,
+    correlation_id: data.correlation_id,
+  };
+}
+
+/** Wave 8 — push selected blueprint-derived materials to the project's
+ *  materials bundle. YELLOW tier: the Express proxy mints a capability token
+ *  with scope=`materials.bundle.add` (Law #5). The caller MUST have shown
+ *  a confirmation modal BEFORE calling this method. */
+export async function pushToMaterialsBundle(
+  authenticatedFetch: FetchFn,
+  projectId: string,
+  materialIds: string[],
+  officeId: string,
+): Promise<PushToMaterialsResult> {
+  if (!projectId) {
+    throw new BlueprintsApiError(400, 'INVALID_PROJECT_ID', 'projectId is required');
+  }
+  if (!Array.isArray(materialIds) || materialIds.length === 0) {
+    throw new BlueprintsApiError(400, 'EMPTY_MATERIAL_IDS', 'At least one material_id required');
+  }
+  const url = `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}/push-to-materials`;
+  const resp = await authenticatedFetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Office-Id': officeId,
+    },
+    body: JSON.stringify({ material_ids: materialIds }),
+  });
+  if (!resp.ok) {
+    let code = 'PUSH_TO_MATERIALS_FAILED';
+    let message = `pushToMaterialsBundle failed (${resp.status})`;
+    let correlationId: string | undefined;
+    try {
+      const parsed = await resp.json();
+      code = parsed?.error ?? parsed?.code ?? code;
+      message = parsed?.message ?? message;
+      correlationId = parsed?.correlation_id;
+    } catch {
+      /* non-JSON */
+    }
+    throw new BlueprintsApiError(resp.status, code, message, correlationId);
+  }
+  const data = (await resp.json()) as PushToMaterialsResult;
+  return {
+    success: !!data.success,
+    added_count: data.added_count ?? 0,
+    added_material_ids: Array.isArray(data.added_material_ids) ? data.added_material_ids : [],
+    rejected: Array.isArray(data.rejected) ? data.rejected : [],
+    bundle_id: data.bundle_id,
+    correlation_id: data.correlation_id,
+  };
+}

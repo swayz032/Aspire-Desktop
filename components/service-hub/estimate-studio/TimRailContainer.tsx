@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { View, StyleSheet, useWindowDimensions } from 'react-native';
 import {
   TimRailTabSwitcher,
@@ -30,24 +30,11 @@ const LAPTOP_OR_TABLET_BREAKPOINT = 1500;
 
 export function TimRailContainer() {
   const { width } = useWindowDimensions();
-  const isLaptopOrTablet = width < LAPTOP_OR_TABLET_BREAKPOINT;
   const railWidth = width < 1100 ? 272 : width < LAPTOP_OR_TABLET_BREAKPOINT ? 288 : 320;
-  // Default to Controls on laptop/tablet (chrome is hoisted there, the
-  // user MUST land on it or there's no search/address bar visible) and
-  // Assistant on desktop (chrome stays in-canvas, Assistant is the home).
-  const [activeTab, setActiveTab] = useState<TimRailTabId>(
-    isLaptopOrTablet ? 'controls' : 'assistant',
-  );
-  // If the viewport crosses the breakpoint mid-session (rare, but happens
-  // on resize / window-snap), re-anchor to the appropriate default UNLESS
-  // the user has already navigated elsewhere intentionally.
-  useEffect(() => {
-    setActiveTab((prev) => {
-      if (isLaptopOrTablet && prev === 'assistant') return 'controls';
-      if (!isLaptopOrTablet && prev === 'controls') return 'assistant';
-      return prev;
-    });
-  }, [isLaptopOrTablet]);
+  // 2026-05-18 lock: chrome is hoisted at ALL widths >= 768 (canvas = only
+  // blueprints), so the rail defaults to Controls everywhere. The user can
+  // still switch to Context / Assistant manually.
+  const [activeTab, setActiveTab] = useState<TimRailTabId>('controls');
   const { address } = useProjectAddress();
   const propertyData = usePropertyData(address);
 
@@ -58,7 +45,12 @@ export function TimRailContainer() {
       <View style={styles.body}>
         {activeTab === 'assistant' && <TimRailChatStub />}
         {activeTab === 'context' && (
-          <TimRailContextTab data={propertyData.data} status={propertyData.status} />
+          <TimRailContextTab
+            data={propertyData.data}
+            loading={propertyData.status === 'loading' || propertyData.status === 'idle'}
+            error={propertyData.error ?? undefined}
+            onRetry={propertyData.retry}
+          />
         )}
         {activeTab === 'controls' && <TimRailControlsTab />}
       </View>

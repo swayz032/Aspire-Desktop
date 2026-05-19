@@ -1,13 +1,13 @@
 import React from 'react';
-import { TabPlaceholder } from '@/components/service-hub/estimate-studio/TabPlaceholder';
+import { ScopeTab } from '@/components/service-hub/estimate-studio/scope/ScopeTab';
 
-export default function ScopeTab() {
-  return (
-    <TabPlaceholder
-      tabName="Scope"
-      phaseN={7}
-      icon="list-outline"
-      description="Package decision board — Included Work, Not in Base Scope, Missing Inputs, Alternates. Delivery model alignment. Phase 7."
-    />
-  );
+/**
+ * Scope tab route (Wave 7).
+ *
+ * Delegates to <ScopeTab /> — the canvas-card shell that hosts Story,
+ * Included Work, Not in Base, Missing Inputs, Alternates, and Tariff
+ * Exposure cards.
+ */
+export default function ScopeRoute(): React.ReactElement {
+  return <ScopeTab />;
 }

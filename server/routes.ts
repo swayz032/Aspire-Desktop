@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import express, { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { storage } from './storage';
@@ -9830,6 +9830,288 @@ router.get('/api/v1/materials/search', async (req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
+// Wave 6A (async-dispatch refactor) — Blueprint Story Engine:
+//   POST /api/v1/blueprints/upload
+// ---------------------------------------------------------------------------
+// GREEN tier — accepts a base64-encoded blueprint and hands it to the Python
+// orchestrator's NEW async dispatch endpoint:
+//
+//     POST {orchestrator}/v1/blueprints/dispatch
+//
+// The orchestrator returns within ~5s with `{project_id, status, correlation_id}`
+// — it enqueues Drew's 5-stage pipeline as a background task and writes
+// stage_progress to `blueprint_projects.stage_progress` (JSONB). Frontend polls
+// `/api/v1/blueprints/projects/:id/status` on a 2s cadence to drive the UI.
+//
+// Request body (JSON):
+//   { filename: string,
+//     mime_type: 'application/pdf'|'image/jpeg'|'image/png'|'image/heic'|'image/heif',
+//     pdf_b64: string (base64-encoded raw file bytes),
+//     idempotency_key?: string }
+//
+// Body size: client-side cap is 50 MB raw → base64 inflates ~33% → JSON body
+// can reach ~67 MB. We register a 75 MB JSON parser scoped to this single
+// route (global parser stays at 1 MB).
+//
+// Response (HTTP 200):
+//   { success: true,
+//     project_id: string,
+//     status: 'queued' | 'dedup',
+//     correlation_id: string,
+//     filename: string,
+//     size_bytes: number,
+//     pdf_storage_path?: string }
+//
+// Failure codes:
+//   400 INVALID_INPUT / INVALID_BASE64 / EMPTY_FILE
+//   413 FILE_TOO_LARGE
+//   415 UNSUPPORTED_MEDIA_TYPE
+//   503 ORCHESTRATOR_UNAVAILABLE / SIGNING_KEY_UNAVAILABLE
+//   504 ORCHESTRATOR_TIMEOUT (dispatch must respond < 30s)
+//   502 ORCHESTRATOR_UNREACHABLE / DISPATCH_UPSTREAM_ERROR
+// ---------------------------------------------------------------------------
+
+const BLUEPRINT_UPLOAD_JSON_LIMIT = '75mb';
+const BLUEPRINT_MAX_RAW_BYTES = 50 * 1024 * 1024;
+const BLUEPRINT_ACCEPTED_MIME = new Set([
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/heic',
+  'image/heif',
+]);
+
+router.post(
+  '/api/v1/blueprints/upload',
+  express.json({ limit: BLUEPRINT_UPLOAD_JSON_LIMIT }),
+  async (req: Request, res: Response) => {
+    const suiteId = requireAuth(req, res);
+    if (!suiteId) return;
+
+    const orchestratorUrl = resolveOrchestratorUrl();
+    if (!orchestratorUrl) {
+      res.status(503).json({
+        error: 'ORCHESTRATOR_UNAVAILABLE',
+        message: 'Backend service is not configured',
+      });
+      return;
+    }
+
+    const officeIdRaw = (req.headers['x-office-id'] as string) || '';
+    const officeId =
+      typeof officeIdRaw === 'string' && officeIdRaw.trim() ? officeIdRaw.trim() : suiteId;
+    const tenantId = suiteId;
+    const actorId = ((req as any).authenticatedUserId as string) || suiteId;
+    const correlationId =
+      (req.headers['x-correlation-id'] as string) || `corr_${crypto.randomUUID()}`;
+    const traceId = (req.headers['x-trace-id'] as string) || correlationId;
+
+    // Validate body shape (Law #3: fail-closed on malformed input).
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const filename = typeof body.filename === 'string' ? body.filename.trim() : '';
+    const mimeType = typeof body.mime_type === 'string' ? body.mime_type.toLowerCase() : '';
+    const pdfB64 = typeof body.pdf_b64 === 'string' ? body.pdf_b64 : '';
+
+    if (!filename || !mimeType || !pdfB64) {
+      res.status(400).json({
+        error: 'INVALID_INPUT',
+        message: 'filename, mime_type, and pdf_b64 are required',
+        correlation_id: correlationId,
+      });
+      return;
+    }
+    if (!BLUEPRINT_ACCEPTED_MIME.has(mimeType)) {
+      res.status(415).json({
+        error: 'UNSUPPORTED_MEDIA_TYPE',
+        message: `mime_type ${mimeType} not accepted`,
+        correlation_id: correlationId,
+      });
+      return;
+    }
+
+    // Decode to validate size + strip the base64 envelope (the orchestrator
+    // accepts raw base64; we re-encode after validation to a stable form).
+    let rawBytesLen: number;
+    try {
+      // Buffer.from is forgiving — ignores whitespace and pads if missing.
+      rawBytesLen = Buffer.from(pdfB64, 'base64').byteLength;
+    } catch {
+      res.status(400).json({
+        error: 'INVALID_BASE64',
+        message: 'pdf_b64 is not valid base64',
+        correlation_id: correlationId,
+      });
+      return;
+    }
+    if (rawBytesLen === 0) {
+      res.status(400).json({
+        error: 'EMPTY_FILE',
+        message: 'Decoded file is empty',
+        correlation_id: correlationId,
+      });
+      return;
+    }
+    if (rawBytesLen > BLUEPRINT_MAX_RAW_BYTES) {
+      res.status(413).json({
+        error: 'FILE_TOO_LARGE',
+        message: `File is ${(rawBytesLen / 1024 / 1024).toFixed(1)} MB — max is ${(
+          BLUEPRINT_MAX_RAW_BYTES / 1024 / 1024
+        ).toFixed(0)} MB`,
+        correlation_id: correlationId,
+      });
+      return;
+    }
+
+    // Mint capability token (Law #5) — scope=blueprints:upload.
+    if (!resolveSigningKey()) {
+      res.status(503).json({
+        error: 'SIGNING_KEY_UNAVAILABLE',
+        message: 'Capability token signing key not configured',
+      });
+      return;
+    }
+    const minted = mintCapabilityToken({
+      scope: 'blueprints:upload',
+      tenant_id: tenantId,
+      suite_id: suiteId,
+      office_id: officeId,
+      correlation_id: correlationId,
+    });
+    if (!minted) {
+      res.status(503).json({
+        error: 'SIGNING_KEY_UNAVAILABLE',
+        message: 'Capability token signing key not configured',
+      });
+      return;
+    }
+
+    // ── Single async dispatch to orchestrator ──
+    // The orchestrator persists the project row + enqueues Drew's 5-stage
+    // pipeline as a background task, returning within ~5s with the
+    // project_id + queued status. Drew writes stage_progress JSONB as it
+    // advances; frontend polls /api/v1/blueprints/projects/:id/status.
+    const dispatchBody = {
+      pdf_bytes: pdfB64,
+      filename,
+      suite_id: suiteId,
+      office_id: officeId,
+      correlation_id: correlationId,
+      capability_token: JSON.stringify(minted.token),
+    };
+
+    // Structured log — never log pdf bytes or token.
+    logger.info('[BlueprintsUpload] dispatch start', {
+      suite_id: suiteId,
+      office_id: officeId,
+      trace_id: traceId,
+      correlation_id: correlationId,
+      size_bytes: rawBytesLen,
+    });
+
+    const dispatchController = new AbortController();
+    // Async dispatch reply target is < 5s. 30s gives generous headroom for
+    // PDF persistence + queue enqueue; anything longer is a real backend bug.
+    const dispatchTimer = setTimeout(() => dispatchController.abort(), 30_000);
+    let dispatchResult: Record<string, unknown> | null = null;
+    try {
+      const orchResp = await fetch(`${orchestratorUrl}/v1/blueprints/dispatch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Tenant-Id': tenantId,
+          'X-Suite-Id': suiteId,
+          'X-Office-Id': officeId,
+          'X-Actor-Id': actorId,
+          'X-Correlation-Id': correlationId,
+          'X-Trace-Id': traceId,
+          Authorization: `Bearer ${minted.token}`,
+        },
+        body: JSON.stringify(dispatchBody),
+        signal: dispatchController.signal,
+      });
+      clearTimeout(dispatchTimer);
+      const text = await orchResp.text();
+      try {
+        dispatchResult = text ? (JSON.parse(text) as Record<string, unknown>) : null;
+      } catch {
+        dispatchResult = null;
+      }
+      if (!orchResp.ok) {
+        logger.warn('[BlueprintsUpload] dispatch upstream non-2xx', {
+          suite_id: suiteId,
+          status: orchResp.status,
+        });
+        const upstreamMessage =
+          (dispatchResult &&
+            ((dispatchResult.message as string) || (dispatchResult.error as string))) ||
+          `Backend returned ${orchResp.status}`;
+        res.status(orchResp.status).json({
+          error: 'DISPATCH_UPSTREAM_ERROR',
+          message: upstreamMessage,
+          correlation_id: correlationId,
+        });
+        return;
+      }
+    } catch (err: unknown) {
+      clearTimeout(dispatchTimer);
+      const isTimeout = err instanceof Error && err.name === 'AbortError';
+      logger.error('[BlueprintsUpload] dispatch fetch failed', {
+        suite_id: suiteId,
+        reason: err instanceof Error ? err.name + ': ' + err.message.slice(0, 120) : 'unknown',
+        is_timeout: isTimeout,
+      });
+      res.status(isTimeout ? 504 : 502).json({
+        error: isTimeout ? 'ORCHESTRATOR_TIMEOUT' : 'ORCHESTRATOR_UNREACHABLE',
+        message: isTimeout ? 'Backend did not respond in time' : 'Could not reach backend service',
+        correlation_id: correlationId,
+      });
+      return;
+    }
+
+    const projectIdRaw = dispatchResult?.project_id;
+    const statusRaw = dispatchResult?.status;
+    if (typeof projectIdRaw !== 'string' || !projectIdRaw) {
+      logger.error('[BlueprintsUpload] dispatch missing project_id', {
+        suite_id: suiteId,
+        correlation_id: correlationId,
+      });
+      res.status(502).json({
+        error: 'DISPATCH_INVALID_RESPONSE',
+        message: 'Backend did not return project_id',
+        correlation_id: correlationId,
+      });
+      return;
+    }
+    const status: 'queued' | 'dedup' =
+      statusRaw === 'dedup' ? 'dedup' : 'queued';
+
+    logger.info('[BlueprintsUpload] dispatch accepted', {
+      suite_id: suiteId,
+      office_id: officeId,
+      correlation_id: correlationId,
+      project_id: projectIdRaw,
+      status,
+      size_bytes: rawBytesLen,
+    });
+
+    const pdfStoragePath =
+      typeof dispatchResult?.pdf_storage_path === 'string'
+        ? (dispatchResult.pdf_storage_path as string)
+        : undefined;
+
+    res.status(200).json({
+      success: true,
+      project_id: projectIdRaw,
+      status,
+      filename,
+      size_bytes: rawBytesLen,
+      correlation_id: correlationId,
+      ...(pdfStoragePath ? { pdf_storage_path: pdfStoragePath } : {}),
+    });
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Pass D: /api/v1/materials/bundles/* — bundle CRUD + push-to-estimate
 // ---------------------------------------------------------------------------
 // These 6 endpoints proxy to the Python orchestrator's /v1/materials/bundles/*
@@ -10022,6 +10304,482 @@ router.post('/api/v1/materials/bundles/push-to-estimate', async (req: Request, r
     timeoutMs: 15_000,
   });
 });
+
+// ---------------------------------------------------------------------------
+// Wave 8 — POST /api/v1/blueprints/projects/:id/push-to-materials  (YELLOW)
+// ---------------------------------------------------------------------------
+// Body: { material_ids: string[] }
+//
+// Mints a YELLOW capability token with scope `materials.bundle.add` (Law #5)
+// and forwards to the Python orchestrator at
+//   POST /v1/blueprints/projects/:id/push-to-materials
+//
+// The caller (usePushToMaterials hook) MUST present a confirmation modal
+// BEFORE calling — the modal is the UX gate (Law #4); the server-side
+// scope on the capability token is the real gate. Body sanity-checks here
+// match the client side so a bad payload never reaches the orchestrator.
+// ---------------------------------------------------------------------------
+router.post(
+  '/api/v1/blueprints/projects/:id/push-to-materials',
+  express.json({ limit: '256kb' }),
+  async (req: Request, res: Response) => {
+    const suiteId = requireAuth(req, res);
+    if (!suiteId) return;
+
+    const orchestratorUrl = resolveOrchestratorUrl();
+    if (!orchestratorUrl) {
+      res.status(503).json({
+        error: 'ORCHESTRATOR_UNAVAILABLE',
+        message: 'Backend service is not configured',
+      });
+      return;
+    }
+
+    const projectId = String(req.params.id ?? '').trim();
+    if (!projectId) {
+      res.status(400).json({ error: 'INVALID_PROJECT_ID', message: 'project id is required' });
+      return;
+    }
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const rawIds = body.material_ids;
+    if (!Array.isArray(rawIds) || rawIds.length === 0) {
+      res.status(400).json({
+        error: 'EMPTY_MATERIAL_IDS',
+        message: 'material_ids must be a non-empty array of strings',
+      });
+      return;
+    }
+    const materialIds = rawIds
+      .filter((v) => typeof v === 'string' && v.trim().length > 0)
+      .map((v) => (v as string).trim());
+    if (materialIds.length === 0) {
+      res.status(400).json({
+        error: 'EMPTY_MATERIAL_IDS',
+        message: 'material_ids must contain at least one non-empty string',
+      });
+      return;
+    }
+    if (materialIds.length > 500) {
+      res.status(413).json({
+        error: 'TOO_MANY_MATERIAL_IDS',
+        message: 'material_ids cannot exceed 500 entries per request',
+      });
+      return;
+    }
+
+    const officeIdRaw = (req.headers['x-office-id'] as string) || '';
+    const officeId =
+      typeof officeIdRaw === 'string' && officeIdRaw.trim() ? officeIdRaw.trim() : suiteId;
+    const tenantId = suiteId;
+    const actorId = ((req as any).authenticatedUserId as string) || suiteId;
+    const correlationId =
+      (req.headers['x-correlation-id'] as string) || `corr_${crypto.randomUUID()}`;
+    const traceId = (req.headers['x-trace-id'] as string) || correlationId;
+
+    // YELLOW capability token (Law #5).
+    if (!resolveSigningKey()) {
+      res.status(503).json({
+        error: 'SIGNING_KEY_UNAVAILABLE',
+        message: 'Capability token signing key not configured',
+      });
+      return;
+    }
+    const minted = mintCapabilityToken({
+      scope: 'materials.bundle.add',
+      tenant_id: tenantId,
+      suite_id: suiteId,
+      office_id: officeId,
+      correlation_id: correlationId,
+    });
+    if (!minted) {
+      res.status(503).json({
+        error: 'SIGNING_KEY_UNAVAILABLE',
+        message: 'Capability token signing key not configured',
+      });
+      return;
+    }
+
+    const orchestratorPath =
+      `/v1/blueprints/projects/${encodeURIComponent(projectId)}/push-to-materials`;
+    const url = `${orchestratorUrl}${orchestratorPath}`;
+    const forwardBody = {
+      project_id: projectId,
+      material_ids: materialIds,
+      suite_id: suiteId,
+      office_id: officeId,
+      capability_token: JSON.stringify(minted.token),
+    };
+
+    logger.info('[BlueprintsPushToMaterials] proxy', {
+      suite_id: suiteId,
+      office_id: officeId,
+      project_id: projectId,
+      material_count: materialIds.length,
+      correlation_id: correlationId,
+      risk_tier: 'yellow',
+    });
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const orchResp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Tenant-Id': tenantId,
+          'X-Suite-Id': suiteId,
+          'X-Office-Id': officeId,
+          'X-Actor-Id': actorId,
+          'X-Correlation-Id': correlationId,
+          'X-Trace-Id': traceId,
+        },
+        body: JSON.stringify(forwardBody),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      const text = await orchResp.text();
+      let data: any = null;
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { error: 'UPSTREAM_NON_JSON', message: text.slice(0, 200) };
+        }
+      }
+      if (!orchResp.ok) {
+        logger.warn('[BlueprintsPushToMaterials] orchestrator non-2xx', {
+          suite_id: suiteId,
+          project_id: projectId,
+          status: orchResp.status,
+        });
+        res.status(orchResp.status).json({
+          error: data?.error ?? 'PUSH_TO_MATERIALS_FAILED',
+          message: data?.message ?? `Orchestrator returned ${orchResp.status}`,
+          correlation_id: correlationId,
+        });
+        return;
+      }
+      // Normalize the response shape if the orchestrator returns a slimmer object.
+      res.status(200).json({
+        success: typeof data?.success === 'boolean' ? data.success : true,
+        added_count:
+          typeof data?.added_count === 'number'
+            ? data.added_count
+            : Array.isArray(data?.added_material_ids)
+              ? data.added_material_ids.length
+              : materialIds.length,
+        added_material_ids: Array.isArray(data?.added_material_ids)
+          ? data.added_material_ids
+          : materialIds,
+        rejected: Array.isArray(data?.rejected) ? data.rejected : [],
+        bundle_id: data?.bundle_id,
+        correlation_id: correlationId,
+      });
+    } catch (err: unknown) {
+      clearTimeout(timer);
+      const isTimeout = err instanceof Error && err.name === 'AbortError';
+      logger.error('[BlueprintsPushToMaterials] fetch failed', {
+        suite_id: suiteId,
+        project_id: projectId,
+        reason:
+          err instanceof Error ? `${err.name}: ${err.message.slice(0, 120)}` : 'unknown',
+        is_timeout: isTimeout,
+      });
+      res.status(isTimeout ? 504 : 502).json({
+        error: isTimeout ? 'ORCHESTRATOR_TIMEOUT' : 'ORCHESTRATOR_UNREACHABLE',
+        message: isTimeout
+          ? 'Backend did not respond in time'
+          : 'Could not reach backend service',
+        correlation_id: correlationId,
+      });
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Wave 6.5 — Blueprint read proxies (GREEN tier — no capability token)
+// ---------------------------------------------------------------------------
+// Three same-origin GET proxies powering the live polling loop in
+// `useBlueprintProjectPoll`:
+//
+//   GET /api/v1/blueprints/projects/:id           -> project + stage_progress + sheet_count
+//   GET /api/v1/blueprints/projects/:id/sheets    -> sheets (full chain when active_only=false)
+//   GET /api/v1/blueprints/projects/:id/status    -> lightweight pipeline status for polling
+//
+// All three are read-side (GREEN tier — Law #4). No capability token minted.
+// `proxyForward()` still enforces JWT auth + scopes suite_id from the token.
+// Backend route auto-enforces suite_id filter (Law #6) on every query.
+// The orchestrator filters `active_only` as a query string passthrough.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Inline blueprint GET forwarder — FIX 3 (2026-05-18).
+//
+// Mirrors the upload-route header block exactly (X-Tenant-Id / X-Suite-Id /
+// X-Office-Id / X-Actor-Id / X-Correlation-Id / X-Trace-Id + Authorization
+// pass-through) so the three polling GETs cannot drop scope headers under any
+// circumstance. The previous `proxyForward()` invocation was correct in
+// principle but the user observed `401 MISSING_SCOPE_HEADERS` 404-spam in the
+// network tab — bringing the headers inline matches the known-good upload
+// route, removes one indirection, and lets `Authorization` flow through for
+// upstream middleware that may inspect it.
+// ---------------------------------------------------------------------------
+async function _forwardBlueprintGet(
+  req: Request,
+  res: Response,
+  orchestratorPath: string,
+  logTag: string,
+): Promise<void> {
+  const suiteId = requireAuth(req, res);
+  if (!suiteId) return;
+
+  const orchestratorUrl = resolveOrchestratorUrl();
+  if (!orchestratorUrl) {
+    res.status(503).json({
+      error: 'ORCHESTRATOR_UNAVAILABLE',
+      message: 'Backend service is not configured',
+    });
+    return;
+  }
+
+  const officeIdRaw = (req.headers['x-office-id'] as string) || '';
+  const officeId =
+    typeof officeIdRaw === 'string' && officeIdRaw.trim() ? officeIdRaw.trim() : suiteId;
+  const tenantId = suiteId;
+  const actorId = ((req as any).authenticatedUserId as string) || suiteId;
+  const correlationId =
+    (req.headers['x-correlation-id'] as string) || `corr_${crypto.randomUUID()}`;
+  const traceId = (req.headers['x-trace-id'] as string) || correlationId;
+  // Forward the caller's Authorization header so any upstream middleware
+  // (e.g. future capability-token verifier) sees the original session token.
+  const authHeader = (req.headers.authorization as string) || '';
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5_000);
+
+  logger.info(`[${logTag}] proxy`, {
+    suite_id: suiteId,
+    office_id: officeId,
+    method: 'GET',
+    path: orchestratorPath,
+    trace_id: traceId,
+    correlation_id: correlationId,
+  });
+
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-Tenant-Id': tenantId,
+      'X-Suite-Id': suiteId,
+      'X-Office-Id': officeId,
+      'X-Actor-Id': actorId,
+      'X-Correlation-Id': correlationId,
+      'X-Trace-Id': traceId,
+    };
+    if (authHeader) headers.Authorization = authHeader;
+
+    const orchResp = await fetch(`${orchestratorUrl}${orchestratorPath}`, {
+      method: 'GET',
+      headers,
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    const text = await orchResp.text();
+    let data: unknown = null;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { error: 'UPSTREAM_NON_JSON', message: text.slice(0, 200) };
+      }
+    }
+    res.status(orchResp.status).json(data ?? {});
+  } catch (err: any) {
+    clearTimeout(timer);
+    if (err?.name === 'AbortError') {
+      logger.warn(`[${logTag}] timeout`, { suite_id: suiteId, path: orchestratorPath });
+      res.status(504).json({
+        error: 'UPSTREAM_TIMEOUT',
+        message: 'Backend did not respond in time',
+        correlation_id: correlationId,
+      });
+      return;
+    }
+    logger.error(`[${logTag}] upstream error`, {
+      suite_id: suiteId,
+      path: orchestratorPath,
+      error: err?.message ?? String(err),
+    });
+    res.status(502).json({
+      error: 'UPSTREAM_ERROR',
+      message: 'Backend communication failed',
+      correlation_id: correlationId,
+    });
+  }
+}
+
+router.get('/api/v1/blueprints/projects/:id', async (req: Request, res: Response) => {
+  const projectId = String(req.params.id ?? '').trim();
+  if (!projectId) {
+    res.status(400).json({ error: 'INVALID_PROJECT_ID', message: 'project id is required' });
+    return;
+  }
+  await _forwardBlueprintGet(
+    req,
+    res,
+    `/v1/blueprints/projects/${encodeURIComponent(projectId)}`,
+    'BlueprintProjectGet',
+  );
+});
+
+router.get('/api/v1/blueprints/projects/:id/sheets', async (req: Request, res: Response) => {
+  const projectId = String(req.params.id ?? '').trim();
+  if (!projectId) {
+    res.status(400).json({ error: 'INVALID_PROJECT_ID', message: 'project id is required' });
+    return;
+  }
+  // Pass through `active_only` + `discipline` query strings verbatim.
+  const params = new URLSearchParams();
+  const activeOnly = req.query.active_only;
+  if (typeof activeOnly === 'string' && activeOnly.length > 0) {
+    params.set('active_only', activeOnly === 'true' ? 'true' : 'false');
+  }
+  const discipline = req.query.discipline;
+  if (typeof discipline === 'string' && discipline.length > 0 && discipline.length < 32) {
+    params.set('discipline', discipline);
+  }
+  const qs = params.toString();
+  await _forwardBlueprintGet(
+    req,
+    res,
+    `/v1/blueprints/projects/${encodeURIComponent(projectId)}/sheets${qs ? `?${qs}` : ''}`,
+    'BlueprintSheetsList',
+  );
+});
+
+router.get('/api/v1/blueprints/projects/:id/status', async (req: Request, res: Response) => {
+  const projectId = String(req.params.id ?? '').trim();
+  if (!projectId) {
+    res.status(400).json({ error: 'INVALID_PROJECT_ID', message: 'project id is required' });
+    return;
+  }
+  await _forwardBlueprintGet(
+    req,
+    res,
+    `/v1/blueprints/projects/${encodeURIComponent(projectId)}/status`,
+    'BlueprintProjectStatus',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Wave 5.1a-5 — POST /api/v1/blueprints/projects/:id/materials/:mid/override
+// ---------------------------------------------------------------------------
+// Body: { override: { label?, quantity?, unit?, supplier_name?, supplier_id?,
+//                     price_usd?, notes? }, reason?: 'spec_mismatch' | 'vendor_pref'
+//                     | 'price' | 'availability' | 'other' }
+//
+// Mints a YELLOW capability token with scope `blueprints:material_override`
+// (Law #5) and forwards to the Python orchestrator via /v1/agents/invoke with
+// task=MATERIAL_OVERRIDE. Drew rewrites the material_pick memory entry +
+// emits a blueprint_receipt (Law #2). Caller MUST present a confirmation
+// gesture (clicking "Confirm Override" in the side panel) BEFORE invoking.
+// ---------------------------------------------------------------------------
+router.post(
+  '/api/v1/blueprints/projects/:id/materials/:material_id/override',
+  express.json({ limit: '64kb' }),
+  async (req: Request, res: Response) => {
+    const projectId = String(req.params.id ?? '').trim();
+    const materialId = String(req.params.material_id ?? '').trim();
+    if (!projectId || !materialId) {
+      res.status(400).json({
+        error: 'INVALID_PARAMS',
+        message: 'project_id and material_id are required',
+      });
+      return;
+    }
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const override = (body.override ?? {}) as Record<string, unknown>;
+    if (!override || typeof override !== 'object' || Array.isArray(override)) {
+      res.status(400).json({
+        error: 'INVALID_OVERRIDE',
+        message: 'override must be an object with at least one field',
+      });
+      return;
+    }
+    // Reject empty overrides (no field changes) — would be a no-op receipt.
+    const overrideKeys = Object.keys(override).filter(
+      (k) => override[k] != null && override[k] !== '',
+    );
+    if (overrideKeys.length === 0) {
+      res.status(400).json({
+        error: 'EMPTY_OVERRIDE',
+        message: 'override must include at least one non-empty field',
+      });
+      return;
+    }
+
+    await proxyForward({
+      orchestratorPath: '/v1/agents/invoke',
+      method: 'POST',
+      scope: 'blueprints:material_override',
+      logTag: 'BlueprintsMaterialOverride',
+      timeoutMs: 15_000,
+      body: {
+        agent: 'drew',
+        task: 'MATERIAL_OVERRIDE',
+        project_id: projectId,
+        material_id: materialId,
+        override,
+        reason: typeof body.reason === 'string' ? body.reason : 'other',
+      },
+      req,
+      res,
+    });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Wave 5.1a-5 — POST /api/v1/blueprints/projects/:id/materials/:mid/skip
+// ---------------------------------------------------------------------------
+// Marks a Drew-sourced material as user-skipped (won't propagate to bundle /
+// estimate). Capability scope `blueprints:material_skip` (YELLOW — still a
+// state mutation that affects downstream invoices).
+// ---------------------------------------------------------------------------
+router.post(
+  '/api/v1/blueprints/projects/:id/materials/:material_id/skip',
+  express.json({ limit: '8kb' }),
+  async (req: Request, res: Response) => {
+    const projectId = String(req.params.id ?? '').trim();
+    const materialId = String(req.params.material_id ?? '').trim();
+    if (!projectId || !materialId) {
+      res.status(400).json({
+        error: 'INVALID_PARAMS',
+        message: 'project_id and material_id are required',
+      });
+      return;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    await proxyForward({
+      orchestratorPath: '/v1/agents/invoke',
+      method: 'POST',
+      scope: 'blueprints:material_skip',
+      logTag: 'BlueprintsMaterialSkip',
+      timeoutMs: 10_000,
+      body: {
+        agent: 'drew',
+        task: 'MATERIAL_SKIP',
+        project_id: projectId,
+        material_id: materialId,
+        reason: typeof body.reason === 'string' ? body.reason : 'user_skipped',
+      },
+      req,
+      res,
+    });
+  },
+);
 
 export default router;
 

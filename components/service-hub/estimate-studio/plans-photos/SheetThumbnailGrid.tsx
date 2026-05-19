@@ -1,0 +1,728 @@
+/**
+ * SheetThumbnailGrid — Wave 6.5.
+ *
+ * Premium flat-card grid of blueprint sheets. Replaces the canvas-area empty
+ * state and the legacy <SheetRoster /> list once INGEST completes.
+ *
+ * Composition:
+ *   - Top: summary stat row (sheets · disciplines · revisions) with tick
+ *     animation on count change (200ms cross-fade, CLS=0).
+ *   - Discipline filter chip strip — All · A · S · M · E · P · FP · C · L
+ *     (counts reflect the filtered population).
+ *   - Grid: each card = thumbnail + sheet number + discipline chip + revision
+ *     badge. Click a "current" card with predecessors to expand a vertical
+ *     timeline of the revision chain.
+ *   - Empty/loading states: shimmer placeholders.
+ *
+ * Data: consumes `BlueprintSheetRead[]` + `RevisionChain[]` from
+ * `useBlueprintProjectPoll`.
+ *
+ * Visual locks:
+ *   - Card shell uses flat-premium tokens (rgba(255,255,255,0.025) bg,
+ *     rgba(255,255,255,0.08) border) consistent with BottomChipStrip.
+ *   - Active chip uses the locked amber-gold `#fbbf24` accent.
+ *   - Revision timeline uses hairline rules + CURRENT pill (same accent).
+ *
+ * Law #7: render layer only — no autonomous decisions.
+ */
+import React, { useMemo, useState } from 'react';
+import {
+  Animated,
+  Image,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import type { BlueprintSheetRead, StageProgress } from '@/lib/api/blueprintsApi';
+import type { RevisionChain } from '@/hooks/useBlueprintProjectPoll';
+import { getDisciplineStyle } from './disciplines';
+import { usePlansPhotosUi } from '@/lib/plansPhotosUiStore';
+
+// 2026-05-18 lock: stat row + discipline filter strip moved to the Tim Rail
+// Context tab (`PlansPhotosContextPayload`). The canvas grid is now
+// BLUEPRINTS ONLY — thumbnail cards edge-to-edge. The grid reads the
+// active filter key from `plansPhotosUiStore`.
+
+function _normalizeDisc(disc: string | null | undefined): string | null {
+  if (!disc) return null;
+  return disc.toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+}
+
+// ---------------------------------------------------------------------------
+// Shimmer skeleton
+// ---------------------------------------------------------------------------
+
+function ShimmerCard({ index }: { index: number }): React.ReactElement {
+  const pulse = React.useRef(new Animated.Value(0.35)).current;
+  React.useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 0.75,
+          duration: 900,
+          useNativeDriver: true,
+          delay: (index % 4) * 120,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.35,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse, index]);
+
+  return (
+    <View style={styles.cardHost} testID={`sheet-thumb-skeleton-${index}`}>
+      <Animated.View style={[styles.thumbSlot, styles.skelThumb, { opacity: pulse }]} />
+      <View style={styles.cardMeta}>
+        <Animated.View style={[styles.skelLine, styles.skelLineWide, { opacity: pulse }]} />
+        <Animated.View style={[styles.skelLine, { opacity: pulse }]} />
+      </View>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Single sheet thumbnail card
+// ---------------------------------------------------------------------------
+
+interface SheetCardProps {
+  sheet: BlueprintSheetRead;
+  index: number;
+  chain: RevisionChain | null;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+}
+
+function SheetCard({
+  sheet,
+  index,
+  chain,
+  isExpanded,
+  onToggleExpand,
+}: SheetCardProps): React.ReactElement {
+  const discStyle = getDisciplineStyle(sheet.discipline);
+  const hasChain = chain != null;
+  const isSuperseded = false; // top-level grid only renders current sheets
+  const revisionNum = sheet.revision ?? null;
+
+  return (
+    <View style={styles.cardHost} testID={`sheet-thumb-card-${sheet.id}`}>
+      <Pressable
+        onPress={hasChain ? onToggleExpand : undefined}
+        disabled={!hasChain}
+        accessibilityRole={hasChain ? 'button' : undefined}
+        accessibilityLabel={
+          hasChain
+            ? `Sheet ${sheet.sheet_number ?? index + 1} — ${
+                chain!.sheets.length
+              } revisions. Tap to ${isExpanded ? 'collapse' : 'expand'} chain.`
+            : `Sheet ${sheet.sheet_number ?? index + 1}`
+        }
+        style={({ hovered, pressed }: { hovered?: boolean; pressed: boolean }) => [
+          styles.card,
+          hovered && hasChain && styles.cardHover,
+          pressed && hasChain && styles.cardPressed,
+        ]}
+      >
+        <View style={styles.thumbSlot}>
+          {sheet.thumbnail_url ? (
+            <Image
+              source={{ uri: sheet.thumbnail_url }}
+              style={styles.thumbImg}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.thumbPlaceholder}>
+              <Ionicons
+                name="document-text-outline"
+                size={28}
+                color="rgba(255,255,255,0.35)"
+              />
+            </View>
+          )}
+
+          {/* Top-left: revision badge */}
+          {revisionNum != null && revisionNum > 0 ? (
+            <View style={styles.revBadge} testID={`sheet-rev-badge-${sheet.id}`}>
+              <Text style={styles.revBadgeText}>REV {revisionNum}</Text>
+            </View>
+          ) : null}
+
+          {/* Top-right: chain indicator */}
+          {hasChain ? (
+            <View style={styles.chainBadge}>
+              <Ionicons name="git-branch-outline" size={11} color="#fbbf24" />
+              <Text style={styles.chainBadgeText}>{chain!.sheets.length}</Text>
+            </View>
+          ) : null}
+
+          {/* Bottom-left: discipline pill */}
+          <View
+            style={[
+              styles.discPill,
+              { backgroundColor: discStyle.fg + '22', borderColor: discStyle.fg + '55' },
+            ]}
+            testID={`sheet-disc-pill-${sheet.id}`}
+          >
+            <Text style={[styles.discPillText, { color: discStyle.fg }]}>
+              {discStyle.code}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.cardMeta}>
+          <Text style={styles.cardSheetNum} numberOfLines={1}>
+            {sheet.sheet_number ?? `Sheet ${index + 1}`}
+          </Text>
+          <Text style={[styles.cardDisc, { color: discStyle.fg }]} numberOfLines={1}>
+            {discStyle.label}
+            {isSuperseded ? ' · superseded' : ''}
+          </Text>
+        </View>
+      </Pressable>
+
+      {/* Revision chain timeline (in-flow expansion) */}
+      {isExpanded && hasChain ? (
+        <RevisionTimeline chain={chain!} />
+      ) : null}
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Revision chain timeline
+// ---------------------------------------------------------------------------
+
+function RevisionTimeline({ chain }: { chain: RevisionChain }): React.ReactElement {
+  return (
+    <View style={styles.timelineHost} testID={`revision-timeline-${chain.currentSheetId}`}>
+      <View style={styles.timelineHeader}>
+        <Ionicons name="git-branch-outline" size={12} color="#fbbf24" />
+        <Text style={styles.timelineTitle}>Revision Chain</Text>
+        <Text style={styles.timelineCount}>{chain.sheets.length} versions</Text>
+      </View>
+
+      <View style={styles.timelineList}>
+        {chain.sheets.map((s, idx) => {
+          const isCurrent = s.id === chain.currentSheetId;
+          const isFirst = idx === 0;
+          const isLast = idx === chain.sheets.length - 1;
+          const label = isFirst
+            ? 'Predecessor'
+            : isLast
+              ? 'Current'
+              : `Addendum ${idx}`;
+          return (
+            <View key={s.id} style={styles.timelineRow}>
+              <View style={styles.timelineSpine}>
+                {!isFirst ? <View style={styles.timelineRule} /> : <View style={styles.timelineRuleEmpty} />}
+                <View
+                  style={[
+                    styles.timelineDot,
+                    isCurrent ? styles.timelineDotCurrent : null,
+                  ]}
+                />
+                {!isLast ? <View style={styles.timelineRule} /> : <View style={styles.timelineRuleEmpty} />}
+              </View>
+              <View style={styles.timelineBody}>
+                <View style={styles.timelineRowHead}>
+                  <Text style={styles.timelineSheetNum}>
+                    {s.sheet_number ?? s.id.slice(0, 8)}
+                  </Text>
+                  {isCurrent ? (
+                    <View style={styles.currentPill}>
+                      <Text style={styles.currentPillText}>CURRENT</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.timelineRole}>{label}</Text>
+                  )}
+                </View>
+                <Text style={styles.timelineMeta}>
+                  {s.revision != null && s.revision > 0 ? `Rev ${s.revision}` : 'Original'} ·{' '}
+                  {_relativeISO(s.created_at)}
+                </Text>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function _relativeISO(iso: string): string {
+  try {
+    const t = new Date(iso).getTime();
+    const delta = Date.now() - t;
+    if (delta < 60_000) return 'just now';
+    if (delta < 3_600_000) return `${Math.floor(delta / 60_000)}m ago`;
+    if (delta < 86_400_000) return `${Math.floor(delta / 3_600_000)}h ago`;
+    return `${Math.floor(delta / 86_400_000)}d ago`;
+  } catch {
+    return '—';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Empty state
+// ---------------------------------------------------------------------------
+
+function EmptyState({ message }: { message: string }): React.ReactElement {
+  return (
+    <View style={styles.emptyHost} testID="sheet-thumb-grid-empty">
+      <View style={styles.emptyIconCircle}>
+        <Ionicons name="documents-outline" size={28} color="rgba(255,255,255,0.45)" />
+      </View>
+      <Text style={styles.emptyTitle}>No sheets to show</Text>
+      <Text style={styles.emptyBody}>{message}</Text>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Public component
+// ---------------------------------------------------------------------------
+
+export interface SheetThumbnailGridProps {
+  /** Full sheet list, including superseded (active_only=false). */
+  sheets: BlueprintSheetRead[];
+  /** Derived revision chains (one per current sheet that has predecessors). */
+  revisions: RevisionChain[];
+  /**
+   * True while the FIRST poll is still in flight and we have no data yet
+   * (sheets === undefined from the hook, rendered here as []).
+   * Drives shimmer display.  Must NOT be set to true between polls once the
+   * first response has been received (pass `false` after first successful fetch).
+   */
+  isLoading: boolean;
+  /**
+   * Current pipeline stage progress.  Used to decide whether an empty sheets
+   * array means "INGEST is still running" (show shimmer) or "INGEST completed
+   * with no results" (show empty state).
+   */
+  stageProgress: StageProgress;
+  /** Total sheet count for the stat row (may include yet-unrendered sheets). */
+  sheetCount?: number;
+  testID?: string;
+}
+
+export function SheetThumbnailGrid({
+  sheets,
+  revisions,
+  isLoading,
+  stageProgress,
+  sheetCount,
+  testID,
+}: SheetThumbnailGridProps): React.ReactElement {
+  // Filter key lives in the shared store — Tim Rail Context tab owns the UI
+  // (compact chip row); the canvas grid just consumes the selection.
+  const ui = usePlansPhotosUi();
+  const filterKey = ui.filterKey;
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  void sheetCount; // stat row moved to Context; param kept for API stability
+
+  // Index chains by currentSheetId for O(1) lookup.
+  const chainByCurrentId = useMemo(() => {
+    const m = new Map<string, RevisionChain>();
+    for (const c of revisions) m.set(c.currentSheetId, c);
+    return m;
+  }, [revisions]);
+
+  // Filter to "current" sheets only (i.e. those NOT superseded by another).
+  const successorIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const sh of sheets) if (sh.supersedes_id) s.add(sh.supersedes_id);
+    return s;
+  }, [sheets]);
+
+  const currentSheets = useMemo(
+    () => sheets.filter((s) => !successorIds.has(s.id)),
+    [sheets, successorIds],
+  );
+
+  const filteredSheets = useMemo(() => {
+    if (filterKey == null) return currentSheets;
+    return currentSheets.filter((s) => _normalizeDisc(s.discipline) === filterKey);
+  }, [currentSheets, filterKey]);
+
+  // Determine whether INGEST has reached a terminal state.
+  // "done" → sheets were produced (or genuinely 0 sheets); show empty state.
+  // "failed" → pipeline failed; show empty state with failure message.
+  // Anything else (not_started, in_progress, pending, undefined) → pipeline
+  // is still running; keep the shimmer so the UI never flickers to empty state
+  // while Drew is still working.
+  const ingestState: string = (stageProgress as Record<string, string>).ingest ?? 'pending';
+  const ingestTerminal = ingestState === 'done' || ingestState === 'failed';
+
+  // Shimmer conditions:
+  //   1. First load — isLoading=true and we have zero sheets (undefined→[]).
+  //   2. Mid-pipeline — ingest not yet terminal and we still have zero sheets.
+  //      This prevents the empty-state flash between polls while INGEST runs.
+  const showShimmer =
+    currentSheets.length === 0 && (isLoading || !ingestTerminal);
+
+  if (showShimmer) {
+    return (
+      <View style={styles.host} testID={testID ?? 'sheet-thumb-grid'}>
+        <View style={styles.grid}>
+          {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+            <ShimmerCard key={i} index={i} />
+          ))}
+        </View>
+      </View>
+    );
+  }
+
+  // Empty state: ingest has terminated and we genuinely have no sheets.
+  if (currentSheets.length === 0) {
+    const emptyMessage =
+      ingestState === 'failed'
+        ? 'INGEST failed. Re-upload the blueprint to try again.'
+        : 'Drew processed this blueprint but found no sheets.';
+    return (
+      <View style={styles.host} testID={testID ?? 'sheet-thumb-grid'}>
+        <EmptyState message={emptyMessage} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.host} testID={testID ?? 'sheet-thumb-grid'}>
+      {/* Canvas = blueprints only. Stat row + discipline filter strip live
+          in the Tim Rail Context tab (PlansPhotosContextPayload). */}
+      <ScrollView
+        style={styles.gridScroll}
+        contentContainerStyle={styles.grid}
+        showsVerticalScrollIndicator={false}
+      >
+        {filteredSheets.map((s, idx) => (
+          <SheetCard
+            key={s.id}
+            sheet={s}
+            index={idx}
+            chain={chainByCurrentId.get(s.id) ?? null}
+            isExpanded={expandedId === s.id}
+            onToggleExpand={() =>
+              setExpandedId((cur) => (cur === s.id ? null : s.id))
+            }
+          />
+        ))}
+        {filteredSheets.length === 0 ? (
+          <View style={styles.gridEmpty}>
+            <Text style={styles.gridEmptyText}>
+              No sheets match this discipline. Try "All".
+            </Text>
+          </View>
+        ) : null}
+      </ScrollView>
+    </View>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
+
+const styles = StyleSheet.create({
+  host: {
+    flex: 1,
+    gap: 14,
+    // Lock #16 (Wave 6.5): grid host must flex and keep a >= 320 floor so
+    // canvas swaps are CLS=0 and the thumbnail rail never collapses on
+    // narrow viewports.
+    minHeight: 320,
+  },
+  // (Stat row + filter strip styles removed 2026-05-18 — those surfaces
+  // moved to the Tim Rail Context tab. See PlansPhotosContextPayload.)
+  // -- grid -------------------------------------------------------------
+  gridScroll: {
+    flex: 1,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    paddingHorizontal: 4,
+    paddingBottom: 16,
+  },
+  gridEmpty: {
+    width: '100%',
+    paddingVertical: 32,
+    alignItems: 'center',
+  },
+  gridEmptyText: {
+    fontSize: 11.5,
+    color: 'rgba(255,255,255,0.5)',
+  },
+  // -- card -------------------------------------------------------------
+  cardHost: {
+    // Responsive card width — tablet (768+) and up. On narrow viewports
+    // the host flexes 1-up, on tablet 2-up, on laptop 3-up, on desktop+
+    // 4-up. Achieved via min/max width caps that play nicely with flex
+    // wrap on RN-web (no media queries needed).
+    minWidth: 160,
+    maxWidth: 240,
+    flexGrow: 1,
+    flexBasis: 180,
+  },
+  card: {
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.025)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden',
+    ...(Platform.OS === 'web'
+      ? ({
+          transition:
+            'background-color 150ms ease, border-color 150ms ease, transform 150ms ease',
+        } as any)
+      : {}),
+  },
+  cardHover: {
+    backgroundColor: 'rgba(255,255,255,0.045)',
+    borderColor: 'rgba(251,191,36,0.30)',
+  },
+  cardPressed: {
+    opacity: 0.92,
+  },
+  thumbSlot: {
+    aspectRatio: 8.5 / 11, // letter-page portrait
+    backgroundColor: 'rgba(0,0,0,0.40)',
+    position: 'relative',
+  },
+  thumbImg: {
+    width: '100%',
+    height: '100%',
+  },
+  thumbPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // top-left REV badge
+  revBadge: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: 'rgba(251,191,36,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.55)',
+  },
+  revBadgeText: {
+    fontSize: 8.5,
+    fontWeight: '800',
+    color: '#fbbf24',
+    letterSpacing: 0.6,
+  },
+  // top-right chain indicator
+  chainBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.45)',
+  },
+  chainBadgeText: {
+    fontSize: 8.5,
+    fontWeight: '800',
+    color: '#fbbf24',
+    fontVariant: ['tabular-nums'],
+  },
+  // bottom-left discipline pill
+  discPill: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  discPillText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  cardMeta: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 2,
+  },
+  cardSheetNum: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.95)',
+    letterSpacing: -0.1,
+  },
+  cardDisc: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: -0.05,
+  },
+  // -- skeleton shimmer -------------------------------------------------
+  skelThumb: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  skelLine: {
+    height: 10,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+  },
+  skelLineWide: {
+    width: '70%',
+  },
+  // -- revision timeline ------------------------------------------------
+  timelineHost: {
+    marginTop: 8,
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(251,191,36,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.25)',
+    gap: 8,
+  },
+  timelineHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  timelineTitle: {
+    flex: 1,
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#fbbf24',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  timelineCount: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'rgba(251,191,36,0.65)',
+    fontVariant: ['tabular-nums'],
+  },
+  timelineList: {
+    gap: 0,
+  },
+  timelineRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 10,
+    minHeight: 36,
+  },
+  timelineSpine: {
+    width: 14,
+    alignItems: 'center',
+  },
+  timelineRule: {
+    flex: 1,
+    width: 1,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  timelineRuleEmpty: {
+    flex: 1,
+  },
+  timelineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  timelineDotCurrent: {
+    backgroundColor: '#fbbf24',
+    borderColor: 'rgba(251,191,36,0.55)',
+  },
+  timelineBody: {
+    flex: 1,
+    paddingVertical: 4,
+    gap: 1,
+  },
+  timelineRowHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  timelineSheetNum: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.92)',
+  },
+  timelineRole: {
+    fontSize: 9.5,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.45)',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  currentPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+    backgroundColor: 'rgba(251,191,36,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.55)',
+  },
+  currentPillText: {
+    fontSize: 8.5,
+    fontWeight: '800',
+    color: '#fbbf24',
+    letterSpacing: 0.8,
+  },
+  timelineMeta: {
+    fontSize: 9.5,
+    color: 'rgba(255,255,255,0.45)',
+    letterSpacing: -0.05,
+  },
+  // -- empty state ------------------------------------------------------
+  emptyHost: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    padding: 28,
+    minHeight: 320,
+  },
+  emptyIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  emptyTitle: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.88)',
+    letterSpacing: -0.2,
+  },
+  emptyBody: {
+    fontSize: 11.5,
+    color: 'rgba(255,255,255,0.55)',
+    textAlign: 'center',
+    maxWidth: 320,
+    lineHeight: 16,
+  },
+});

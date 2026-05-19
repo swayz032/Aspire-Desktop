@@ -13,6 +13,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { usePathname } from 'expo-router';
 import { PropertySummaryCard } from './PropertySummaryCard';
 import { MaterialsRouteContextCard } from './MaterialsRouteContextCard';
+import { PlansPhotosContextPayload } from './PlansPhotosContextPayload';
+import { ScopeContextPayload } from './ScopeContextPayload';
+import { TakeoffContextPayload } from './TakeoffContextPayload';
+import { ServiceBriefCard } from '@/components/service-hub/ServiceBriefCard';
+import { useTenant } from '@/providers';
+import { useBlueprintUploadSnapshot } from '@/lib/blueprintUploadStore';
 import type { PropertyData } from '@/services/serviceHub/propertyDataApi';
 
 // Inject a one-shot stylesheet on web that hides the scrollbar inside
@@ -43,6 +49,33 @@ export function TimRailContextTab({ data, loading, error, onRetry }: Props) {
   const pathname = usePathname() ?? '';
   const isMaterialsTab =
     pathname.endsWith('/materials') || pathname.endsWith('/materials/');
+  const isPlansPhotosTab =
+    pathname.endsWith('/plans-photos') || pathname.endsWith('/plans-photos/');
+  const isScopeTab =
+    pathname.endsWith('/scope') || pathname.endsWith('/scope/');
+  const isTakeoffTab =
+    pathname.endsWith('/takeoff') || pathname.endsWith('/takeoff/');
+  // Wave 5.1b: Service Hub routes get a Service Memory brief card. Exclude
+  // the Estimate Studio sub-tabs that already render their own per-tab
+  // Context payload (Plans & Photos / Scope / Takeoff). Materials carries
+  // its own MaterialsRouteContextCard above and is also excluded.
+  const isServiceHubRoute = pathname.startsWith('/service-hub');
+  const tenant = useTenant() as { officeId?: string };
+  const activeOfficeId = tenant.officeId ?? '';
+
+  // FIX 1: On Plans & Photos, the property empty state must not leak into the
+  // Context tab when a blueprint project is active OR an upload is in flight.
+  // Property facts belong to the property/address surface, not the blueprint
+  // surface. If a blueprint is active, the Plans & Photos payload above owns
+  // the entire Context tab — show ONLY blueprint context (DrewStageProgress,
+  // live counters, pipeline status). When no blueprint is active AND no
+  // property is set, we still suppress the property empty state on this tab
+  // since address entry happens elsewhere.
+  const blueprintSnapshot = useBlueprintUploadSnapshot();
+  const blueprintActive =
+    blueprintSnapshot.projectId !== null || blueprintSnapshot.phase !== 'idle';
+  const suppressPropertySummary =
+    isMaterialsTab || (isPlansPhotosTab && blueprintActive);
 
   return (
     <ScrollView
@@ -85,10 +118,40 @@ export function TimRailContextTab({ data, loading, error, onRetry }: Props) {
       {/* Materials-tab-only — renders null off-route via context check. */}
       <MaterialsRouteContextCard />
 
-      {/* Property facts hidden on Materials tab — that tab's context
-          is the route + bundle, not the property valuation card. The
-          property data is one click away (Visuals / Plans / Scope tabs). */}
-      {!isMaterialsTab && <PropertySummaryCard data={data} loading={loading} />}
+      {/* Plans & Photos payload: pipeline status + discipline counts + last
+          upload. Renders null off-route. Property facts carry over below. */}
+      {isPlansPhotosTab && <PlansPhotosContextPayload />}
+
+      {/* Scope payload (Wave 7): pipeline + confidence + truth distribution
+          + missing inputs + linked destinations + tariff summary. Property
+          facts carry over below as on Plans & Photos. */}
+      {isScopeTab && <ScopeContextPayload />}
+
+      {/* Takeoff payload (Wave 8): pipeline status + current sheet meta +
+          symbol confidence + tariff exposure. Property facts carry over below. */}
+      {isTakeoffTab && <TakeoffContextPayload />}
+
+      {/* Service Memory brief (Wave 5.1b): renders on /service-hub/* EXCEPT
+          the Estimate Studio sub-tabs that already host their own per-tab
+          Context payload (Plans & Photos / Scope / Takeoff) and the
+          Materials tab (which has MaterialsRouteContextCard above).
+          Property facts continue to render below as usual. */}
+      {isServiceHubRoute &&
+        !isPlansPhotosTab &&
+        !isScopeTab &&
+        !isTakeoffTab &&
+        !isMaterialsTab &&
+        activeOfficeId && <ServiceBriefCard officeId={activeOfficeId} />}
+
+      {/* Property facts hidden on:
+          - Materials tab — context is the route + bundle, not the property
+            valuation card. Property data is one click away on Visuals /
+            Plans / Scope tabs.
+          - Plans & Photos tab WHEN a blueprint project is active or upload
+            is in flight — the blueprint payload above owns the Context tab
+            in that mode. Showing the property empty state alongside the
+            cinematic Drew pipeline reads as a leak (FIX 1, 2026-05-18). */}
+      {!suppressPropertySummary && <PropertySummaryCard data={data} loading={loading} />}
     </ScrollView>
   );
 }

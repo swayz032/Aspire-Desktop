@@ -1,11 +1,9 @@
 import React from 'react';
 import { View, StyleSheet, useWindowDimensions, Platform, type ViewStyle } from 'react-native';
-import { usePathname } from 'expo-router';
-import { EstimateStudioHeader } from './EstimateStudioHeader';
-import { ProjectAddressBar } from './ProjectAddressBar';
-import { EstimateStudioTabBar } from './EstimateStudioTabBar';
+// 2026-05-18 Wave 0 lock: canvas hosts ONLY content. The header / address
+// bar / tab bar are owned by the Tim Rail Controls tab. Their imports were
+// removed from this shell when the in-canvas chrome branch was deleted.
 import { TimRailContainer } from './TimRailContainer';
-import { MaterialsSlotBar } from './materials/MaterialsSlotBar';
 import { MaterialsSearchProvider } from './materials/MaterialsSearchContext';
 import { useProjectAddress } from '@/hooks/useProjectAddress';
 
@@ -67,13 +65,15 @@ export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
   const isWide = width >= WORKSPACE_BREAKPOINT;
   const isTablet = width < WORKSPACE_BREAKPOINT && width >= TABLET_BREAKPOINT;
   const isMobile = width < TABLET_BREAKPOINT;
-  // Chrome hoist: ANY width in the laptop/tablet band (768 ≤ w < 1280) moves
-  // the in-canvas chrome (header + slot + tab bar) into the Tim Rail's
-  // Controls tab. Replaces the prior height-dependent isLaptop heuristic —
-  // the user's 958×937 viewport didn't trip it because the trigger was
-  // gated on width >= 1100 AND height < 900.
-  const isLaptopOrTablet =
-    width >= TABLET_BREAKPOINT && width < DESKTOP_BREAKPOINT;
+  // Chrome hoist: ALL widths >= 768 hoist the in-canvas chrome (header + slot
+  // + tab bar) into the Tim Rail's Controls tab. Per user lock 2026-05-18:
+  // "ONLY BLUEPRINTS ON CANVAS — anything else is in Context/Controls tab"
+  // + "THE CANVAS SCREEN SUPPOSED TO BE BIGGER". Hoisting at all desktop+
+  // widths reclaims the ~96px the header/slot/tab-bar were eating so the
+  // sheet thumbnail grid fills the available viewport edge-to-edge.
+  const isLaptopOrTablet = width >= TABLET_BREAKPOINT;
+  // (Mobile <768 keeps the in-canvas chrome because the Tim Rail isn't
+  // reachable there.)
 
   // Responsive canvas width:
   //   Desktop (>=1500)             → 1400 cap (centered with gutter)
@@ -100,13 +100,10 @@ export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
   const canvasHeightCalc = isLaptopOrTablet || isMobile
     ? 'calc(100vh - 96px)'
     : 'calc(100vh - 118px)';
-  const pathname = usePathname() ?? '';
-  // Materials tab owns its own search bar (the materials warehouse search)
-  // and route-hero canvas-swap. Detect the route via path-segment endsWith
-  // (route groups can strip the URL prefix — see issue with `includes`
-  // not matching reliably under expo-router groups).
-  const isMaterialsTab =
-    pathname.endsWith('/materials') || pathname.endsWith('/materials/');
+  // Wave 0 lock: the shell no longer needs pathname / isMaterialsTab —
+  // it does not render any chrome that switches by route. Materials route's
+  // own warehouse-search bar is owned by `MaterialsSlotBar` inside the rail
+  // (Controls tab on materials), not the canvas.
   const { address: projectAddress } = useProjectAddress();
 
   const body = (
@@ -131,39 +128,20 @@ export function EstimateStudioShell({ children }: EstimateStudioShellProps) {
       <View style={[styles.row, !isWide && styles.rowStacked]}>
         {/* MAIN ZONE */}
         <View style={styles.mainZone} testID="estimate-studio-main-zone">
-          {/* Canvas-level chrome is HIDDEN on laptop + tablet — the Tim
-              Rail's Controls tab owns header/slot/tab bar there so the
-              canvas can be pure visual content. Mobile keeps it because
-              the rail isn't reachable below 768px. */}
-          {!isLaptopOrTablet && (
-            <>
-              <View style={styles.mainZonePadded}>
-                <EstimateStudioHeader />
-              </View>
-
-              {/* Contextual slot. Phase 1 default = Visuals address search.
-                  Phase 2+ swaps based on active tab. On Materials, the
-                  slot is hidden — the Materials tab renders its own
-                  warehouse-search bar. */}
-              <View style={styles.contextualSlot}>
-                {isMaterialsTab ? <MaterialsSlotBar /> : <ProjectAddressBar />}
-              </View>
-
-              {/* Tab bar — Phase 2 */}
-              <View style={styles.tabBarSlot}>
-                <EstimateStudioTabBar />
-              </View>
-            </>
-          )}
-
+          {/* 2026-05-18 LOCK — Wave 0 re-enforcement:
+              The canvas hosts ONLY content. No header, no address bar, no
+              tab bar — all chrome is owned by the Tim Rail Controls tab
+              (PROJECT / NAVIGATE / QUICK ACTIONS). The previous
+              `!isLaptopOrTablet` branch was deleted because the prior
+              agent's commit (e127801) only hid chrome above 768; the user
+              reported the chrome was still on canvas. This block must
+              stay empty — adding ANY in-canvas chrome violates Lock #23
+              + Lock #26. Mobile <768 has no rail; users on that width
+              should use the rail-less Service Hub home, not Estimate
+              Studio (separate concern). */}
           {/* Active tab content (rendered via expo-router Slot in _layout.tsx). */}
           <View
-            style={[
-              styles.canvasArea,
-              // When chrome is hoisted, the canvas has no tab-bar above it
-              // — drop the top hairline (it would float against nothing).
-              isLaptopOrTablet ? styles.canvasAreaFlush : null,
-            ]}
+            style={[styles.canvasArea, styles.canvasAreaFlush]}
             testID="estimate-studio-canvas-content"
           >
             {children}
