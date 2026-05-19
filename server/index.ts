@@ -561,7 +561,14 @@ app.use(helmet({
       frameSrc: ["'self'", "blob:", "https://*.pandadoc.com", "https://*.stripe.com", "https://*.plaid.com", "https://zoom.us", "https://*.zoom.us"],
       workerSrc: ["'self'", "blob:", "https://source.zoom.us", "https://cdn.jsdelivr.net"],
       fontSrc: ["'self'", "data:", "https://cdn.jsdelivr.net", "https://unpkg.com", "https://source.zoom.us"],
-      objectSrc: ["'none'"],
+      // blob: required for inline PDF preview via <object type="application/pdf">.
+      // We switched away from <iframe> here because Chrome's iframe lifecycle
+      // intermittently emitted CSP "Framing ''" violations on blob URLs even
+      // when the iframe was conditionally rendered (StrictMode + React-DOM
+      // reconciliation race). <object> is governed by object-src instead of
+      // frame-src and renders the PDF through Chrome's native PDF plugin
+      // without any iframe nesting.
+      objectSrc: ["'self'", "blob:"],
       upgradeInsecureRequests: [],
     },
   },
