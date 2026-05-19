@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
 import { useSupabase, useTenant } from '@/providers';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { PdfBlobCanvasPreview } from '@/components/PdfBlobCanvasPreview';
 
 interface DocumentPreviewModalProps {
   visible: boolean;
@@ -679,32 +680,18 @@ function DocumentPreviewModalInner({ visible, onClose, type, documentName, panda
                     );
                   }
                   if (stripePdfBlobUrl) {
-                    // <iframe> with the blob URL. We previously tried <object
-                    // type="application/pdf"> after seeing "Framing ''" CSP
-                    // errors, but Chrome's PDFium viewer renders application/pdf
-                    // only via <iframe> and direct navigation — <object> and
-                    // <embed> fall through to the fallback children for blob:
-                    // URLs (confirmed in prod 2026-05-19 bundle 2e4fe9d2).
-                    //
-                    // CSP frame-src already includes 'blob:' (server/index.ts).
-                    // The empty-src race that produced the original "Framing ''"
-                    // turned out to be from another iframe component on the
-                    // page (AvaDeskPanel's Anam frame, fixed in e415424),
-                    // not this modal — confirmed by absence of CSP errors in
-                    // the <object> deploy (bundle 2e4fe9d2).
-                    //
-                    // key={blobUrl} forces a clean unmount/remount on URL swap.
+                    // Canvas renderer via pdfjs-dist. Replaces the prior
+                    // iframe/object approach which depended on Chrome's PDF
+                    // viewer being enabled (chrome://settings/content/pdfDocuments).
+                    // Users with "Download PDFs" set saw blank/blocked previews.
+                    // Canvas rendering is pure JS — works for every user
+                    // regardless of browser PDF settings or CSP iframe rules.
                     return (
-                      <iframe
+                      <PdfBlobCanvasPreview
                         key={stripePdfBlobUrl}
-                        src={stripePdfBlobUrl}
-                        title={documentName || 'Invoice PDF Preview'}
-                        style={{
-                          width: '100%',
-                          height: '100%',
-                          border: 'none',
-                          backgroundColor: '#ffffff',
-                        }}
+                        blobUrl={stripePdfBlobUrl}
+                        accentColor={meta.accent}
+                        ariaLabel={documentName || 'Invoice PDF Preview'}
                       />
                     );
                   }
