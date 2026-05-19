@@ -175,6 +175,8 @@ app.use((req, res, next) => {
 // Public routes use defaultSuiteId (read-only, RLS-scoped).
 // Authenticated routes REQUIRE valid JWT — no fallback.
 app.use(async (req, res, next) => {
+  // CORS preflight has no auth — let it through to the cors() middleware.
+  if (req.method === 'OPTIONS') return next();
   try {
     if (DEV_BYPASS_AUTH) {
       (req as any).authenticatedUserId = DEV_USER_ID;
@@ -600,7 +602,7 @@ app.use(cors({
     : true, // Allow all in dev for convenience
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-Id', 'X-Suite-Id'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-Id', 'X-Suite-Id', 'X-Office-Id', 'X-Tenant-Id', 'X-Actor-Id', 'X-Trace-Id'],
 }));
 // No-cache for API routes only — static assets get their own cache headers below
 app.use((req, res, next) => {
