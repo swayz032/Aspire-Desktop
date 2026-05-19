@@ -517,6 +517,13 @@ app.use(helmet({
       imgSrc: ["'self'", "data:", "blob:", "https:"],
       connectSrc: [
         "'self'",
+        // blob: required for pdfjs canvas renderer — pdfjs uses fetch()
+        // internally to read the blob URL we hand it for inline invoice
+        // PDF preview. Without this, pdfjs throws UnexpectedResponseException
+        // ("Connecting to 'blob:...' violates connect-src"). Narrow scope:
+        // same-origin blob URLs only (no remote content can be loaded
+        // because there's no `https:` widening).
+        "blob:",
         "https://*.supabase.co",
         "wss://*.supabase.co",
         "https://*.elevenlabs.io",
