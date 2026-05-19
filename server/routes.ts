@@ -10920,7 +10920,11 @@ async function _forwardBlueprintGet(
   const authHeader = (req.headers.authorization as string) || '';
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5_000);
+  // Wave 9g hotfix: bump from 5s -> 30s. Backend can be busy during active
+  // pipeline runs (CLASSIFY hitting gpt-5.4, SEE running YOLO inference); 5s
+  // killed the very first poll and the consecutive-error counter never
+  // recovered. 30s covers worst-case orchestrator latency under load.
+  const timer = setTimeout(() => controller.abort(), 30_000);
 
   logger.info(`[${logTag}] proxy`, {
     suite_id: suiteId,
