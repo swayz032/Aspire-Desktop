@@ -93,6 +93,19 @@ Invariants in this contract are NOT changed unilaterally. Required process:
 - **GD-5** — The `tax_market_value` property rule is present: property value references use county market value, not AVM (automated valuation model). Text anchor: `"county market value"` or `"tax_market_value"`.
 - **GD-6** — The apt/unit pass-verbatim rule is present: apartment and unit numbers are passed to Adam exactly as spoken by the user; Adam normalizes server-side. Text anchor: `"pass verbatim"` or `"Adam normalizes"`.
 - **GD-7** — Browse Mode silence protocol is referenced by pointer only. Full text lives in `Ava_Voice_Rules_v6` KB doc. The prompt contains a one-line pointer: "Full Browse Mode silence protocol: see `Ava_Voice_Rules_v6` in Anam KB."
+- **GD-8** — `## INVOICING HARD RULES` block is present in the Guardrails block. This block enforces the 6 deal-breaker rules learned from production transcripts e53c386b / 720b59e2 / 57d173df. The KB has the full state machine; the prompt has the always-on deal-breakers so Ava sees them every turn without retrieval. Required anchor strings the validator checks for inside the Guardrails block:
+  - `## INVOICING HARD RULES` (section heading)
+  - `BEFORE invoke_quinn lookup` (name-verification deal-breaker)
+  - `EMAIL READ-BACK` (letter-by-letter deal-breaker)
+  - `EXACTLY TWICE` (Quinn call count deal-breaker)
+  - `SINGLE-FIELD CORRECTION` (no-restart deal-breaker)
+  - `SILENCE until the user speaks` (approval-queue silence deal-breaker)
+
+  Why this exists: KB rules only fire on retrieval. Prompt rules fire every turn. The deal-breakers can't be retrieval-dependent.
+- **GD-9** — `## RESEARCH HARD RULES` block is present in the Guardrails block. Mirrors the show_cards mandate and address-verbatim rules at always-on prompt level so they fire regardless of retrieval. Required anchor strings inside the Guardrails block:
+  - `## RESEARCH HARD RULES` (section heading)
+  - `show_cards in the SAME turn` (mandate)
+  - `Pass user_address VERBATIM` (apt/unit rule)
 
 ---
 
@@ -167,7 +180,7 @@ User identity flows through exactly two code sites. No other mechanism is permit
 
 **CI (recommended):** `.github/workflows/anam-prompt-contract.yml` runs the validator on every PR that touches `ava-anam-video-prompt.md` or `ANAM_AVA_PROMPT_CONTRACT.md`. Merge is blocked on validator failure. This is duplicative defense — the runtime validator already enforces in strict mode.
 
-**Invariant count:** 5 Structural + 4 Forbidden + 5 Personality + 4 Environment + 5 Tone + 6 Goal + 7 Guardrails = **36 invariants total**.
+**Invariant count:** 5 Structural + 4 Forbidden + 5 Personality + 4 Environment + 5 Tone + 6 Goal + 9 Guardrails = **38 invariants total**.
 
 ---
 
@@ -176,3 +189,4 @@ User identity flows through exactly two code sites. No other mechanism is permit
 | Date | Author | Change | Approved By |
 |---|---|---|---|
 | 2026-05-07 | tonio + Claude | Initial contract locked | tonio |
+| 2026-05-19 | tonio + Claude | Added GD-8 (Invoicing Hard Rules) and GD-9 (Research Hard Rules). Invariant count 36 → 38. Driven by production transcripts e53c386b / 720b59e2 / 57d173df where Ava skipped name verification, mishandled email read-back, looped on onboarding, and restarted the workflow mid-flow. KB rules were correct but only fired on retrieval — moving deal-breakers to always-on Guardrails. | tonio |
