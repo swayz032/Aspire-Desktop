@@ -395,7 +395,7 @@ export interface SignedUploadInitParams {
 export interface SignedUploadInitResponse {
   upload_id: string;
   storage_path: string;
-  upload_url: string;
+  signed_url: string;
   correlation_id: string;
   receipt_id: string;
 }

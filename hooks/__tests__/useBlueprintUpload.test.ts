@@ -128,7 +128,7 @@ describe('useBlueprintUpload — signed-upload flow', () => {
     requestSignedUploadMock.mockResolvedValue({
       upload_id: 'upl_1',
       storage_path: 'blueprint-raw-pdfs/suite/upl_1/raw.pdf',
-      upload_url: 'https://example.test/signed-put',
+      signed_url: 'https://example.test/signed-put',
       correlation_id: 'corr_1',
       receipt_id: 'rcpt_1',
     });
@@ -172,7 +172,7 @@ describe('useBlueprintUpload — signed-upload flow', () => {
     requestSignedUploadMock.mockResolvedValue({
       upload_id: 'upl_1',
       storage_path: 'p',
-      upload_url: 'https://example.test/signed-put',
+      signed_url: 'https://example.test/signed-put',
       correlation_id: 'corr_1',
       receipt_id: 'rcpt_1',
     });
@@ -201,7 +201,7 @@ describe('useBlueprintUpload — signed-upload flow', () => {
     requestSignedUploadMock.mockResolvedValue({
       upload_id: 'upl_1',
       storage_path: 'p',
-      upload_url: 'https://example.test/signed-put',
+      signed_url: 'https://example.test/signed-put',
       correlation_id: 'corr_1',
       receipt_id: 'rcpt_1',
     });
