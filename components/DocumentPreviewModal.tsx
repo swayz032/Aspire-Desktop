@@ -627,92 +627,77 @@ function DocumentPreviewModalInner({ visible, onClose, type, documentName, panda
           {hasLiveUrl ? (
             <View style={p.pandadocBody}>
               {Platform.OS === 'web' ? (() => {
-                // iframe loads do NOT carry the Bearer JWT header — only
-                // cookies. Our auth middleware requires the JWT, so iframing
-                // /api/stripe/invoices/in_xxx/pdf directly 401s. Workaround:
-                // fetch the PDF via authenticated fetch (see useEffect that
-                // sets stripePdfBlobUrl), build a same-origin blob: URL,
-                // iframe THAT. Blob URLs need no auth and are exempt from
-                // CSP frame-ancestors.
+                // No iframe. Iframes inside this modal triggered an avalanche
+                // of CSP "Framing ''" errors (StrictMode double-mount + blob
+                // revoke races + Chrome's empty-src handling under CSP).
+                // The error storm overwhelmed Sentry (429) and exhausted
+                // browser network resources (ERR_INSUFFICIENT_RESOURCES on
+                // health checks and Supabase polls). Production 2026-05-19.
+                //
+                // Replaced with an inline summary + "Open invoice PDF" button
+                // that uses Chrome's native PDF viewer in a new tab. Same
+                // UX outcome (user sees the actual invoice), zero failure
+                // modes, no CSP friction.
                 const u = livePreviewUrl || '';
-                const isStripeHostedUrl = /invoice\.stripe\.com|pay\.stripe\.com/.test(u);
                 const isProxyUrl = u.startsWith('/api/stripe/invoices/');
-                const inIdMatch = u.match(/in_[A-Za-z0-9]+/);
-                const willUseBlob = isProxyUrl || (isStripeHostedUrl && !!inIdMatch);
+                const isStripeHostedUrl = /invoice\.stripe\.com|pay\.stripe\.com/.test(u);
 
-                if (willUseBlob) {
-                  if (stripePdfLoading) {
-                    return (
-                      <View style={p.pandadocLoadingContainer}>
-                        <ActivityIndicator size="large" color={meta.accent} />
-                        <Text style={p.pandadocLoadingText}>Loading invoice…</Text>
-                      </View>
-                    );
-                  }
-                  if (stripePdfError) {
-                    return (
-                      <View style={p.pandadocLoadingContainer}>
-                        <Ionicons name="alert-circle-outline" size={32} color="#6e6e73" />
-                        <Text style={p.pandadocLoadingText}>{stripePdfError}</Text>
-                        <Pressable
-                          onPress={() => livePreviewUrl && typeof window !== 'undefined' && window.open(livePreviewUrl, '_blank', 'noopener,noreferrer')}
-                          style={p.openExternalBtn}
-                        >
-                          <Text style={p.openExternalBtnText}>Open in new tab</Text>
-                        </Pressable>
-                      </View>
-                    );
-                  }
-                  if (stripePdfBlobUrl) {
-                    return (
-                      <iframe
-                        src={stripePdfBlobUrl}
-                        style={{
-                          width: '100%',
-                          height: '100%',
-                          border: 'none',
-                          backgroundColor: '#ffffff',
-                        }}
-                        title="Document Preview"
-                      />
-                    );
-                  }
-                  // First tick before useEffect fires — render empty.
-                  return null;
-                }
-
-                // Stripe URL we can't rewrite (no in_* extractable) — Stripe
-                // would DENY a direct iframe. Show open-in-new-tab fallback.
-                if (isStripeHostedUrl) {
+                if (stripePdfLoading) {
                   return (
                     <View style={p.pandadocLoadingContainer}>
-                      <Ionicons name="open-outline" size={32} color="#6e6e73" />
-                      <Text style={p.pandadocLoadingText}>
-                        Stripe blocks inline preview for this invoice. Open it in a new tab to view.
-                      </Text>
-                      <Pressable
-                        onPress={() => livePreviewUrl && typeof window !== 'undefined' && window.open(livePreviewUrl, '_blank', 'noopener,noreferrer')}
-                        style={p.openExternalBtn}
-                      >
-                        <Text style={p.openExternalBtnText}>Open invoice</Text>
-                      </Pressable>
+                      <ActivityIndicator size="large" color={meta.accent} />
+                      <Text style={p.pandadocLoadingText}>Loading invoice…</Text>
                     </View>
                   );
                 }
 
-                // Non-Stripe URL (PandaDoc, local file, etc.) — iframe directly.
+                // Prefer the authenticated blob URL when available — it's
+                // the actual PDF the server already authorized. For Stripe
+                // hosted URLs without a proxy path, open Stripe's page.
+                const openUrl = stripePdfBlobUrl || ((isProxyUrl || isStripeHostedUrl) ? livePreviewUrl : u);
+
                 return (
-                  <iframe
-                    src={u}
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      border: 'none',
-                      backgroundColor: '#ffffff',
-                    }}
-                    title="Document Preview"
-                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
-                  />
+                  <View style={p.pandadocLoadingContainer}>
+                    {stripePdfError ? (
+                      <>
+                        <Ionicons name="alert-circle-outline" size={36} color="#fca5a5" />
+                        <Text style={p.pandadocLoadingText}>{stripePdfError}</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Ionicons name="document-text-outline" size={48} color={meta.accent} />
+                        <Text style={[p.pandadocLoadingText, { fontWeight: '600', fontSize: 14, marginTop: 12 }]}>
+                          {documentName || `${meta.title} ready`}
+                        </Text>
+                        {(amount || customerName) && (
+                          <Text style={p.pandadocLoadingText}>
+                            {customerName ? `${customerName}` : ''}
+                            {customerName && amount ? ' · ' : ''}
+                            {amount
+                              ? new Intl.NumberFormat('en-US', {
+                                  style: 'currency',
+                                  currency: (currency || 'USD').toUpperCase(),
+                                }).format(amount)
+                              : ''}
+                          </Text>
+                        )}
+                      </>
+                    )}
+                    <Pressable
+                      onPress={() => {
+                        if (!openUrl) return;
+                        if (typeof window !== 'undefined') {
+                          window.open(openUrl, '_blank', 'noopener,noreferrer');
+                        }
+                      }}
+                      style={p.openExternalBtn}
+                      disabled={!openUrl}
+                    >
+                      <Text style={p.openExternalBtnText}>
+                        {stripePdfBlobUrl ? 'Open invoice PDF' : 'Open in new tab'}
+                      </Text>
+                    </Pressable>
+                  </View>
                 );
               })() : (
                 <View style={p.pandadocLoadingContainer}>
