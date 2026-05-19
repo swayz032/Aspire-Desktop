@@ -449,6 +449,51 @@ function validateAnamAvaPromptAndConfig(prompt: string, personaId: string): stri
     }
   }
 
+  // Contract GD-8: INVOICING HARD RULES block in Guardrails. Driven by
+  // production transcripts e53c386b / 720b59e2 / 57d173df where Ava skipped
+  // name verification, mishandled email read-back, looped on onboarding,
+  // and restarted the workflow mid-flow. KB rules were correct but only
+  // fired on retrieval — moving the deal-breakers to always-on prompt
+  // Guardrails so Ava sees them every turn.
+  if (guardrailsBlock) {
+    const GD8_ANCHORS: { pattern: RegExp; label: string }[] = [
+      { pattern: /## INVOICING HARD RULES/i,         label: 'section heading "## INVOICING HARD RULES"' },
+      { pattern: /BEFORE invoke_quinn lookup/i,      label: 'name-verification deal-breaker "BEFORE invoke_quinn lookup"' },
+      { pattern: /EMAIL READ-BACK/i,                 label: 'email-readback deal-breaker "EMAIL READ-BACK"' },
+      { pattern: /EXACTLY TWICE/i,                   label: 'Quinn-call-count deal-breaker "EXACTLY TWICE"' },
+      { pattern: /SINGLE-FIELD CORRECTION/i,         label: 'no-restart deal-breaker "SINGLE-FIELD CORRECTION"' },
+      { pattern: /SILENCE until the user speaks/i,   label: 'approval-queue silence deal-breaker' },
+    ];
+    const missingGd8 = GD8_ANCHORS.filter(({ pattern }) => !pattern.test(guardrailsBlock)).map(({ label }) => label);
+    if (missingGd8.length > 0) {
+      errors.push(
+        `Contract GD-8: Guardrails block missing ${missingGd8.length} INVOICING HARD RULES anchor(s): ` +
+        missingGd8.map((l) => `[${l}]`).join(', ') + '. ' +
+        'See ANAM_AVA_PROMPT_CONTRACT.md GD-8 for the required anchor strings. ' +
+        'Driven by production transcripts e53c386b / 720b59e2 / 57d173df.',
+      );
+    }
+  }
+
+  // Contract GD-9: RESEARCH HARD RULES block in Guardrails. Mirrors the
+  // show_cards mandate and apt/unit address rule at always-on prompt level
+  // so they fire regardless of retrieval.
+  if (guardrailsBlock) {
+    const GD9_ANCHORS: { pattern: RegExp; label: string }[] = [
+      { pattern: /## RESEARCH HARD RULES/i,          label: 'section heading "## RESEARCH HARD RULES"' },
+      { pattern: /show_cards in the SAME turn/i,     label: 'show_cards same-turn mandate' },
+      { pattern: /Pass user_address VERBATIM/i,      label: 'address verbatim (apt/unit) rule' },
+    ];
+    const missingGd9 = GD9_ANCHORS.filter(({ pattern }) => !pattern.test(guardrailsBlock)).map(({ label }) => label);
+    if (missingGd9.length > 0) {
+      errors.push(
+        `Contract GD-9: Guardrails block missing ${missingGd9.length} RESEARCH HARD RULES anchor(s): ` +
+        missingGd9.map((l) => `[${l}]`).join(', ') + '. ' +
+        'See ANAM_AVA_PROMPT_CONTRACT.md GD-9 for the required anchor strings.',
+      );
+    }
+  }
+
   return errors;
 }
 
