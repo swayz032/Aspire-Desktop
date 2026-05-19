@@ -36,17 +36,41 @@ type RenderState =
   | { kind: 'ready'; pageCount: number }
   | { kind: 'error'; message: string };
 
-// Lazy-loaded pdfjs module — heavy (~400KB) so don't pull it into the main
-// chunk. Cached at module scope so the second open of the modal is instant.
-let pdfjsModule: typeof import('pdfjs-dist') | null = null;
-let pdfjsLoadPromise: Promise<typeof import('pdfjs-dist')> | null = null;
+// Lazy-loaded pdfjs module. We DO NOT bundle pdfjs through Metro because
+// pdfjs-dist v4 uses ESM `import.meta.url` that Metro can't statically
+// analyze — production 2026-05-19 bundle 83bbdeed crashed with
+// "Requiring unknown module" + "Cannot use 'import.meta' outside a module".
+//
+// Instead we load the legacy ESM build at runtime from
+// /vendor/pdfjs/pdf.min.mjs (same-origin, copied from node_modules during
+// `npm run build` by scripts/build-pdfjs-worker.mjs). The dynamic import is
+// wrapped in `new Function('u', 'return import(u)')` so Metro cannot see
+// it as a static import — the browser's native ESM loader handles it.
+type PdfjsModule = {
+  getDocument: (params: { url: string }) => { promise: Promise<PdfjsDocument> };
+  GlobalWorkerOptions: { workerSrc: string };
+};
+type PdfjsDocument = {
+  numPages: number;
+  getPage: (n: number) => Promise<PdfjsPage>;
+  destroy: () => Promise<void>;
+};
+type PdfjsViewport = { width: number; height: number };
+type PdfjsPage = {
+  getViewport: (params: { scale: number }) => PdfjsViewport;
+  render: (params: { canvasContext: CanvasRenderingContext2D; viewport: PdfjsViewport }) => { promise: Promise<void> };
+};
 
-async function loadPdfjs() {
+let pdfjsModule: PdfjsModule | null = null;
+let pdfjsLoadPromise: Promise<PdfjsModule> | null = null;
+
+async function loadPdfjs(): Promise<PdfjsModule> {
   if (pdfjsModule) return pdfjsModule;
   if (pdfjsLoadPromise) return pdfjsLoadPromise;
-  pdfjsLoadPromise = import('pdfjs-dist').then((mod) => {
-    // Worker source MUST be set before getDocument is called. Same-origin
-    // so no CSP friction and no external dependency.
+  const moduleUrl = new URL('/vendor/pdfjs/pdf.min.mjs', window.location.origin).href;
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
+  const dynamicImport = new Function('u', 'return import(u)') as (u: string) => Promise<PdfjsModule>;
+  pdfjsLoadPromise = dynamicImport(moduleUrl).then((mod) => {
     mod.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
     pdfjsModule = mod;
     return mod;
