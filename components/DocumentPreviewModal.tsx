@@ -433,7 +433,30 @@ function DocumentPreviewModalInner({ visible, onClose, type, documentName, panda
           contentLength: resp.headers.get('content-length'),
         });
         if (!resp.ok) {
-          setStripePdfError(`PDF fetch failed (${resp.status})`);
+          // Parse the structured error from our proxy so the user sees a
+          // useful message (e.g. "Draft invoices have no PDF until
+          // finalized") instead of a generic "PDF fetch failed (500)".
+          let serverMessage: string | null = null;
+          let serverErrorCode: string | null = null;
+          try {
+            const body = await resp.json();
+            if (body && typeof body === 'object') {
+              if (typeof body.message === 'string') serverMessage = body.message;
+              if (typeof body.error === 'string') serverErrorCode = body.error;
+            }
+          } catch {
+            // body wasn't JSON — fall back to generic message
+          }
+          const friendly =
+            serverMessage ||
+            (serverErrorCode === 'INVOICE_DRAFT'
+              ? 'This invoice is still in draft. Finalize it to generate a PDF.'
+              : serverErrorCode === 'INVOICE_NOT_FOUND'
+              ? 'Invoice not found in the connected Stripe account.'
+              : serverErrorCode === 'NO_PDF'
+              ? 'No PDF is available for this invoice yet.'
+              : `PDF fetch failed (${resp.status})`);
+          setStripePdfError(friendly);
           return;
         }
         const blob = await resp.blob();
