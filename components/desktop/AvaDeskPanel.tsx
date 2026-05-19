@@ -879,8 +879,15 @@ function AvaDeskPanelInner() {
           </View>
         ) : (
           <View style={styles.videoSurface}>
-            {/* Anam iframe — loads hidden, fades in when SDK fires SESSION_READY */}
-            {anamSessionToken && Platform.OS === 'web' && (
+            {/* Anam iframe — loads hidden, fades in when SDK fires SESSION_READY.
+                Gate on `avaVideoFrameSrc` (NOT just anamSessionToken) so the
+                iframe NEVER mounts without a real src. The previous
+                `src={avaVideoFrameSrc || undefined}` made React omit the src
+                attribute when avaVideoFrameSrc was momentarily null during
+                render transitions — Chrome treated that as src="" and
+                CSP-blocked it with "Framing '' violates frame-src" on every
+                page load of the home page (production 2026-05-18). */}
+            {anamSessionToken && Platform.OS === 'web' && avaVideoFrameSrc && (
               <div style={{
                 position: 'absolute', inset: 0, zIndex: videoState === 'connected' ? 2 : 0,
                 overflow: 'hidden', borderRadius: 12,
@@ -888,7 +895,7 @@ function AvaDeskPanelInner() {
                 <iframe
                   key={anamConnectionIdRef.current ?? anamSessionToken}
                   title="Ava video"
-                  src={avaVideoFrameSrc || undefined}
+                  src={avaVideoFrameSrc}
                   allow="microphone; camera; autoplay; display-capture; encrypted-media"
                   style={{
                     width: '100%', height: '100%', border: '0', display: 'block', backgroundColor: '#000',
