@@ -9978,7 +9978,7 @@ router.post(
       suite_id: suiteId,
       office_id: officeId,
       correlation_id: correlationId,
-      capability_token: minted.token,
+      capability_token: JSON.stringify(minted.token),
     };
 
     // Structured log — never log pdf bytes or token.
