@@ -66,6 +66,13 @@ export interface AuthorityItem {
   // hostedInvoiceUrl for preview because it renders as a PDF, not the
   // payment landing page.
   invoicePdfUrl?: string;
+  // Stripe invoice id (in_*). Authoritative source for building the
+  // same-origin PDF proxy URL when invoicePdfUrl isn't already set or
+  // when the modal needs to override hostedInvoiceUrl. Production 2026-05-18:
+  // even after the API+realtime mappers were patched, cached bundles can
+  // send invoicePdfUrl=undefined; threading the raw id ensures the modal
+  // can ALWAYS construct the proxy URL itself.
+  stripeInvoiceId?: string;
 }
 
 export interface DocumentPreview {

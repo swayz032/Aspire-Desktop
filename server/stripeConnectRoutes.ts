@@ -585,27 +585,92 @@ router.post('/api/stripe/quotes/:id/cancel', async (req: Request, res: Response)
 // This endpoint fetches the PDF server-side and re-serves it with
 // frame-friendly headers (same-origin only via SAMEORIGIN).
 router.get('/api/stripe/invoices/:id/pdf', async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+
+  // Step 1: retrieve the invoice from Stripe. Categorize Stripe errors so the
+  // client can show a useful message instead of a generic 500.
+  let invoice: Stripe.Invoice;
   try {
-    const id = req.params.id as string;
-    const invoice = await stripe.invoices.retrieve(id);
-    const pdfUrl = invoice.invoice_pdf;
-    if (!pdfUrl) {
-      return res.status(404).json({ error: 'NO_PDF', message: 'Invoice has no PDF URL yet' });
+    invoice = await stripe.invoices.retrieve(id);
+  } catch (error: unknown) {
+    const stripeErr = error as Stripe.errors.StripeError;
+    const errType = stripeErr?.type || 'unknown';
+    const errCode = stripeErr?.code || 'unknown';
+    const errMsg = stripeErr?.message || (error instanceof Error ? error.message : 'unknown');
+    logger.warn('Stripe invoice retrieve failed', { id, type: errType, code: errCode, message: errMsg });
+    if (errType === 'StripeInvalidRequestError') {
+      return res.status(404).json({
+        error: 'INVOICE_NOT_FOUND',
+        message: 'Invoice not found in this Stripe account',
+        stripe_type: errType,
+        stripe_code: errCode,
+      });
     }
-    const pdfResp = await fetch(pdfUrl);
+    return res.status(502).json({
+      error: 'STRIPE_API_ERROR',
+      message: errMsg,
+      stripe_type: errType,
+      stripe_code: errCode,
+    });
+  }
+
+  // Step 2: status guard. Stripe only generates `invoice_pdf` after the
+  // invoice is finalized. Asking for a draft's PDF returns null on the
+  // invoice object — surface that as a clear 422 with a user-friendly
+  // message instead of letting the modal show a generic 500/404.
+  if (invoice.status === 'draft') {
+    return res.status(422).json({
+      error: 'INVOICE_DRAFT',
+      message: 'Draft invoices have no PDF until they are finalized.',
+      invoice_status: 'draft',
+    });
+  }
+
+  if (!invoice.invoice_pdf) {
+    return res.status(404).json({
+      error: 'NO_PDF',
+      message: `Invoice has no PDF URL (status=${invoice.status}).`,
+      invoice_status: invoice.status,
+    });
+  }
+
+  // Step 3: fetch the PDF bytes from Stripe and re-serve them.
+  try {
+    const pdfResp = await fetch(invoice.invoice_pdf);
     if (!pdfResp.ok) {
-      logger.warn('Stripe invoice PDF fetch failed', { id, status: pdfResp.status });
-      return res.status(502).json({ error: 'PDF_FETCH_FAILED', status: pdfResp.status });
+      logger.warn('Stripe invoice PDF fetch failed', { id, upstreamStatus: pdfResp.status });
+      return res.status(502).json({
+        error: 'PDF_FETCH_FAILED',
+        message: `Stripe PDF endpoint returned ${pdfResp.status}`,
+        upstream_status: pdfResp.status,
+      });
     }
     const buf = Buffer.from(await pdfResp.arrayBuffer());
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="invoice-${id}.pdf"`);
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    // Use CSP frame-ancestors (the modern replacement for X-Frame-Options)
+    // so the PDF iframe loads whether the parent page is on aspireos.app
+    // or www.aspireos.app. SAMEORIGIN previously treated those as
+    // different origins and blocked the iframe with "refused to connect."
+    // Multiple allowed parents are supported by frame-ancestors but NOT by
+    // X-Frame-Options. Drop the legacy header to avoid a conflict — modern
+    // browsers prefer X-Frame-Options when both are set.
+    res.setHeader(
+      'Content-Security-Policy',
+      "frame-ancestors 'self' https://aspireos.app https://www.aspireos.app",
+    );
+    res.removeHeader('X-Frame-Options');
     res.setHeader('Cache-Control', 'private, max-age=60');
     res.send(buf);
   } catch (error: unknown) {
-    logger.error('Stripe invoice PDF proxy error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: 'PDF_PROXY_FAILED' });
+    logger.error('Stripe invoice PDF proxy unexpected error', {
+      id,
+      errorMessage: error instanceof Error ? error.message : 'unknown',
+    });
+    res.status(500).json({
+      error: 'PDF_PROXY_FAILED',
+      message: 'Unexpected server error while fetching PDF',
+    });
   }
 });
 

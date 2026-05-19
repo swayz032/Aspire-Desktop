@@ -151,9 +151,21 @@ export function AuthorityQueueDrawer() {
         amount: meta?.amount ? parseFloat(String(meta.amount).replace(/[^0-9.-]/g, '')) : undefined,
         customerName: meta?.counterparty,
         currency: 'USD',
-        // Prefer raw PDF URL for inline iframe preview; fall back to the
-        // Stripe hosted webpage if no PDF URL was captured.
-        livePreviewUrl: item.invoicePdfUrl || item.hostedInvoiceUrl,
+        // Pick the iframe-able URL in priority order:
+        //   1) invoicePdfUrl (proxy URL the mapper already built)
+        //   2) stripeInvoiceId → construct the proxy URL inline (covers
+        //      stale FE bundles where the mapper derivation didn't apply)
+        //   3) hostedInvoiceUrl (Stripe-hosted page — only iframe-friendly
+        //      AFTER our proxy rewrites it; raw Stripe URLs DENY iframes)
+        // Stripe sets X-Frame-Options: DENY on invoice.stripe.com AND
+        // pay.stripe.com, so we MUST iframe our same-origin proxy at
+        // /api/stripe/invoices/{id}/pdf — never the Stripe URL directly.
+        livePreviewUrl:
+          item.invoicePdfUrl
+          || (item.stripeInvoiceId
+            ? `/api/stripe/invoices/${encodeURIComponent(item.stripeInvoiceId)}/pdf`
+            : undefined)
+          || item.hostedInvoiceUrl,
       });
     }
   }, [router, session?.access_token, inFlight, callDecision, flashToast]);

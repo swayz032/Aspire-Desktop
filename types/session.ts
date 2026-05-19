@@ -37,6 +37,7 @@ export interface SessionAuthorityItem {
   pandadocDocumentId?: string;
   hostedInvoiceUrl?: string;
   invoicePdfUrl?: string;
+  stripeInvoiceId?: string;
 }
 
 export interface SessionStaffMember {

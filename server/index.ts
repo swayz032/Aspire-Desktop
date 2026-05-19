@@ -517,6 +517,13 @@ app.use(helmet({
       imgSrc: ["'self'", "data:", "blob:", "https:"],
       connectSrc: [
         "'self'",
+        // blob: required for pdfjs canvas renderer — pdfjs uses fetch()
+        // internally to read the blob URL we hand it for inline invoice
+        // PDF preview. Without this, pdfjs throws UnexpectedResponseException
+        // ("Connecting to 'blob:...' violates connect-src"). Narrow scope:
+        // same-origin blob URLs only (no remote content can be loaded
+        // because there's no `https:` widening).
+        "blob:",
         "https://*.supabase.co",
         "wss://*.supabase.co",
         "https://*.elevenlabs.io",
@@ -553,10 +560,22 @@ app.use(helmet({
         "wss://*.twilio.com",
       ],
       mediaSrc: ["'self'", "data:", "blob:", "https://zoom.us", "https://*.zoom.us", "https://storage.googleapis.com"],
-      frameSrc: ["'self'", "https://*.pandadoc.com", "https://*.stripe.com", "https://*.plaid.com", "https://zoom.us", "https://*.zoom.us"],
+      // `blob:` required for inline PDF preview. The Stripe-invoice modal
+      // fetches the PDF via authenticated fetch, builds a same-origin blob:
+      // URL, and iframes it — without `blob:` in frame-src, helmet's CSP
+      // blocks the embed with "Framing 'blob:...' violates frame-src" even
+      // though the blob is same-origin. See DocumentPreviewModal.tsx.
+      frameSrc: ["'self'", "blob:", "https://*.pandadoc.com", "https://*.stripe.com", "https://*.plaid.com", "https://zoom.us", "https://*.zoom.us"],
       workerSrc: ["'self'", "blob:", "https://source.zoom.us", "https://cdn.jsdelivr.net"],
       fontSrc: ["'self'", "data:", "https://cdn.jsdelivr.net", "https://unpkg.com", "https://source.zoom.us"],
-      objectSrc: ["'none'"],
+      // blob: required for inline PDF preview via <object type="application/pdf">.
+      // We switched away from <iframe> here because Chrome's iframe lifecycle
+      // intermittently emitted CSP "Framing ''" violations on blob URLs even
+      // when the iframe was conditionally rendered (StrictMode + React-DOM
+      // reconciliation race). <object> is governed by object-src instead of
+      // frame-src and renders the PDF through Chrome's native PDF plugin
+      // without any iframe nesting.
+      objectSrc: ["'self'", "blob:"],
       upgradeInsecureRequests: [],
     },
   },
