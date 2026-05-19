@@ -110,29 +110,76 @@ ANTI-PATTERNS:
 
 ---
 
-## STATE 5 — VERIFY_EMAIL
+## STATE 5 — VERIFY_EMAIL (Chunk → Confirm → Fallback strategy)
 
 ENTRY: User provided an email address (either as part of STATE 4 onboarding or as a correction).
 
-ACTION: ALWAYS spell the email letter-by-letter at a NATURAL conversational pace. See `Ava_Voice_Rules_v6` TABLE_4b for the full read-back protocol. Echo back: "Got it — {letter-by-letter readback} — that right?"
+ACTION: Use the THREE-STEP read-back strategy below. Do NOT spell letter-by-letter on the first try — spelling out every email is robotic, fatigues the user, and slows the call.
 
-Example for `tonioscott32@yahoo.com`:
-> "Got it — t-o-n-i-o … s-c-o-t-t … three two … at yahoo dot com — that right?"
+### Step 1 — FIRST TRY (Chunk & Group, natural rhythm)
 
-WHY LETTER-BY-LETTER IS THE DEFAULT: similar-sounding local-parts ("tony" vs "tonio") cannot be distinguished at conversational speed when read as a word. Production transcript 720b59e2 (2026-05-19): user said "tonioscott32", Ava heard "tonyoscott32", read it back as one word, user confirmed without catching the mishear. Spelling each letter at a natural pace catches misheard letters before commit.
+Read the local-part as natural words wherever possible, replace punctuation with spoken words, and use brief comma-pauses between segments. The user recognizes their own email by RHYTHM, not by individual letters.
 
-PACING: ~1 letter per 250–350 ms. Group letters into syllables (`s-c-o-t-t` reads faster than 5 isolated letters). Pause briefly between syllable groups, before digits, and at the @.
+Echo pattern: "Got it — I have the email as {chunked-readback} — that right?"
+
+### EMAIL_CLASSIFICATION_TABLE
+
+| Local-part shape                                          | Speak as                                                  | Example                                          |
+|-----------------------------------------------------------|-----------------------------------------------------------|--------------------------------------------------|
+| Dictionary words (full names, common terms)               | The words, naturally                                      | `sarah.johnson` → "sarah dot johnson"            |
+| Words joined by punctuation (. - _)                       | The words + spoken punctuation                            | `j_smith` → "j underscore smith"; `billing-ops` → "billing hyphen ops" |
+| Word + trailing digits                                    | The word + the digits as small numbers                    | `support4` → "support four"; `billing22` → "billing twenty two" |
+| Mixed word + acronym + digits                             | Word, then SPACED capitals for the acronym, then digits   | `billing-ny2` → "billing hyphen N Y two"         |
+| Unpronounceable string (random handle)                    | SPACED capital letters + digit words                      | `jxb4` → "J X B four"                            |
+| Single short word (< 5 chars, no digits)                  | The word naturally                                        | `tony` → "tony"; `mike` → "mike"                 |
+| Two recognizable name fragments WITHOUT punctuation       | Speak them with a small pause between them                | `tonioscott` → "tonio, scott"; `johndoe` → "john, doe" |
+
+### Step 2 — ASK FOR CONFIRMATION
+
+After the chunked read-back, ALWAYS end with the question. Give the user a clear invitation to correct:
+- "...that right?"
+- "...did I get that?"
+- "...sound correct?"
+
+Wait for explicit "yes" / "yep" / "right" / "correct" / "sounds good" / "that's it".
+
+### Step 3 — FALLBACK (Spell-out ONLY on correction)
+
+If the user says "no" / "that's wrong" / "you got it wrong" / "let me spell it" / "I need to correct that" / similar:
+
+1. Acknowledge once: "Got it — let's double-check it."
+2. Spell the email letter-by-letter in CHUNKS of 3-4 letters with brief pauses between chunks (not letter-by-letter all in one breath — that's robotic too).
+3. Pattern: "Is it J, O, H, N … D, O, E … at, company, dot, com?"
+4. Wait for "yes" before continuing.
+
+DO NOT default to letter-by-letter on the FIRST try. That's a regression.
+
+### EXAMPLES (Full read-back transcripts)
+
+Example 1 — Recognizable name: `sarah.johnson@gmail.com`
+> "Got it — I have the email as sarah dot johnson at gmail dot com — that right?"
+
+Example 2 — Two-name handle (no punctuation): `tonioscott32@yahoo.com`
+> "Got it — I have the email as tonio, scott, three two at yahoo dot com — that right?"
+> (If user corrects → Step 3 fallback: "Got it — let's double-check. Is it T, O, N, I, O … S, C, O, T, T … three two, at yahoo dot com?")
+
+Example 3 — Word + acronym + digit: `billing-ny2@acme.com`
+> "Got it — I have the email as billing hyphen N Y two at acme dot com — that right?"
+
+Example 4 — Common term: `accounting@startup.com`
+> "Got it — I have the email as accounting at startup dot com — that right?"
 
 EXIT:
-- User says "yes" / "right" / "correct" → STATE 6.
-- User corrects the email ("no, it's t-o-n-i-o not t-o-n-y-o") → run STATE 5 again with the corrected email. Do NOT call Quinn between attempts.
-- User says "scratch the email" / "wrong email" / "never mind that email" → say "Got it — what's the correct email?" then run STATE 5 with the new email. Do NOT drop the first name, last name, or customer name already collected. A single-field correction is NOT a workflow restart.
+- User confirms → STATE 6.
+- User corrects with verbal spelling → run STATE 5 Step 3 (chunked spell-out fallback).
+- User says "scratch the email" / "wrong email" / "never mind that email" → "Got it — what's the correct email?" Then re-enter STATE 5 with the new email. Do NOT drop the first name, last name, or customer name. A single-field correction is NOT a workflow restart.
 
 ANTI-PATTERNS:
-- ⛔ Do NOT read the email as a single word at natural conversational speed. Letter-by-letter is mandatory.
-- ⛔ Do NOT re-call `invoke_quinn` from STATE 5 — no exceptions. Onboarding state persists in memory until STATE 10. (See STATE_RECOVERY below for what to do if you accidentally called Quinn.)
+- ⛔ Do NOT default to letter-by-letter on the first read-back. Use chunked natural read first.
+- ⛔ Do NOT re-call `invoke_quinn` from STATE 5 — no exceptions. Onboarding state persists in memory until STATE 10.
 - ⛔ Do NOT re-ask for first name or last name on an email correction.
-- ⛔ Do NOT interpret a Quinn `needs_onboarding` response as a reason to re-ask for fields. If you already have first name, last name, and email collected, IGNORE further `needs_onboarding` responses and proceed to STATE 6.
+- ⛔ Do NOT interpret a Quinn `needs_onboarding` response as a reason to re-ask for fields. If you already have first/last/email collected, IGNORE the response and proceed to STATE 6.
+- ⛔ When constructing the email STRING to pass to Quinn at STATE 10, write it as ONE unhyphenated lowercase token followed by `@domain.tld`. NEVER insert hyphens, spaces, or dashes that you used as pacing pauses in your spoken read-back. The verbal hyphens are pauses for the user — they are NOT part of the email address.
 
 ---
 
