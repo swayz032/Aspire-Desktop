@@ -76,6 +76,33 @@ async function uploadOne(u) {
   const fileBuf = await readFile(u.localPath);
   const fileSize = fileBuf.length;
 
+  // Step 0 — delete any existing docs in this folder with the same filename.
+  // Without this the folder accumulates duplicate versions and Anam's
+  // retrieval may rank an OLD version higher than the new one, causing
+  // production Ava to follow stale rules (observed 2026-05-19 session
+  // 720b59e2 — 8 versions of Invoicing_and_Quotes_v6.txt existed and the
+  // oldest prose version was being retrieved instead of the state-machine
+  // rewrite).
+  console.log(`  step 0: clean prior versions in folder …`);
+  try {
+    const existing = await api(`/knowledge/groups/${u.folderId}/documents`);
+    const docList = Array.isArray(existing) ? existing : (existing.documents || existing.data || []);
+    let cleaned = 0;
+    for (const d of docList) {
+      if (d.filename === u.filename) {
+        try {
+          await api(`/knowledge/documents/${d.id}`, { method: 'DELETE' });
+          cleaned++;
+        } catch (e) {
+          console.log(`    (skip delete ${d.id}: ${e.message.slice(0, 80)})`);
+        }
+      }
+    }
+    if (cleaned > 0) console.log(`    deleted ${cleaned} prior version(s)`);
+  } catch (e) {
+    console.log(`    (skip clean step: ${e.message.slice(0, 100)})`);
+  }
+
   // Step 1 — request presigned upload URL
   console.log(`  step 1: presigned-upload …`);
   const presigned = await api(`/knowledge/groups/${u.folderId}/documents/presigned-upload`, {
