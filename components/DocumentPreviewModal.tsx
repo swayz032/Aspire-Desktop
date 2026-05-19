@@ -419,18 +419,41 @@ function DocumentPreviewModalInner({ visible, onClose, type, documentName, panda
       try {
         const headers: Record<string, string> = { Accept: 'application/pdf' };
         if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+        // Diagnostic log so production issues can be traced from the console
+        // (PII-safe: we log only the URL path and response metadata, never
+        // the JWT or PDF body bytes).
+        // eslint-disable-next-line no-console
+        console.log('[InvoicePDF] fetch start', { url: livePreviewUrl, hasAuth: !!session?.access_token });
         const resp = await fetch(livePreviewUrl, { headers, credentials: 'include' });
         if (cancelled) return;
+        // eslint-disable-next-line no-console
+        console.log('[InvoicePDF] fetch response', {
+          url: livePreviewUrl,
+          status: resp.status,
+          ok: resp.ok,
+          contentType: resp.headers.get('content-type'),
+          contentLength: resp.headers.get('content-length'),
+        });
         if (!resp.ok) {
           setStripePdfError(`PDF fetch failed (${resp.status})`);
           return;
         }
         const blob = await resp.blob();
         if (cancelled) return;
+        // eslint-disable-next-line no-console
+        console.log('[InvoicePDF] blob created', { type: blob.type, size: blob.size });
+        if (blob.size === 0) {
+          setStripePdfError('PDF response was empty');
+          return;
+        }
         createdUrl = URL.createObjectURL(blob);
+        // eslint-disable-next-line no-console
+        console.log('[InvoicePDF] blob URL', { url: createdUrl });
         setStripePdfBlobUrl(createdUrl);
       } catch (err) {
         if (cancelled) return;
+        // eslint-disable-next-line no-console
+        console.error('[InvoicePDF] fetch failed', err);
         setStripePdfError(err instanceof Error ? err.message : 'PDF fetch failed');
       } finally {
         if (!cancelled) setStripePdfLoading(false);
