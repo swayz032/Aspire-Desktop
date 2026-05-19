@@ -34,9 +34,11 @@ import {
   getProjectStatus,
   listSheets,
   BlueprintsApiError,
+  type BlueprintFailureSummary,
   type BlueprintProject,
   type BlueprintProjectStatusResponse,
   type BlueprintSheetRead,
+  type StageKey,
   type StageProgress,
   type StageStatus,
 } from '@/lib/api/blueprintsApi';
@@ -75,6 +77,26 @@ export interface UseBlueprintProjectPollResult {
   /** True while the periodic timer is active. */
   isPolling: boolean;
   error: { code: string; message: string } | null;
+  /**
+   * True when ANY stage in stage_progress has reached the `error` terminal
+   * state. Polling stops as soon as this flips true — there is no point
+   * burning requests on a dead project. Mirrored to the canvas so the
+   * `<BlueprintFailureCard />` mounts in place of the shimmer.
+   */
+  hasFailed: boolean;
+  /**
+   * First stage (in pipeline order) found in the `error` state, or `null`
+   * when nothing has failed. Drives the per-stage copy on the failure card
+   * and the red error icon in the Tim Rail Context pipeline timeline.
+   */
+  failedStage: StageKey | null;
+  /**
+   * Structured failure detail pulled from the project / status response.
+   * MAY be `null` even when `hasFailed === true` if the backend hasn't yet
+   * emitted structured error fields — the UI renders generic copy in that
+   * case (graceful degradation contract).
+   */
+  failureSummary: BlueprintFailureSummary | null;
   /** Force an out-of-band refresh (e.g. after a manual action). */
   refresh: () => void;
 }
@@ -115,9 +137,27 @@ function _isProcureDone(p: StageProgress | null): boolean {
   return s === 'ok' || s === 'stub' || s === 'error';
 }
 
+/**
+ * Return the first stage (in canonical pipeline order) that has reached the
+ * `error` terminal state, or `null` if none have failed. Pipeline order is
+ * meaningful here: a failure in INGEST should always win over a downstream
+ * stage that happens to also be marked `error`, because the upstream root
+ * cause is what we want to surface on the failure card.
+ */
+function _firstFailedStage(p: StageProgress | null): StageKey | null {
+  if (!p) return null;
+  for (const k of STAGE_KEYS) {
+    if (p[k] === 'error') return k;
+  }
+  return null;
+}
+
 /** Pick the next poll interval in ms. Null = stop polling. */
 function _nextIntervalMs(p: StageProgress | null): number | null {
   if (!p) return 2_000; // still booting — try again soon
+  // Fail-closed: once ANY stage has errored, stop polling. Burning requests
+  // on a dead project is what made the user stare at a spinner for 8 minutes.
+  if (_firstFailedStage(p) !== null) return null;
   if (_isStageRunning(p)) return 2_000;
   if (_isProcureDone(p)) return 10_000;
   if (_isAllTerminal(p)) return null; // all done, no procure expected
@@ -337,9 +377,15 @@ export function useBlueprintProjectPoll(
     const sp = project?.stage_progress ?? null;
     const nextMs = _nextIntervalMs(sp);
     if (nextMs == null) {
+      // Tear down the in-flight controller too — `_nextIntervalMs` returns
+      // null on hard failure, so we want to ensure the current request and
+      // any pending re-fetch are both cancelled.
       if (timerRef.current) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
+      }
+      if (_firstFailedStage(sp) !== null) {
+        abortRef.current?.abort();
       }
       setIsPolling(false);
     }
@@ -347,6 +393,20 @@ export function useBlueprintProjectPoll(
 
   const revisions = useMemo(() => deriveRevisionChains(sheets), [sheets]);
   const stageProgress = project?.stage_progress ?? EMPTY_STAGE;
+
+  // ─── Failure derivation ──────────────────────────────────────────────
+  // hasFailed flips true as soon as ANY stage in stage_progress is 'error'.
+  // failedStage picks the FIRST failed stage in canonical pipeline order so
+  // upstream root causes win over downstream cascading errors. failureSummary
+  // prefers status response (richer) then project. Both MAY be null on older
+  // backends — UI must degrade gracefully.
+  const failedStage = useMemo(
+    () => _firstFailedStage(project?.stage_progress ?? null),
+    [project?.stage_progress],
+  );
+  const hasFailed = failedStage !== null;
+  const failureSummary: BlueprintFailureSummary | null =
+    statusResp?.failure_summary ?? project?.failure_summary ?? null;
 
   return {
     project,
@@ -358,6 +418,9 @@ export function useBlueprintProjectPoll(
     isFirstLoad,
     isPolling,
     error,
+    hasFailed,
+    failedStage,
+    failureSummary,
     refresh,
   };
 }

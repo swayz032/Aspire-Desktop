@@ -28,6 +28,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useBlueprintUpload } from '@/hooks/useBlueprintUpload';
 import { useBlueprintProjectPoll } from '@/hooks/useBlueprintProjectPoll';
+import { useBlueprintUploadSnapshot } from '@/lib/blueprintUploadStore';
 import {
   plansPhotosUiActions,
   usePlansPhotosUi,
@@ -35,14 +36,23 @@ import {
 } from '@/lib/plansPhotosUiStore';
 import { UploadDropZone } from './UploadDropZone';
 import { SheetThumbnailGrid } from './SheetThumbnailGrid';
+import { BlueprintFailureCard } from './BlueprintFailureCard';
 import { getDisciplineStyle } from './disciplines';
 
 export function PlansPhotosTab(): React.ReactElement {
   const upload = useBlueprintUpload();
   const ui = usePlansPhotosUi();
   const { setActiveCard } = plansPhotosUiActions();
+  // Snapshot store carries `projectId` on the async-dispatch path where
+  // upload.response stays null (the queued path) — fall back to snapshot
+  // so the failure card mounts for in-progress projects too.
+  const snap = useBlueprintUploadSnapshot();
 
-  const projectId = upload.response?.ingest?.project_id ?? upload.response?.project_id ?? null;
+  const projectId =
+    upload.response?.ingest?.project_id ??
+    upload.response?.project_id ??
+    snap.projectId ??
+    null;
   const poll = useBlueprintProjectPoll(projectId);
 
   const hasProject = projectId != null;
@@ -59,6 +69,39 @@ export function PlansPhotosTab(): React.ReactElement {
   }, [hasProject, ui.activeCard]);
 
   const activeCard: PlansPhotosCardKey = ui.activeCard;
+
+  // Failure short-circuit: when Drew has reported a stage failure, the
+  // canvas swaps in the failure card REGARDLESS of which view chip is
+  // selected. The user has been staring at frozen shimmer too long for
+  // us to gate the error surface behind a click. Wired ABOVE the
+  // memoized switch so we never compute the success-path render tree
+  // for a dead project.
+  const failureCard = useMemo<React.ReactNode>(() => {
+    if (!poll.hasFailed || !poll.failedStage) return null;
+    const isRetrying =
+      upload.phase === 'reading' ||
+      upload.phase === 'uploading' ||
+      upload.phase === 'ingesting' ||
+      upload.phase === 'classifying';
+    return (
+      <BlueprintFailureCard
+        failedStage={poll.failedStage}
+        failureSummary={poll.failureSummary}
+        projectId={projectId}
+        isRetrying={isRetrying}
+        onRetry={upload.retry}
+        onStartOver={upload.reset}
+      />
+    );
+  }, [
+    poll.hasFailed,
+    poll.failedStage,
+    poll.failureSummary,
+    projectId,
+    upload.phase,
+    upload.retry,
+    upload.reset,
+  ]);
 
   const card = useMemo<React.ReactNode>(() => {
     switch (activeCard) {
@@ -140,7 +183,7 @@ export function PlansPhotosTab(): React.ReactElement {
   // progress, view-switcher, and discipline-filter chrome.
   return (
     <View style={styles.canvas} testID="plans-photos-tab">
-      {card}
+      {failureCard ?? card}
     </View>
   );
 }

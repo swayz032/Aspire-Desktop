@@ -32,6 +32,15 @@ export interface BlueprintUploadSnapshot {
    * chain while SEE / REASON / PROCURE complete asynchronously.
    */
   projectId: string | null;
+  /**
+   * Retained File reference so the canvas failure card can re-upload the
+   * same file on retry without forcing the user to drop it again. Kept
+   * for the entire lifecycle (idle → processing → failed → retry). Wiped
+   * by `resetBlueprintUpload()` and replaced on each new `upload(file)`
+   * call. The browser-native `File` object is structurally cheap (a
+   * reference, not a copy) so retaining it has no real memory cost.
+   */
+  file: File | null;
 }
 
 const INITIAL_STAGE: StageProgress = {
@@ -52,6 +61,7 @@ const INITIAL: BlueprintUploadSnapshot = {
   uploadRatio: 0,
   startedAtMs: null,
   projectId: null,
+  file: null,
 };
 
 let state: BlueprintUploadSnapshot = INITIAL;

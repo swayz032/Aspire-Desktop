@@ -62,6 +62,13 @@ export interface UseBlueprintUploadResult {
   stageProgress: StageProgress;
   error: { code: string; message: string } | null;
   upload: (file: File) => Promise<void>;
+  /**
+   * Re-run `upload()` with the LAST file the user dropped. Used by the
+   * canvas `<BlueprintFailureCard />` retry button. No-op when no file has
+   * been retained yet (e.g. retry after a full reset, or a brand-new
+   * session).
+   */
+  retry: () => Promise<void>;
   reset: () => void;
 }
 
@@ -142,6 +149,10 @@ export function useBlueprintUpload(): UseBlueprintUploadResult {
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
+  // Retain the last File the user dropped so the canvas failure card can
+  // retry without re-prompting. Stored in a ref (not state) to avoid
+  // unnecessary re-renders — the snapshot store mirrors it for consumers.
+  const lastFileRef = useRef<File | null>(null);
   // Locked at the first transition out of idle so the Tim Rail Context tab
   // (and any other consumer) can render a stable elapsed timer. Cleared on
   // any non-busy phase so the next upload starts a fresh clock.
@@ -177,12 +188,16 @@ export function useBlueprintUpload(): UseBlueprintUploadResult {
       uploadRatio: progress.ratio,
       startedAtMs,
       projectId,
+      file: lastFileRef.current,
     });
   }, [phase, filename, response, stageProgress, error, progress.ratio, startedAtMs]);
 
   const reset = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
+    // Clear retained file too — "Start over" should not silently retry
+    // the same file on the next failure.
+    lastFileRef.current = null;
     setPhase('idle');
     setProgress(INITIAL_PROGRESS);
     setFilename(null);
@@ -199,6 +214,12 @@ export function useBlueprintUpload(): UseBlueprintUploadResult {
       const controller = new AbortController();
       abortRef.current = controller;
 
+      // Retain the file so retry from the failure card re-sends the same
+      // bytes without a new drop. Set BEFORE validation so even rejected
+      // uploads (e.g. wrong MIME) leave the previous good file intact;
+      // the immediate setFilename below replaces the prior reference, so
+      // this also serves as "retry uses whatever the user just tried".
+      lastFileRef.current = file;
       setFilename(file.name);
       setError(null);
       setResponse(null);
@@ -339,6 +360,12 @@ export function useBlueprintUpload(): UseBlueprintUploadResult {
     [authenticatedFetch, officeId],
   );
 
+  const retry = useCallback(async (): Promise<void> => {
+    const f = lastFileRef.current;
+    if (!f) return;
+    await upload(f);
+  }, [upload]);
+
   return {
     phase,
     progress,
@@ -347,6 +374,7 @@ export function useBlueprintUpload(): UseBlueprintUploadResult {
     stageProgress,
     error,
     upload,
+    retry,
     reset,
   };
 }

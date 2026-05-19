@@ -1016,4 +1016,172 @@ describe('Visuals Tab — Design Lock v1.0', () => {
       expect(routesSrc).toMatch(/task:\s*['"]MATERIAL_SKIP['"]/);
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Lock #27 — BlueprintFailureCard mounts when the pipeline dies.
+  // Before this lock landed, a stage_progress.ingest === 'failed' left the
+  // Plans & Photos canvas spinning a shimmer forever — the user stared at
+  // frozen UI for 8+ minutes on a single dead project. Lock asserts the
+  // failure card exists, the canvas tab wires it in, and the wire-up is
+  // gated on the polled hasFailed signal (not on `upload.phase === 'error'`,
+  // which never flipped on the async-dispatch path).
+  // -------------------------------------------------------------------------
+  describe('Lock #27: BlueprintFailureCard mounts on stage failure (2026-05-19)', () => {
+    const cardSrc = read(
+      'components/service-hub/estimate-studio/plans-photos/BlueprintFailureCard.tsx',
+    );
+    const tabSrc = read(
+      'components/service-hub/estimate-studio/plans-photos/PlansPhotosTab.tsx',
+    );
+
+    it('BlueprintFailureCard component file exists with the testID anchor', () => {
+      expect(cardSrc).toMatch(/testID = 'blueprint-failure-card'/);
+      expect(cardSrc).toMatch(/testID="blueprint-failure-retry"/);
+      expect(cardSrc).toMatch(/testID="blueprint-failure-start-over"/);
+    });
+
+    it('BlueprintFailureCard ships per-stage Drew copy for all 5 pipeline stages', () => {
+      // Each stage must have a one-line subtitle so the user knows WHICH
+      // provider died. Generic-only copy would silently hide root cause.
+      const stageCopyMatch = cardSrc.match(/STAGE_COPY[\s\S]*?\};/);
+      expect(stageCopyMatch).toBeTruthy();
+      const decl = stageCopyMatch![0];
+      for (const stage of ['ingest', 'classify', 'see', 'reason', 'procure']) {
+        expect(decl).toMatch(new RegExp(`${stage}:\\s*\\{`));
+      }
+    });
+
+    it('PlansPhotosTab imports BlueprintFailureCard and mounts it on hasFailed', () => {
+      expect(tabSrc).toMatch(
+        /import\s*\{\s*BlueprintFailureCard\s*\}\s*from\s*['"]\.\/BlueprintFailureCard['"]/,
+      );
+      // The render must short-circuit on poll.hasFailed, NOT on
+      // upload.phase === 'error' (which the async-dispatch path never sets).
+      expect(tabSrc).toMatch(/poll\.hasFailed/);
+      expect(tabSrc).toMatch(/<BlueprintFailureCard/);
+    });
+
+    it('PlansPhotosTab wires retry to upload.retry and start-over to upload.reset', () => {
+      expect(tabSrc).toMatch(/onRetry=\{upload\.retry\}/);
+      expect(tabSrc).toMatch(/onStartOver=\{upload\.reset\}/);
+    });
+
+    it('failure card mount path is decoupled from activeCard (renders over ALL view modes)', () => {
+      // failureCard must be ?? card (or equivalent short-circuit), not
+      // gated inside the activeCard switch — so a user on "By Discipline"
+      // still sees the failure card when Drew dies.
+      expect(tabSrc).toMatch(/failureCard\s*\?\?\s*card/);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Lock #28 — useBlueprintProjectPoll STOPS polling on hasFailed.
+  // Continuing to poll a dead project burned 30 requests/min on the user's
+  // failed run before the timeout. The poll cadence helper must return
+  // null (= stop) the moment any stage reaches the 'error' terminal state.
+  // -------------------------------------------------------------------------
+  describe('Lock #28: useBlueprintProjectPoll halts on failure (2026-05-19)', () => {
+    const hookSrc = read('hooks/useBlueprintProjectPoll.ts');
+
+    it('exposes hasFailed, failedStage, failureSummary on the hook surface', () => {
+      expect(hookSrc).toMatch(/hasFailed:\s*boolean/);
+      expect(hookSrc).toMatch(/failedStage:\s*StageKey\s*\|\s*null/);
+      expect(hookSrc).toMatch(/failureSummary:\s*BlueprintFailureSummary\s*\|\s*null/);
+    });
+
+    it('_nextIntervalMs returns null when any stage has failed', () => {
+      // The fail-closed branch must run BEFORE the "running" / "procure
+      // done" branches so a transient running cousin can't keep polling
+      // alive after a sibling has died.
+      const fnMatch = hookSrc.match(/function _nextIntervalMs[\s\S]*?\n\}/);
+      expect(fnMatch).toBeTruthy();
+      const fn = fnMatch![0];
+      expect(fn).toMatch(/_firstFailedStage\([^)]+\)\s*!==\s*null/);
+      expect(fn).toMatch(/return null/);
+    });
+
+    it('derives failedStage in canonical pipeline order (upstream wins)', () => {
+      // _firstFailedStage must iterate STAGE_KEYS in canonical order so
+      // an INGEST failure surfaces even if downstream stages also error.
+      const fnMatch = hookSrc.match(/function _firstFailedStage[\s\S]*?\n\}/);
+      expect(fnMatch).toBeTruthy();
+      const fn = fnMatch![0];
+      expect(fn).toMatch(/for\s*\(\s*const\s+k\s+of\s+STAGE_KEYS\s*\)/);
+      expect(fn).toMatch(/p\[k\]\s*===\s*'error'/);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Lock #29 — Context tab surfaces the failure with a red mini-chip.
+  // The user must see "pipeline failed at X — see canvas to retry" without
+  // having to click into Plans & Photos. The Pipeline Status timeline
+  // already renders red alert-circle glyphs via _statusGlyph(error) in
+  // UploadProgressInline; this lock asserts both wiring points.
+  // -------------------------------------------------------------------------
+  describe('Lock #29: Context tab surfaces pipeline failures (2026-05-19)', () => {
+    const ctxSrc = read(
+      'components/service-hub/estimate-studio/tim-rail/PlansPhotosContextPayload.tsx',
+    );
+    const progressSrc = read(
+      'components/service-hub/estimate-studio/plans-photos/UploadProgressInline.tsx',
+    );
+
+    it('renders a red failure mini-chip when poll.hasFailed is true', () => {
+      expect(ctxSrc).toMatch(/testID="context-failure-chip"/);
+      expect(ctxSrc).toMatch(/poll\.hasFailed/);
+      // Chip uses the canonical red (#ef4444) — must NOT slip back to amber.
+      expect(ctxSrc).toMatch(/#ef4444/);
+    });
+
+    it('UploadProgressInline renders a red alert-circle on stage status === "error"', () => {
+      // _statusGlyph(error) must emit the red glyph so the per-stage
+      // chip in the vertical Pipeline Status timeline turns red on the
+      // failed stage. This is the dimmed/timeline indicator the spec
+      // calls "red error icon (Ionicons close-circle)" — alert-circle
+      // is the established canvas convention and matches the failure
+      // card icon family.
+      expect(progressSrc).toMatch(/case 'error':[\s\S]*?icon:\s*'alert-circle'[\s\S]*?color:\s*'#ef4444'/);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Lock #30 — Retry plumbing retains the File and re-uploads.
+  // The store must carry the File reference across the entire lifecycle
+  // (idle -> processing -> failed -> retry), and useBlueprintUpload.retry
+  // must call upload() with that retained file.
+  // -------------------------------------------------------------------------
+  describe('Lock #30: Retry plumbing retains the File for re-upload (2026-05-19)', () => {
+    const storeSrc = read('lib/blueprintUploadStore.ts');
+    const hookSrc = read('hooks/useBlueprintUpload.ts');
+
+    it('BlueprintUploadSnapshot carries a `file: File | null` field', () => {
+      expect(storeSrc).toMatch(/file:\s*File\s*\|\s*null/);
+    });
+
+    it('useBlueprintUpload exposes a retry() method', () => {
+      expect(hookSrc).toMatch(/retry:\s*\(\)\s*=>\s*Promise<void>/);
+      // retry() must call upload(f) with the retained ref — NOT prompt
+      // the user, NOT spawn a new file picker, NOT reset state.
+      const fnMatch = hookSrc.match(/const retry = useCallback[\s\S]*?\}, \[upload\]\);/);
+      expect(fnMatch).toBeTruthy();
+      const fn = fnMatch![0];
+      expect(fn).toMatch(/lastFileRef\.current/);
+      expect(fn).toMatch(/await upload\(f\)/);
+    });
+
+    it('upload() retains the File before validation so retry survives reset paths', () => {
+      // lastFileRef.current = file must be set early in upload() so even
+      // a failed validation doesn't blank the retained reference.
+      expect(hookSrc).toMatch(/lastFileRef\.current = file/);
+    });
+
+    it('reset() clears the retained file (Start over = clean slate)', () => {
+      // The "Start over" affordance on the failure card must wipe the
+      // file so the next upload starts truly fresh.
+      const fnMatch = hookSrc.match(/const reset = useCallback[\s\S]*?\}, \[\]\);/);
+      expect(fnMatch).toBeTruthy();
+      const fn = fnMatch![0];
+      expect(fn).toMatch(/lastFileRef\.current = null/);
+    });
+  });
 });

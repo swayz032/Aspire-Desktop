@@ -152,6 +152,22 @@ export function isDispatchResponse(
   );
 }
 
+/**
+ * Structured failure summary the backend MAY include on getProject /
+ * getProjectStatus responses once a stage fails. Frontend MUST degrade
+ * gracefully when absent — backend hardening is in flight and will land
+ * these fields incrementally. When missing, the canvas falls back to
+ * generic per-stage copy (see `BlueprintFailureCard.tsx`).
+ */
+export interface BlueprintFailureSummary {
+  stage: StageKey;
+  error_class: string | null;
+  error_message: string | null;
+  correlation_id: string | null;
+  /** ISO 8601 — when the failure was recorded (server clock). */
+  occurred_at: string | null;
+}
+
 /** Wave 6.5 — getProject() response (matches backend `BlueprintProjectRead`). */
 export interface BlueprintProject {
   /** Project UUID. */
@@ -163,6 +179,8 @@ export interface BlueprintProject {
   created_by: string | null;
   stage_progress: StageProgress;
   sheet_count: number;
+  /** Optional — present once any stage fails. May be absent on older backends. */
+  failure_summary?: BlueprintFailureSummary | null;
 }
 
 /**
@@ -208,6 +226,8 @@ export interface BlueprintProjectStatusResponse {
   sheet_count: number;
   symbol_count: number;
   missing_input_count: number;
+  /** Optional — present once any stage fails. May be absent on older backends. */
+  failure_summary?: BlueprintFailureSummary | null;
 }
 
 export interface ListSheetsOptions {
@@ -437,6 +457,36 @@ function _normalizeStageStatus(raw: unknown): StageStatus {
   return BACKEND_TO_FRONTEND_STAGE[raw] ?? 'pending';
 }
 
+/**
+ * Normalize an optional `failure_summary` blob from the backend. Degrades
+ * gracefully when the backend hasn't yet emitted structured error fields:
+ * if any are missing, returns nulls so the UI renders generic copy.
+ * Returns `null` when the blob is absent or not an object.
+ */
+function _normalizeFailureSummary(raw: unknown): BlueprintFailureSummary | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  const stage = typeof obj.stage === 'string' ? (obj.stage as StageKey) : null;
+  // stage is the one load-bearing field — without it we can't render the
+  // failed-stage chip. Bail to null and let the hook derive from stage_progress.
+  if (!stage || !STAGE_KEYS_NORMALIZE.includes(stage)) return null;
+  return {
+    stage,
+    error_class: typeof obj.error_class === 'string' ? obj.error_class : null,
+    error_message: typeof obj.error_message === 'string' ? obj.error_message : null,
+    correlation_id: typeof obj.correlation_id === 'string' ? obj.correlation_id : null,
+    occurred_at: typeof obj.occurred_at === 'string' ? obj.occurred_at : null,
+  };
+}
+
+const STAGE_KEYS_NORMALIZE: ReadonlyArray<StageKey> = [
+  'ingest',
+  'classify',
+  'see',
+  'reason',
+  'procure',
+];
+
 function _normalizeStageProgress(raw: unknown): StageProgress {
   const obj = (raw ?? {}) as Record<string, unknown>;
   return {
@@ -505,7 +555,13 @@ export async function getProject(
     officeId,
     signal,
   );
-  return { ...raw, stage_progress: _normalizeStageProgress(raw.stage_progress) };
+  return {
+    ...raw,
+    stage_progress: _normalizeStageProgress(raw.stage_progress),
+    failure_summary: _normalizeFailureSummary(
+      (raw as unknown as { failure_summary?: unknown }).failure_summary,
+    ),
+  };
 }
 
 /** List sheets for a project (with thumbnails + revision chain).
@@ -548,7 +604,13 @@ export async function getProjectStatus(
     officeId,
     signal,
   );
-  return { ...raw, stage_progress: _normalizeStageProgress(raw.stage_progress) };
+  return {
+    ...raw,
+    stage_progress: _normalizeStageProgress(raw.stage_progress),
+    failure_summary: _normalizeFailureSummary(
+      (raw as unknown as { failure_summary?: unknown }).failure_summary,
+    ),
+  };
 }
 
 /** Wave 7 — fetch the phased story narrative (REASON output). */

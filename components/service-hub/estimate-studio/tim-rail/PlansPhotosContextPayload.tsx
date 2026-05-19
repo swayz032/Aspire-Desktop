@@ -188,7 +188,36 @@ export function PlansPhotosContextPayload(): React.ReactElement {
   const effectiveStageProgress = poll.project?.stage_progress ?? snap.stageProgress;
   const hasProject = projectId != null;
 
+  // Failed stage drives the red mini-chip at the top of Context and the
+  // red error glyph in the Pipeline Status timeline (the latter is already
+  // wired in UploadProgressInline via _statusGlyph(status==='error')).
+  const failedStageLabel = poll.failedStage
+    ? poll.failedStage.toUpperCase()
+    : null;
+
   const sections: ContextSection[] = [
+    ...(poll.hasFailed && failedStageLabel
+      ? [
+          {
+            key: 'failure-chip',
+            title: 'Pipeline Failure',
+            subtitle: 'See canvas to retry',
+            render: () => (
+              <View
+                style={styles.failureChip}
+                testID="context-failure-chip"
+                accessibilityLabel={`Pipeline failed at ${failedStageLabel}. See canvas to retry.`}
+              >
+                <Ionicons name="alert-circle" size={14} color="#ef4444" />
+                <Text style={styles.failureChipText}>
+                  Pipeline failed at {failedStageLabel}.
+                </Text>
+                <Text style={styles.failureChipHint}>See canvas to retry.</Text>
+              </View>
+            ),
+          } as ContextSection,
+        ]
+      : []),
     ...(isBusy
       ? [
           {
@@ -434,6 +463,31 @@ export function PlansPhotosContextPayload(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
+  // ---- Failure mini-chip (top of Context when poll.hasFailed) -----------
+  failureChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(239,68,68,0.45)',
+    backgroundColor: 'rgba(239,68,68,0.06)',
+  },
+  failureChipText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#ef4444',
+    letterSpacing: 0.3,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  },
+  failureChipHint: {
+    fontSize: 10.5,
+    color: 'rgba(255,255,255,0.55)',
+    letterSpacing: 0.2,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  },
   empty: {
     fontSize: 11,
     color: 'rgba(255,255,255,0.45)',
