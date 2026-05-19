@@ -89,6 +89,47 @@ describe('requestSignedUpload', () => {
     });
   });
 
+  it('Wave 9e P1-3 — raises BAD_RESPONSE_SHAPE when signed_url is missing', async () => {
+    const fetchMock: jest.MockedFunction<FetchFn> = jest.fn().mockResolvedValue(
+      _mkResponse(200, {
+        upload_id: 'upl_abc',
+        storage_path: 'p',
+        // signed_url intentionally missing — the exact bug class that bit
+        // production when the backend renamed upload_url -> signed_url.
+        correlation_id: 'corr_1',
+        receipt_id: 'rcpt_1',
+      }),
+    );
+    await expect(
+      requestSignedUpload(fetchMock, {
+        filename: 'plan.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        officeId: 'office_1',
+      }),
+    ).rejects.toMatchObject({ status: 502, code: 'BAD_RESPONSE_SHAPE' });
+  });
+
+  it('Wave 9e P1-3 — raises BAD_RESPONSE_SHAPE when upload_id has wrong type', async () => {
+    const fetchMock: jest.MockedFunction<FetchFn> = jest.fn().mockResolvedValue(
+      _mkResponse(200, {
+        upload_id: 12345, // number instead of string
+        storage_path: 'p',
+        signed_url: 'https://example.test/sign',
+        correlation_id: 'c',
+        receipt_id: 'r',
+      }),
+    );
+    await expect(
+      requestSignedUpload(fetchMock, {
+        filename: 'plan.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        officeId: 'office_1',
+      }),
+    ).rejects.toMatchObject({ status: 502, code: 'BAD_RESPONSE_SHAPE' });
+  });
+
   it('raises BlueprintsApiError on non-2xx with parsed error fields', async () => {
     const fetchMock: jest.MockedFunction<FetchFn> = jest.fn().mockResolvedValue(
       _mkResponse(503, {

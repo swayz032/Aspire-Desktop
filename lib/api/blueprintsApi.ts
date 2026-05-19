@@ -44,6 +44,65 @@ export class BlueprintsApiError extends Error {
 }
 
 // ---------------------------------------------------------------------------
+// Runtime shape validation (Wave 9e — P1-3)
+// ---------------------------------------------------------------------------
+//
+// `as TypeName` casts at JSON boundaries are TS-only fictions; the runtime
+// still trusts whatever the server returns. When a backend hardening PR
+// renamed `upload_url` to `signed_url` without a frontend bump, the cast
+// happily accepted the payload and we exploded downstream with `undefined`.
+//
+// `_assertShape()` is a lightweight runtime gate: it throws a
+// `BlueprintsApiError(502, 'BAD_RESPONSE_SHAPE', ...)` when a required field
+// is missing or has the wrong primitive type. Apply at every parse site so
+// the same class of bug surfaces as a clean error code, not a UI crash.
+
+type ShapeKind = 'string' | 'number' | 'boolean' | 'object' | 'array';
+
+function _assertShape(
+  value: unknown,
+  spec: Record<string, ShapeKind>,
+  label: string,
+): void {
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new BlueprintsApiError(
+      502,
+      'BAD_RESPONSE_SHAPE',
+      `${label}: expected object, got ${Array.isArray(value) ? 'array' : typeof value}`,
+    );
+  }
+  const obj = value as Record<string, unknown>;
+  for (const [key, kind] of Object.entries(spec)) {
+    const v = obj[key];
+    if (v == null) {
+      throw new BlueprintsApiError(
+        502,
+        'BAD_RESPONSE_SHAPE',
+        `${label}: missing required field '${key}'`,
+      );
+    }
+    const actualKind: ShapeKind = Array.isArray(v) ? 'array' : (typeof v as ShapeKind);
+    if (actualKind !== kind) {
+      throw new BlueprintsApiError(
+        502,
+        'BAD_RESPONSE_SHAPE',
+        `${label}: field '${key}' expected ${kind}, got ${actualKind}`,
+      );
+    }
+  }
+}
+
+function _assertArray(value: unknown, label: string): void {
+  if (!Array.isArray(value)) {
+    throw new BlueprintsApiError(
+      502,
+      'BAD_RESPONSE_SHAPE',
+      `${label}: expected array, got ${value == null ? 'null' : typeof value}`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
@@ -69,6 +128,23 @@ export type AcceptedMimeType = (typeof ACCEPTED_MIME_TYPES)[number];
 
 export type StageKey = 'ingest' | 'classify' | 'see' | 'reason' | 'procure';
 export type StageStatus = 'pending' | 'running' | 'ok' | 'error' | 'stub';
+
+/**
+ * Set of stage statuses that represent a terminal (no-further-transitions)
+ * state in the normalized frontend vocabulary. Use this — never raw backend
+ * values like 'done' / 'failed' which are normalized away in
+ * `_normalizeStageProgress` — when deciding whether a stage has finished.
+ *
+ * Wave 9e fix (P0-9): consumers MUST import this rather than hand-rolling
+ * comparisons against 'done' / 'failed' (the pre-normalization values),
+ * which silently mismatch after normalization and produced today's
+ * "no sheets yet" stuck-shimmer bug.
+ */
+export const STAGE_TERMINAL: ReadonlySet<StageStatus> = new Set<StageStatus>([
+  'ok',
+  'error',
+  'stub',
+]);
 
 export interface StageProgress {
   ingest: StageStatus;
@@ -473,7 +549,17 @@ export async function requestSignedUpload(
   if (!resp.ok) {
     throw await _parseError(resp, 'SIGNED_UPLOAD_INIT_FAILED');
   }
-  return (await resp.json()) as SignedUploadInitResponse;
+  const parsed = (await resp.json()) as unknown;
+  _assertShape(
+    parsed,
+    {
+      upload_id: 'string',
+      signed_url: 'string',
+      storage_path: 'string',
+    },
+    'requestSignedUpload',
+  );
+  return parsed as SignedUploadInitResponse;
 }
 
 /**
@@ -505,7 +591,19 @@ export async function completeUpload(
   if (!resp.ok) {
     throw await _parseError(resp, 'COMPLETE_UPLOAD_FAILED');
   }
-  return (await resp.json()) as DispatchBlueprintResponse;
+  const parsed = (await resp.json()) as unknown;
+  _assertShape(parsed, { project_id: 'string' }, 'completeUpload');
+  // `status` is optional in the type union but expected in practice; assert
+  // it's a string when present (don't fail when missing — older backends).
+  const obj = parsed as Record<string, unknown>;
+  if (obj.status != null && typeof obj.status !== 'string') {
+    throw new BlueprintsApiError(
+      502,
+      'BAD_RESPONSE_SHAPE',
+      "completeUpload: field 'status' expected string",
+    );
+  }
+  return parsed as DispatchBlueprintResponse;
 }
 
 /**
@@ -678,7 +776,18 @@ async function _getJson<T>(
     throw new BlueprintsApiError(resp.status, code, message, correlationId);
   }
 
-  return (await resp.json()) as T;
+  const parsed = (await resp.json()) as unknown;
+  // Minimum runtime safety net: every typed _getJson<T>() consumer expects
+  // a non-null object or array. Reject `null`, primitives, etc. with a
+  // clean BAD_RESPONSE_SHAPE so callers don't crash dereferencing fields.
+  if (parsed == null || (typeof parsed !== 'object')) {
+    throw new BlueprintsApiError(
+      502,
+      'BAD_RESPONSE_SHAPE',
+      `GET ${url} returned non-object payload`,
+    );
+  }
+  return parsed as T;
 }
 
 /** Fetch a single project's metadata + progress. Normalizes backend
@@ -694,6 +803,11 @@ export async function getProject(
     `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}`,
     officeId,
     signal,
+  );
+  _assertShape(
+    raw as unknown,
+    { id: 'string', stage_progress: 'object' },
+    'getProject',
   );
   return {
     ...raw,
@@ -719,7 +833,7 @@ export async function listSheets(
   if (options.activeOnly === true) params.set('active_only', 'true');
   if (options.discipline) params.set('discipline', options.discipline);
   const qs = params.toString();
-  return _getJson<BlueprintSheetRead[]>(
+  const raw = await _getJson<BlueprintSheetRead[]>(
     authenticatedFetch,
     `${API_BASE}/api/v1/blueprints/projects/${encodeURIComponent(projectId)}/sheets${
       qs ? `?${qs}` : ''
@@ -727,6 +841,17 @@ export async function listSheets(
     officeId,
     signal,
   );
+  _assertArray(raw as unknown, 'listSheets');
+  // Spot-check the first item — full validation is expensive on large lists
+  // and the backend contract guarantees uniform shape per response.
+  if ((raw as unknown[]).length > 0) {
+    _assertShape(
+      (raw as unknown[])[0],
+      { id: 'string' },
+      'listSheets[0]',
+    );
+  }
+  return raw;
 }
 
 /** Poll project pipeline stage progress + lightweight counts. Normalizes

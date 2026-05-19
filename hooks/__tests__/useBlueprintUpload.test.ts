@@ -197,6 +197,75 @@ describe('useBlueprintUpload — signed-upload flow', () => {
     FakeXHR.prototype.send = _origSend;
   });
 
+  it('Wave 9e P0-6 — dedup response skips ingesting and lands on success', async () => {
+    requestSignedUploadMock.mockResolvedValue({
+      upload_id: 'upl_dup',
+      storage_path: 'p',
+      signed_url: 'https://example.test/signed-put',
+      correlation_id: 'corr_dup',
+      receipt_id: 'rcpt_dup',
+    });
+    completeUploadMock.mockResolvedValue({
+      success: true,
+      project_id: 'proj_existing',
+      status: 'dedup',
+      correlation_id: 'corr_dup',
+      filename: 'plan.pdf',
+      size_bytes: 10240,
+    });
+
+    const { result } = renderHook(() => useBlueprintUpload());
+    await act(async () => {
+      await result.current.upload(_mkFile());
+    });
+
+    // Must NOT sit at 'ingesting' forever — should jump to 'success' so the
+    // poll hook surfaces real DB state.
+    await waitFor(() => expect(result.current.phase).toBe('success'));
+    expect(result.current.phase).not.toBe('ingesting');
+    expect(result.current.stageProgress.ingest).toBe('ok');
+  });
+
+  it('Wave 9e P1-1 — watchdog flips ingesting to error after timeout', async () => {
+    jest.useFakeTimers();
+    requestSignedUploadMock.mockResolvedValue({
+      upload_id: 'upl_slow',
+      storage_path: 'p',
+      signed_url: 'https://example.test/signed-put',
+      correlation_id: 'corr_slow',
+      receipt_id: 'rcpt_slow',
+    });
+    completeUploadMock.mockResolvedValue({
+      success: true,
+      project_id: 'proj_slow',
+      status: 'queued',
+      correlation_id: 'corr_slow',
+      filename: 'plan.pdf',
+      size_bytes: 10240,
+    });
+
+    const { result } = renderHook(() => useBlueprintUpload());
+
+    await act(async () => {
+      const p = result.current.upload(_mkFile());
+      // Drain queued microtasks AND the FakeXHR setTimeout(0).
+      await jest.advanceTimersByTimeAsync(0);
+      await p;
+    });
+
+    await waitFor(() => expect(result.current.phase).toBe('ingesting'));
+
+    // Fast-forward past the 10-minute watchdog.
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(11 * 60 * 1000);
+    });
+
+    await waitFor(() => expect(result.current.phase).toBe('error'));
+    expect(result.current.error?.code).toBe('INGEST_WATCHDOG_TIMEOUT');
+
+    jest.useRealTimers();
+  });
+
   it('lands in error phase when completeUpload throws', async () => {
     requestSignedUploadMock.mockResolvedValue({
       upload_id: 'upl_1',

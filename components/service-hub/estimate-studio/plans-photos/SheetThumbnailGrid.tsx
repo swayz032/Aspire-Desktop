@@ -37,7 +37,12 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import type { BlueprintSheetRead, StageProgress } from '@/lib/api/blueprintsApi';
+import {
+  STAGE_TERMINAL,
+  type BlueprintSheetRead,
+  type StageProgress,
+  type StageStatus,
+} from '@/lib/api/blueprintsApi';
 import type { RevisionChain } from '@/hooks/useBlueprintProjectPoll';
 import { getDisciplineStyle } from './disciplines';
 import { usePlansPhotosUi } from '@/lib/plansPhotosUiStore';
@@ -353,14 +358,14 @@ export function SheetThumbnailGrid({
     return currentSheets.filter((s) => _normalizeDisc(s.discipline) === filterKey);
   }, [currentSheets, filterKey]);
 
-  // Determine whether INGEST has reached a terminal state.
-  // "done" → sheets were produced (or genuinely 0 sheets); show empty state.
-  // "failed" → pipeline failed; show empty state with failure message.
-  // Anything else (not_started, in_progress, pending, undefined) → pipeline
-  // is still running; keep the shimmer so the UI never flickers to empty state
-  // while Drew is still working.
-  const ingestState: string = (stageProgress as Record<string, string>).ingest ?? 'pending';
-  const ingestTerminal = ingestState === 'done' || ingestState === 'failed';
+  // Determine whether INGEST has reached a terminal state. Wave 9e (P0-9):
+  // compare against the NORMALIZED frontend vocabulary ('ok' / 'error' /
+  // 'stub'), not the pre-normalization backend strings ('done' / 'failed').
+  // The previous check silently never matched after _normalizeStageProgress
+  // ran at the API boundary — that's why the shimmer never gave way to the
+  // empty/failure state.
+  const ingestState: StageStatus = stageProgress.ingest ?? 'pending';
+  const ingestTerminal = STAGE_TERMINAL.has(ingestState);
 
   // Shimmer conditions:
   //   1. First load — isLoading=true and we have zero sheets (undefined→[]).
@@ -384,7 +389,7 @@ export function SheetThumbnailGrid({
   // Empty state: ingest has terminated and we genuinely have no sheets.
   if (currentSheets.length === 0) {
     const emptyMessage =
-      ingestState === 'failed'
+      ingestState === 'error'
         ? 'INGEST failed. Re-upload the blueprint to try again.'
         : 'Drew processed this blueprint but found no sheets.';
     return (

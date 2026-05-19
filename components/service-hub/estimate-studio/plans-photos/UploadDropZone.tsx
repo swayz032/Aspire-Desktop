@@ -184,6 +184,18 @@ export function UploadDropZone({
       if (file) onFile(file);
     };
     const onPaste = (e: ClipboardEvent): void => {
+      // Wave 9e (P2-6) — only consume paste events when the dropzone is the
+      // active context. Otherwise pasting into Tim Rail / any input on the
+      // page would trigger an unrelated upload. Guard: idle phase only AND
+      // the paste target must not be a text input / contenteditable.
+      if (phase !== 'idle') return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) {
+          return;
+        }
+      }
       const items = e.clipboardData?.items;
       if (!items) return;
       for (let i = 0; i < items.length; i++) {
@@ -208,7 +220,7 @@ export function UploadDropZone({
       el.removeEventListener('drop', onDrop);
       document.removeEventListener('paste', onPaste);
     };
-  }, [onFile]);
+  }, [onFile, phase]);
 
   const handlePressClick = useCallback(
     (_e: GestureResponderEvent) => {

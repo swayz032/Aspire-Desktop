@@ -26,12 +26,14 @@ import { setBlueprintUpload, resetBlueprintUpload } from '@/lib/blueprintUploadS
 import {
   requestSignedUpload,
   completeUpload,
+  isDispatchResponse,
   BlueprintsApiError,
   MAX_UPLOAD_BYTES,
   ACCEPTED_MIME_TYPES,
   type AcceptedMimeType,
   type UploadBlueprintResponse,
   type StageProgress,
+  type StageStatus,
 } from '@/lib/api/blueprintsApi';
 
 export type UploadPhase =
@@ -73,6 +75,15 @@ export interface UseBlueprintUploadResult {
   retry: () => Promise<void>;
   reset: () => void;
 }
+
+/**
+ * Wave 9e (P1-1) — max time the hook will sit in `ingesting` before
+ * giving up and surfacing a watchdog timeout. 10 minutes safely covers
+ * INGEST (~8 min worst-case) + CLASSIFY (~2 min). Anything past this is
+ * a poll silently dying — show the user a real error rather than spinning
+ * forever.
+ */
+const INGEST_WATCHDOG_MS = 10 * 60 * 1000;
 
 const INITIAL_PROGRESS: UploadProgress = { ratio: 0, bytesDone: 0, bytesTotal: 0 };
 const INITIAL_STAGE_PROGRESS: StageProgress = {
@@ -233,6 +244,34 @@ export function useBlueprintUpload(): UseBlueprintUploadResult {
     });
   }, [phase, filename, response, stageProgress, error, progress.ratio, startedAtMs]);
 
+  // Wave 9e (P1-1) — watchdog timer for the `ingesting` phase. If the poll
+  // hook silently dies (network blip, server-side worker death, paused tab
+  // throttle that never resumes), the user otherwise stares at a spinner
+  // forever. After INGEST_WATCHDOG_MS we transition to error with a clear
+  // code so the failure card / retry CTA render.
+  useEffect(() => {
+    if (phase !== 'ingesting') return;
+    if (startedAtMs == null) return;
+    const elapsed = Date.now() - startedAtMs;
+    const remaining = INGEST_WATCHDOG_MS - elapsed;
+    if (remaining <= 0) {
+      setPhase('error');
+      setError({
+        code: 'INGEST_WATCHDOG_TIMEOUT',
+        message: 'Pipeline took too long. Try again or contact support.',
+      });
+      return;
+    }
+    const id = setTimeout(() => {
+      setPhase('error');
+      setError({
+        code: 'INGEST_WATCHDOG_TIMEOUT',
+        message: 'Pipeline took too long. Try again or contact support.',
+      });
+    }, remaining);
+    return () => clearTimeout(id);
+  }, [phase, startedAtMs]);
+
   const reset = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
@@ -358,9 +397,50 @@ export function useBlueprintUpload(): UseBlueprintUploadResult {
           signal: controller.signal,
         });
 
-        // Backend persisted the project + enqueued Drew's pipeline. Hop into
-        // 'ingesting' so the polling hook (useBlueprintProjectPoll) drives
-        // terminal state from stage_progress on /status polls.
+        // Wave 9e (P0-6) — `status: 'dedup'` means the SHA-256 hash matched
+        // an existing project. There is no fresh pipeline to wait on; the
+        // poll hook will load whatever real state already lives in the DB.
+        // Skip the 'ingesting' phase entirely and jump to success so the
+        // user is not stuck on a spinner that will never advance.
+        const isDedup =
+          isDispatchResponse(result) && result.status === 'dedup';
+
+        if (isDedup) {
+          setPhase('success');
+          setResponse(null);
+          setStageProgress({
+            ingest: 'ok',
+            classify: 'pending',
+            see: 'pending',
+            reason: 'pending',
+            procure: 'pending',
+          });
+          setBlueprintUpload({
+            phase: 'success',
+            filename: file.name,
+            response: null,
+            stageProgress: {
+              // Poll hook will populate real terminal values; show optimistic
+              // 'ok' on ingest so the success card doesn't look half-done.
+              ingest: 'ok',
+              classify: 'pending',
+              see: 'pending',
+              reason: 'pending',
+              procure: 'pending',
+            },
+            error: null,
+            uploadedAt: Date.now(),
+            uploadRatio: 1,
+            startedAtMs: null,
+            projectId: result.project_id,
+            file: lastFileRef.current,
+          });
+          return;
+        }
+
+        // Normal queued path — backend persisted the project + enqueued
+        // Drew's pipeline. Hop into 'ingesting' so the polling hook
+        // (useBlueprintProjectPoll) drives terminal state from stage_progress.
         setResponse(null);
         setPhase('ingesting');
         setBlueprintUpload({

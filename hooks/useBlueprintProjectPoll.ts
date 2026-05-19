@@ -34,6 +34,7 @@ import {
   getProjectStatus,
   listSheets,
   BlueprintsApiError,
+  STAGE_TERMINAL,
   type BlueprintFailureSummary,
   type BlueprintProject,
   type BlueprintProjectStatusResponse,
@@ -97,6 +98,17 @@ export interface UseBlueprintProjectPollResult {
    * case (graceful degradation contract).
    */
   failureSummary: BlueprintFailureSummary | null;
+  /**
+   * Wave 9e (P2-8) — timestamp each stage transitioned to 'ok' (terminal-success).
+   * Downstream hooks (useBlueprintStory, useTakeoffMaterials, useTakeoffSymbols —
+   * not in this hook's scope) SHOULD read these values and include them in
+   * their `useEffect` dependency arrays so they refetch when their upstream
+   * stage completes. Currently set on first observation of a stage in 'ok';
+   * remains stable thereafter (no thrash on subsequent successful polls).
+   *
+   * TODO (Wave 9f): wire downstream hooks to consume this signal.
+   */
+  stageCompletedAt: Record<StageKey, number | null>;
   /** Force an out-of-band refresh (e.g. after a manual action). */
   refresh: () => void;
 }
@@ -149,6 +161,32 @@ function _firstFailedStage(p: StageProgress | null): StageKey | null {
   for (const k of STAGE_KEYS) {
     if (p[k] === 'error') return k;
   }
+  return null;
+}
+
+/**
+ * Wave 9e (P1-2) — decide whether to abort the poll loop on a given error.
+ * Returns a user-facing error code when we should stop, or `null` to keep
+ * polling. Stop conditions:
+ *   - 401 / 403 immediately (auth dead — won't recover via retry)
+ *   - 410 immediately (gone)
+ *   - any 5xx after SERVER_ERROR_CEILING consecutive failures
+ *   - any kind after ERROR_CEILING consecutive failures (~10s at 2s)
+ */
+export function _shouldStopOnError(
+  err: BlueprintsApiError | null,
+  consecutiveCount: number,
+  errorCeiling: number,
+  serverErrorCeiling: number,
+): 'POLL_AUTH_LOST' | 'POLL_NOT_FOUND' | 'POLL_SERVER_DOWN' | 'POLL_LOST' | null {
+  if (err) {
+    if (err.status === 401 || err.status === 403) return 'POLL_AUTH_LOST';
+    if (err.status === 410) return 'POLL_NOT_FOUND';
+    if (err.status >= 500 && consecutiveCount >= serverErrorCeiling) {
+      return 'POLL_SERVER_DOWN';
+    }
+  }
+  if (consecutiveCount >= errorCeiling) return 'POLL_LOST';
   return null;
 }
 
@@ -233,6 +271,17 @@ export function useBlueprintProjectPoll(
   // whether SheetThumbnailGrid renders the shimmer (first load) vs. retaining
   // the last-known data between subsequent polls.
   const [isFirstLoad, setIsFirstLoad] = useState<boolean>(true);
+  // Wave 9e (P2-8) — per-stage completion timestamps. Sticky once set; reset
+  // to all-null when projectId changes (handled in the reset effect below).
+  const [stageCompletedAt, setStageCompletedAt] = useState<
+    Record<StageKey, number | null>
+  >({
+    ingest: null,
+    classify: null,
+    see: null,
+    reason: null,
+    procure: null,
+  });
 
   const abortRef = useRef<AbortController | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -274,6 +323,13 @@ export function useBlueprintProjectPoll(
     setIsPolling(false);
     // Mark as first load so shimmer shows immediately for the new project.
     setIsFirstLoad(true);
+    setStageCompletedAt({
+      ingest: null,
+      classify: null,
+      see: null,
+      reason: null,
+      procure: null,
+    });
   }, [projectId]);
 
   // Main fetch loop.
@@ -285,13 +341,23 @@ export function useBlueprintProjectPoll(
     abortRef.current = controller;
     setIsPolling(true);
 
+    // Wave 9e (P1-2): consecutive-error counter governs the give-up rule.
+    // Reset to 0 on any successful response; increment in catch; stop
+    // polling after the configured ceiling — see `_shouldStopOnError`.
+    let consecutiveErrorCount = 0;
+    const ERROR_CEILING = 5; // ~10s at 2s cadence
+    const SERVER_ERROR_CEILING = 3; // 5xx ride-out before giving up
+
     const runOnce = async (): Promise<void> => {
       if (cancelled) return;
       setIsLoading(true);
+      // Freshest snapshot of the just-fetched project, captured for the
+      // `finally` cadence calc (P0-8 — avoid stale `project` closure read).
+      let freshProject: BlueprintProject | null = null;
       try {
-        // Run all three in parallel — they share the same orchestrator and
-        // are GREEN-tier (no token mint). Total p95 < 250ms under nominal.
-        const [proj, sheetList, stat] = await Promise.all([
+        // Wave 9e (P1-4): use allSettled so a transient /sheets 500 does NOT
+        // revert the visible grid. Each settled value is applied independently.
+        const [projRes, sheetRes, statRes] = await Promise.allSettled([
           getProject(authenticatedFetch, projectId, officeId, controller.signal),
           listSheets(
             authenticatedFetch,
@@ -303,26 +369,96 @@ export function useBlueprintProjectPoll(
           getProjectStatus(authenticatedFetch, projectId, officeId, controller.signal),
         ]);
         if (cancelled || !mountedRef.current) return;
-        setProject(proj);
-        // Only update sheets when the new list is non-empty, OR when the
-        // pipeline has reached a terminal ingest state.  This prevents the
-        // empty-array flash that occurs when a poll returns [] mid-pipeline
-        // (network latency, race with background task) — the previous non-empty
-        // list is retained until INGEST finishes or real sheets arrive.
-        const newIngestState: string =
-          (proj?.stage_progress as Record<string, string> | undefined)?.ingest ?? 'pending';
-        const newIngestTerminal = newIngestState === 'done' || newIngestState === 'failed';
-        if (sheetList.length > 0 || newIngestTerminal) {
-          setSheets(sheetList);
+
+        let projOk = false;
+        let projForError: BlueprintsApiError | null = null;
+
+        if (projRes.status === 'fulfilled') {
+          freshProject = projRes.value;
+          setProject(projRes.value);
+          projOk = true;
+        } else if (projRes.reason instanceof BlueprintsApiError) {
+          projForError = projRes.reason;
         }
-        setStatusResp(stat);
-        setError(null);
-        setIsFirstLoad(false);
+
+        let sheetsOk = false;
+        if (sheetRes.status === 'fulfilled') {
+          const sheetList = sheetRes.value;
+          // Only update sheets when the new list is non-empty OR when the
+          // pipeline has reached a terminal ingest state (Wave 9e P0-9:
+          // compare against normalized values, not the pre-normalized
+          // backend strings).
+          const newIngestState: StageStatus =
+            (freshProject?.stage_progress?.ingest as StageStatus | undefined) ?? 'pending';
+          const newIngestTerminal = STAGE_TERMINAL.has(newIngestState);
+          if (sheetList.length > 0 || newIngestTerminal) {
+            setSheets(sheetList);
+          }
+          sheetsOk = true;
+        }
+
+        let statOk = false;
+        if (statRes.status === 'fulfilled') {
+          setStatusResp(statRes.value);
+          statOk = true;
+        }
+
+        if (projOk || sheetsOk || statOk) {
+          // At least one succeeded — reset error counter + clear surfaced error.
+          consecutiveErrorCount = 0;
+          setError(null);
+          setIsFirstLoad(false);
+        } else {
+          // All three failed. Bubble first error to UI; decide whether to stop.
+          consecutiveErrorCount += 1;
+          const firstErr =
+            projRes.status === 'rejected'
+              ? projRes.reason
+              : sheetRes.status === 'rejected'
+                ? sheetRes.reason
+                : statRes.status === 'rejected'
+                  ? statRes.reason
+                  : null;
+          const stopCode = _shouldStopOnError(
+            projForError ?? (firstErr instanceof BlueprintsApiError ? firstErr : null),
+            consecutiveErrorCount,
+            ERROR_CEILING,
+            SERVER_ERROR_CEILING,
+          );
+          if (stopCode) {
+            setError({
+              code: stopCode,
+              message:
+                stopCode === 'POLL_AUTH_LOST'
+                  ? 'Session expired. Reload and sign in again.'
+                  : stopCode === 'POLL_NOT_FOUND'
+                    ? 'Project no longer exists.'
+                    : stopCode === 'POLL_SERVER_DOWN'
+                      ? 'Server unavailable. Try refreshing in a moment.'
+                      : 'Lost contact with the server. Try refreshing.',
+            });
+            if (timerRef.current) {
+              clearTimeout(timerRef.current);
+              timerRef.current = null;
+            }
+            setIsPolling(false);
+            setIsLoading(false);
+            return; // skip the finally re-schedule
+          }
+          if (firstErr instanceof BlueprintsApiError) {
+            setError({ code: firstErr.code, message: firstErr.message });
+          } else if (firstErr instanceof Error) {
+            setError({ code: 'NETWORK_ERROR', message: firstErr.message });
+          } else {
+            setError({ code: 'NETWORK_ERROR', message: 'Network error.' });
+          }
+        }
       } catch (err) {
+        // Defensive — allSettled itself should never throw, but keep this
+        // branch so an unexpected synchronous throw doesn't break cadence.
         if (cancelled || !mountedRef.current) return;
         if (controller.signal.aborted) return;
-        // 404 is expected briefly when polling races project creation —
-        // surface it as a soft error but keep polling.
+        consecutiveErrorCount += 1;
         if (err instanceof BlueprintsApiError) {
           setError({ code: err.code, message: err.message });
         } else if (err instanceof Error) {
@@ -333,15 +469,10 @@ export function useBlueprintProjectPoll(
       } finally {
         if (!cancelled && mountedRef.current) {
           setIsLoading(false);
-          // Schedule next tick based on the latest stage state.
-          const nextMs = _nextIntervalMs(
-            // Use the latest setter callback to read the just-applied state
-            // without a re-render race.
-            project?.stage_progress ?? null,
-          );
-          // We re-derive cadence in a microtask using the freshest state via
-          // the setter pattern below — but the simplest read is the just-set
-          // `proj` (captured locally above). The local var is freshest.
+          // Schedule next tick based on the freshest stage state — P0-8 fix.
+          // Read from `freshProject` (the just-fetched local), NOT from the
+          // closure `project` which is one cycle stale.
+          const nextMs = _nextIntervalMs(freshProject?.stage_progress ?? null);
           if (timerRef.current) clearTimeout(timerRef.current);
           if (nextMs == null) {
             setIsPolling(false);
@@ -394,6 +525,24 @@ export function useBlueprintProjectPoll(
   const revisions = useMemo(() => deriveRevisionChains(sheets), [sheets]);
   const stageProgress = project?.stage_progress ?? EMPTY_STAGE;
 
+  // Wave 9e (P2-8) — stamp stageCompletedAt the first time each stage hits
+  // 'ok'. Sticky: once set, never reset (the value is the moment of completion).
+  useEffect(() => {
+    const sp = project?.stage_progress;
+    if (!sp) return;
+    setStageCompletedAt((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const k of STAGE_KEYS) {
+        if (sp[k] === 'ok' && next[k] == null) {
+          next[k] = Date.now();
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [project?.stage_progress]);
+
   // ─── Failure derivation ──────────────────────────────────────────────
   // hasFailed flips true as soon as ANY stage in stage_progress is 'error'.
   // failedStage picks the FIRST failed stage in canonical pipeline order so
@@ -421,6 +570,7 @@ export function useBlueprintProjectPoll(
     hasFailed,
     failedStage,
     failureSummary,
+    stageCompletedAt,
     refresh,
   };
 }
