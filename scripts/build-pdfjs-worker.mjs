@@ -35,17 +35,29 @@ try {
 }
 
 const pkgRoot = dirname(pkgPath);
-const workerSrc = resolve(pkgRoot, 'build', 'pdf.worker.min.mjs');
 
-if (!existsSync(workerSrc)) {
-  fail(`Worker file not found at ${workerSrc}. pdfjs-dist install may be corrupt.`);
+// LEGACY build (ES2017) instead of modern build — modern uses
+// `import.meta.url` which Metro can't statically analyze, and these files
+// are loaded at runtime as native ESM. Legacy is functionally identical.
+const librarySrc = resolve(pkgRoot, 'legacy', 'build', 'pdf.min.mjs');
+const workerSrc = resolve(pkgRoot, 'legacy', 'build', 'pdf.worker.min.mjs');
+
+for (const src of [librarySrc, workerSrc]) {
+  if (!existsSync(src)) {
+    fail(`Source file not found at ${src}. pdfjs-dist install may be corrupt.`);
+  }
 }
 
 const outDir = resolve(repoRoot, 'public', 'vendor', 'pdfjs');
 mkdirSync(outDir, { recursive: true });
 
-const outFile = resolve(outDir, 'pdf.worker.min.mjs');
-copyFileSync(workerSrc, outFile);
+const libraryOut = resolve(outDir, 'pdf.min.mjs');
+const workerOut = resolve(outDir, 'pdf.worker.min.mjs');
+copyFileSync(librarySrc, libraryOut);
+copyFileSync(workerSrc, workerOut);
 
-const size = statSync(outFile).size;
-console.log(`[build-pdfjs-worker] OK: copied to ${outFile} (${(size / 1024).toFixed(1)} KB)`);
+const librarySize = statSync(libraryOut).size;
+const workerSize = statSync(workerOut).size;
+console.log(`[build-pdfjs-worker] OK:`);
+console.log(`  library  ${libraryOut} (${(librarySize / 1024).toFixed(1)} KB)`);
+console.log(`  worker   ${workerOut} (${(workerSize / 1024).toFixed(1)} KB)`);
