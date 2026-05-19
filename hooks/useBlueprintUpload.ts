@@ -24,8 +24,8 @@ import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { useTenant } from '@/providers';
 import { setBlueprintUpload, resetBlueprintUpload } from '@/lib/blueprintUploadStore';
 import {
-  uploadBlueprint,
-  isDispatchResponse,
+  requestSignedUpload,
+  completeUpload,
   BlueprintsApiError,
   MAX_UPLOAD_BYTES,
   ACCEPTED_MIME_TYPES,
@@ -37,7 +37,9 @@ import {
 export type UploadPhase =
   | 'idle'
   | 'reading'
+  | 'init'
   | 'uploading'
+  | 'completing'
   | 'ingesting'
   | 'classifying'
   | 'success'
@@ -113,22 +115,59 @@ function _validateFile(
   return { ok: true, mimeType };
 }
 
-function _readFileWithProgress(
+/**
+ * Direct browser→Supabase Storage PUT with real upload-progress events.
+ *
+ * We use XMLHttpRequest (not fetch) because the Fetch spec does NOT expose
+ * upload-side progress events — the only way to drive a progress bar from
+ * bytes-actually-sent is `xhr.upload.onprogress`. The promise resolves on
+ * 2xx, rejects on network error / abort / non-2xx status.
+ */
+function _putFileXhr(
+  url: string,
   file: File,
   onProgress: (loaded: number, total: number) => void,
-): Promise<Uint8Array> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onprogress = (e) => {
+  signal: AbortSignal,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/pdf');
+    xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) onProgress(e.loaded, e.total);
     };
-    reader.onerror = () => reject(reader.error ?? new Error('FileReader failed'));
-    reader.onload = () => {
-      const buf = reader.result;
-      if (buf instanceof ArrayBuffer) resolve(new Uint8Array(buf));
-      else reject(new Error('FileReader returned non-ArrayBuffer'));
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        reject(
+          new BlueprintsApiError(
+            xhr.status,
+            'STORAGE_PUT_FAILED',
+            `Storage PUT returned ${xhr.status}`,
+          ),
+        );
+      }
     };
-    reader.readAsArrayBuffer(file);
+    xhr.onerror = () =>
+      reject(new BlueprintsApiError(0, 'STORAGE_PUT_NETWORK', 'Network error uploading file'));
+    xhr.onabort = () =>
+      reject(new BlueprintsApiError(0, 'STORAGE_PUT_ABORTED', 'Upload aborted'));
+
+    if (signal.aborted) {
+      // Reject synchronously-ish; XHR not opened.
+      reject(new BlueprintsApiError(0, 'STORAGE_PUT_ABORTED', 'Upload aborted'));
+      return;
+    }
+    signal.addEventListener('abort', () => {
+      try {
+        xhr.abort();
+      } catch {
+        // ignore — already finished
+      }
+    });
+
+    xhr.send(file);
   });
 }
 
@@ -161,7 +200,9 @@ export function useBlueprintUpload(): UseBlueprintUploadResult {
   useEffect(() => {
     const isBusy =
       phase === 'reading' ||
+      phase === 'init' ||
       phase === 'uploading' ||
+      phase === 'completing' ||
       phase === 'ingesting' ||
       phase === 'classifying';
     if (isBusy && startedAtMs == null) {
@@ -231,26 +272,75 @@ export function useBlueprintUpload(): UseBlueprintUploadResult {
         return;
       }
 
-      // ── reading ──
-      setPhase('reading');
+      // ────────────────────────────────────────────────────────────────
+      // 3-step signed-upload flow (2026-05-19):
+      //   1) init        — POST metadata → signed PUT URL.
+      //   2) uploading   — direct browser → Supabase Storage PUT (XHR progress).
+      //   3) completing  — POST upload_id → backend verifies + dispatches Drew.
+      // The polling hook drives stage_progress past `ingesting`.
+      // ────────────────────────────────────────────────────────────────
+
+      // ── 1) init ──
+      setPhase('init');
       setProgress({ ratio: 0, bytesDone: 0, bytesTotal: file.size });
-      let bytes: Uint8Array;
+      let init: Awaited<ReturnType<typeof requestSignedUpload>>;
       try {
-        bytes = await _readFileWithProgress(file, (loaded, total) => {
-          setProgress({ ratio: total > 0 ? loaded / total : 0, bytesDone: loaded, bytesTotal: total });
+        init = await requestSignedUpload(authenticatedFetch, {
+          filename: file.name,
+          mimeType: validation.mimeType,
+          sizeBytes: file.size,
+          officeId,
+          signal: controller.signal,
         });
       } catch (err) {
-        setPhase('error');
-        setError({
-          code: 'FILE_READ_FAILED',
-          message: err instanceof Error ? err.message : 'Could not read file.',
-        });
+        if (controller.signal.aborted) return;
+        if (err instanceof BlueprintsApiError) {
+          setPhase('error');
+          setError({ code: err.code, message: err.message });
+        } else {
+          setPhase('error');
+          setError({
+            code: 'SIGNED_UPLOAD_INIT_FAILED',
+            message: err instanceof Error ? err.message : 'Could not start upload.',
+          });
+        }
         return;
       }
 
-      // ── uploading → ingesting → classifying (server-side chain) ──
+      // ── 2) uploading — direct PUT to Storage ──
       setPhase('uploading');
-      setProgress({ ratio: 1, bytesDone: bytes.byteLength, bytesTotal: bytes.byteLength });
+      setProgress({ ratio: 0, bytesDone: 0, bytesTotal: file.size });
+      try {
+        await _putFileXhr(
+          init.upload_url,
+          file,
+          (loaded, total) => {
+            setProgress({
+              ratio: total > 0 ? loaded / total : 0,
+              bytesDone: loaded,
+              bytesTotal: total,
+            });
+          },
+          controller.signal,
+        );
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        if (err instanceof BlueprintsApiError) {
+          setPhase('error');
+          setError({ code: err.code, message: err.message });
+        } else {
+          setPhase('error');
+          setError({
+            code: 'STORAGE_PUT_FAILED',
+            message: err instanceof Error ? err.message : 'Upload failed.',
+          });
+        }
+        return;
+      }
+      setProgress({ ratio: 1, bytesDone: file.size, bytesTotal: file.size });
+
+      // ── 3) completing — confirm + dispatch ──
+      setPhase('completing');
       setStageProgress({
         ingest: 'running',
         classify: 'pending',
@@ -259,90 +349,40 @@ export function useBlueprintUpload(): UseBlueprintUploadResult {
         procure: 'pending',
       });
 
-      // The proxy returns a single response once both INGEST + CLASSIFY are done.
-      // We hop the phase to 'ingesting' immediately for UX (a true in-flight
-      // INGEST is what the server is doing for ~70% of total time per Drew
-      // Wave 2A timings) and let `setStageProgress` resolve the final state.
-      setPhase('ingesting');
-
       try {
-        const result = await uploadBlueprint(authenticatedFetch, {
-          fileBytes: bytes,
+        const result = await completeUpload(authenticatedFetch, {
+          upload_id: init.upload_id,
           filename: file.name,
-          mimeType: validation.mimeType,
-          officeId: officeId,
+          officeId,
+          correlationId: init.correlation_id,
           signal: controller.signal,
         });
 
-        // ── New async-dispatch path ──
-        // Backend returned { project_id, status: 'queued'|'dedup' } — Drew's
-        // 5-stage pipeline runs in the background. The polling hook
-        // (useBlueprintProjectPoll) drives terminal state; we just hop into
-        // the ingesting visual state and surface the project_id via the
-        // upload store so Tim Rail Context can begin polling immediately.
-        if (isDispatchResponse(result)) {
-          setStageProgress({
+        // Backend persisted the project + enqueued Drew's pipeline. Hop into
+        // 'ingesting' so the polling hook (useBlueprintProjectPoll) drives
+        // terminal state from stage_progress on /status polls.
+        setResponse(null);
+        setPhase('ingesting');
+        setBlueprintUpload({
+          phase: 'ingesting',
+          filename: file.name,
+          response: null,
+          stageProgress: {
             ingest: 'running',
             classify: 'pending',
             see: 'pending',
             reason: 'pending',
             procure: 'pending',
-          });
-          setResponse(null);
-          setPhase('ingesting');
-          // Surface project_id to the store immediately. The publish effect
-          // reads `response?.project_id` for the projectId field; since we
-          // intentionally leave response=null on the queued path, we patch
-          // the store directly via the existing setter (a follow-up render
-          // will reassert this with the same projectId).
-          setBlueprintUpload({
-            phase: 'ingesting',
-            filename: file.name,
-            response: null,
-            stageProgress: {
-              ingest: 'running',
-              classify: 'pending',
-              see: 'pending',
-              reason: 'pending',
-              procure: 'pending',
-            },
-            error: null,
-            uploadedAt: null,
-            uploadRatio: 1,
-            startedAtMs: Date.now(),
-            projectId: result.project_id,
-          });
-          return;
-        }
-
-        // ── Legacy sync path (kept for backward compat) ──
-        // Drew may return status:'error' inline (HTTP 200) for in-band failures
-        // like missing payload keys; treat that as terminal here.
-        if (result.ingest.status === 'error') {
-          setStageProgress({
-            ingest: 'error',
-            classify: 'pending',
-            see: 'pending',
-            reason: 'pending',
-            procure: 'pending',
-          });
-          setPhase('error');
-          setError({
-            code: 'INGEST_FAILED',
-            message: result.ingest.reason ?? 'Ingest step failed.',
-          });
-          return;
-        }
-
-        setPhase('classifying');
-        setStageProgress(result.stage_progress);
-        setResponse(result);
-        setPhase('success');
+          },
+          error: null,
+          uploadedAt: null,
+          uploadRatio: 1,
+          startedAtMs: Date.now(),
+          projectId: result.project_id,
+          file: lastFileRef.current,
+        });
       } catch (err) {
-        if (controller.signal.aborted) {
-          // Caller hit reset() — already cleared via reset; do nothing.
-          return;
-        }
+        if (controller.signal.aborted) return;
         if (err instanceof BlueprintsApiError) {
           setStageProgress((prev) => ({ ...prev, ingest: 'error' }));
           setPhase('error');
@@ -351,8 +391,8 @@ export function useBlueprintUpload(): UseBlueprintUploadResult {
           setStageProgress((prev) => ({ ...prev, ingest: 'error' }));
           setPhase('error');
           setError({
-            code: 'NETWORK_ERROR',
-            message: err instanceof Error ? err.message : 'Network error.',
+            code: 'COMPLETE_UPLOAD_FAILED',
+            message: err instanceof Error ? err.message : 'Could not finalize upload.',
           });
         }
       }

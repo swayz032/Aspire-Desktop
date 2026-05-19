@@ -372,7 +372,147 @@ function _uint8ToBase64(bytes: Uint8Array): string {
   return btoa(bin);
 }
 
-/** Upload a blueprint PDF/image. Server-side proxy:
+// ---------------------------------------------------------------------------
+// Signed-upload flow (2026-05-19) — direct browser→Supabase Storage PUT.
+//
+// Replaces the legacy JSON+base64 POST path for files > 1 MB. Three-step flow:
+//   1) requestSignedUpload()  — POST metadata, get signed PUT URL.
+//   2) PUT raw bytes directly to Supabase Storage via XHR (progress tracked).
+//   3) completeUpload()       — confirm + trigger Drew pipeline dispatch.
+//
+// See `.claude/agent-memory/aspire-architect/blueprint-direct-upload-pattern.md`.
+// ---------------------------------------------------------------------------
+
+export interface SignedUploadInitParams {
+  filename: string;
+  mimeType: AcceptedMimeType;
+  sizeBytes: number;
+  officeId: string;
+  correlationId?: string;
+  signal?: AbortSignal;
+}
+
+export interface SignedUploadInitResponse {
+  upload_id: string;
+  storage_path: string;
+  upload_url: string;
+  correlation_id: string;
+  receipt_id: string;
+}
+
+export interface CompleteUploadParams {
+  upload_id: string;
+  filename: string;
+  officeId: string;
+  correlationId: string;
+  signal?: AbortSignal;
+}
+
+/** Shared error-body parser for the new signed-upload endpoints. */
+async function _parseError(
+  resp: Response,
+  fallbackCode: string,
+): Promise<BlueprintsApiError> {
+  let code = fallbackCode;
+  let message = `${fallbackCode} (${resp.status})`;
+  let correlationId: string | undefined;
+  try {
+    const parsed = await resp.json();
+    code = parsed?.detail?.error ?? parsed?.error ?? parsed?.code ?? code;
+    message = parsed?.detail?.message ?? parsed?.message ?? message;
+    correlationId = parsed?.correlation_id;
+  } catch {
+    // non-JSON error body — keep fallbacks
+  }
+  return new BlueprintsApiError(resp.status, code, message, correlationId);
+}
+
+/**
+ * Step 1 of the signed-upload flow. POSTs metadata only (< 200 bytes); the
+ * server mints a 60s Supabase Storage signed-PUT URL and a capability token.
+ *
+ * Throws `BlueprintsApiError{code:'FILE_TOO_LARGE'}` synchronously (no fetch)
+ * when `sizeBytes` exceeds `MAX_UPLOAD_BYTES`.
+ */
+export async function requestSignedUpload(
+  authenticatedFetch: FetchFn,
+  params: SignedUploadInitParams,
+): Promise<SignedUploadInitResponse> {
+  if (params.sizeBytes > MAX_UPLOAD_BYTES) {
+    throw new BlueprintsApiError(
+      413,
+      'FILE_TOO_LARGE',
+      `File exceeds ${(MAX_UPLOAD_BYTES / 1024 / 1024).toFixed(0)} MB cap`,
+    );
+  }
+  if (!ACCEPTED_MIME_TYPES.includes(params.mimeType)) {
+    throw new BlueprintsApiError(
+      415,
+      'UNSUPPORTED_MEDIA_TYPE',
+      `MIME type ${params.mimeType} not supported`,
+    );
+  }
+
+  const body: Record<string, unknown> = {
+    filename: params.filename,
+    mime_type: params.mimeType,
+    size_bytes: params.sizeBytes,
+  };
+  if (params.correlationId) body.correlation_id = params.correlationId;
+
+  const resp = await authenticatedFetch(`${API_BASE}/api/v1/blueprints/upload-init`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Office-Id': params.officeId,
+    },
+    body: JSON.stringify(body),
+    signal: params.signal,
+  });
+
+  if (!resp.ok) {
+    throw await _parseError(resp, 'SIGNED_UPLOAD_INIT_FAILED');
+  }
+  return (await resp.json()) as SignedUploadInitResponse;
+}
+
+/**
+ * Step 3 of the signed-upload flow. After the browser PUTs raw bytes to
+ * Storage, this confirms the object exists, runs SHA-256 dedup, and dispatches
+ * Drew's 5-stage pipeline. Returns the standard dispatch response shape so
+ * the polling hook can take over from `project_id`.
+ */
+export async function completeUpload(
+  authenticatedFetch: FetchFn,
+  params: CompleteUploadParams,
+): Promise<DispatchBlueprintResponse> {
+  const body = {
+    upload_id: params.upload_id,
+    filename: params.filename,
+    correlation_id: params.correlationId,
+  };
+
+  const resp = await authenticatedFetch(`${API_BASE}/api/v1/blueprints/upload-complete`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Office-Id': params.officeId,
+    },
+    body: JSON.stringify(body),
+    signal: params.signal,
+  });
+
+  if (!resp.ok) {
+    throw await _parseError(resp, 'COMPLETE_UPLOAD_FAILED');
+  }
+  return (await resp.json()) as DispatchBlueprintResponse;
+}
+
+/**
+ * @deprecated Use `requestSignedUpload()` + direct PUT + `completeUpload()` for
+ * any file > 1 MB. This legacy JSON+base64 path is retained ONLY for the small
+ * residential-plan compatibility window (≤ 5 MB) and will be removed once all
+ * call sites migrate. Server-side proxy:
  *    1) Validates size + MIME.
  *    2) Mints capability token (Law #5).
  *    3) Calls Drew INGEST.
