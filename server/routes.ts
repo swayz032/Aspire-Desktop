@@ -9849,9 +9849,10 @@ router.get('/api/v1/materials/search', async (req: Request, res: Response) => {
 //     pdf_b64: string (base64-encoded raw file bytes),
 //     idempotency_key?: string }
 //
-// Body size: client-side cap is 50 MB raw → base64 inflates ~33% → JSON body
-// can reach ~67 MB. We register a 75 MB JSON parser scoped to this single
-// route (global parser stays at 1 MB).
+// DEPRECATED (2026-05-19): JSON-body cap is now 1 MB. Files > 1 MB MUST use
+// the signed-PUT direct flow (/upload-init + /upload-complete). This route
+// remains only for ≤ 5 MB residential-plan backward compat and emits a
+// deprecation warning on every call.
 //
 // Response (HTTP 200):
 //   { success: true,
@@ -9871,7 +9872,6 @@ router.get('/api/v1/materials/search', async (req: Request, res: Response) => {
 //   502 ORCHESTRATOR_UNREACHABLE / DISPATCH_UPSTREAM_ERROR
 // ---------------------------------------------------------------------------
 
-const BLUEPRINT_UPLOAD_JSON_LIMIT = '75mb';
 const BLUEPRINT_MAX_RAW_BYTES = 50 * 1024 * 1024;
 const BLUEPRINT_ACCEPTED_MIME = new Set([
   'application/pdf',
@@ -9883,10 +9883,15 @@ const BLUEPRINT_ACCEPTED_MIME = new Set([
 
 router.post(
   '/api/v1/blueprints/upload',
-  express.json({ limit: BLUEPRINT_UPLOAD_JSON_LIMIT }),
+  express.json({ limit: '1mb' }),
   async (req: Request, res: Response) => {
     const suiteId = requireAuth(req, res);
     if (!suiteId) return;
+
+    logger.warn(
+      '[BlueprintsUpload] DEPRECATED: use /upload-init + /upload-complete for files > 1 MB',
+      { suite_id: suiteId },
+    );
 
     const orchestratorUrl = resolveOrchestratorUrl();
     if (!orchestratorUrl) {
@@ -10108,6 +10113,320 @@ router.post(
       correlation_id: correlationId,
       ...(pdfStoragePath ? { pdf_storage_path: pdfStoragePath } : {}),
     });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Signed-upload flow (2026-05-19) — POST /api/v1/blueprints/upload-init
+// ---------------------------------------------------------------------------
+// Forwards metadata to the orchestrator, which mints a 60s Supabase Storage
+// signed-PUT URL. Browser PUTs raw bytes directly to Storage (no Express hop).
+// Capability token scope: `blueprints:upload_init`.
+// ---------------------------------------------------------------------------
+
+router.post(
+  '/api/v1/blueprints/upload-init',
+  express.json({ limit: '1mb' }),
+  async (req: Request, res: Response) => {
+    const suiteId = requireAuth(req, res);
+    if (!suiteId) return;
+
+    const orchestratorUrl = resolveOrchestratorUrl();
+    if (!orchestratorUrl) {
+      res.status(503).json({
+        error: 'ORCHESTRATOR_UNAVAILABLE',
+        message: 'Backend service is not configured',
+      });
+      return;
+    }
+
+    const officeIdRaw = (req.headers['x-office-id'] as string) || '';
+    const officeId =
+      typeof officeIdRaw === 'string' && officeIdRaw.trim() ? officeIdRaw.trim() : suiteId;
+    const tenantId = suiteId;
+    const actorId = ((req as any).authenticatedUserId as string) || suiteId;
+    const correlationId =
+      (req.headers['x-correlation-id'] as string) || `corr_${crypto.randomUUID()}`;
+    const traceId = (req.headers['x-trace-id'] as string) || correlationId;
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const filename = typeof body.filename === 'string' ? body.filename.trim() : '';
+    const mimeType = typeof body.mime_type === 'string' ? body.mime_type.toLowerCase() : '';
+    const sizeBytesRaw = body.size_bytes;
+    const sizeBytes =
+      typeof sizeBytesRaw === 'number' && Number.isFinite(sizeBytesRaw) && sizeBytesRaw > 0
+        ? Math.floor(sizeBytesRaw)
+        : 0;
+
+    if (!filename || !mimeType || !sizeBytes) {
+      res.status(400).json({
+        error: 'INVALID_INPUT',
+        message: 'filename, mime_type, and size_bytes are required',
+        correlation_id: correlationId,
+      });
+      return;
+    }
+    if (!BLUEPRINT_ACCEPTED_MIME.has(mimeType)) {
+      res.status(415).json({
+        error: 'UNSUPPORTED_MEDIA_TYPE',
+        message: `mime_type ${mimeType} not accepted`,
+        correlation_id: correlationId,
+      });
+      return;
+    }
+    if (sizeBytes > BLUEPRINT_MAX_RAW_BYTES) {
+      res.status(413).json({
+        error: 'FILE_TOO_LARGE',
+        message: `File is ${(sizeBytes / 1024 / 1024).toFixed(1)} MB — max is ${(
+          BLUEPRINT_MAX_RAW_BYTES /
+          1024 /
+          1024
+        ).toFixed(0)} MB`,
+        correlation_id: correlationId,
+      });
+      return;
+    }
+
+    if (!resolveSigningKey()) {
+      res.status(503).json({
+        error: 'SIGNING_KEY_UNAVAILABLE',
+        message: 'Capability token signing key not configured',
+      });
+      return;
+    }
+    const minted = mintCapabilityToken({
+      scope: 'blueprints:upload_init',
+      tenant_id: tenantId,
+      suite_id: suiteId,
+      office_id: officeId,
+      correlation_id: correlationId,
+    });
+    if (!minted) {
+      res.status(503).json({
+        error: 'SIGNING_KEY_UNAVAILABLE',
+        message: 'Capability token signing key not configured',
+      });
+      return;
+    }
+
+    logger.info('[BlueprintsUploadInit] dispatch start', {
+      suite_id: suiteId,
+      office_id: officeId,
+      trace_id: traceId,
+      correlation_id: correlationId,
+      size_bytes: sizeBytes,
+    });
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30_000);
+    try {
+      const orchResp = await fetch(`${orchestratorUrl}/v1/blueprints/upload-init`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Tenant-Id': tenantId,
+          'X-Suite-Id': suiteId,
+          'X-Office-Id': officeId,
+          'X-Actor-Id': actorId,
+          'X-Correlation-Id': correlationId,
+          'X-Trace-Id': traceId,
+          Authorization: `Bearer ${minted.token}`,
+        },
+        body: JSON.stringify({
+          filename,
+          mime_type: mimeType,
+          size_bytes: sizeBytes,
+          suite_id: suiteId,
+          office_id: officeId,
+          correlation_id: correlationId,
+          capability_token: JSON.stringify(minted.token),
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      const text = await orchResp.text();
+      let parsed: Record<string, unknown> | null = null;
+      try {
+        parsed = text ? (JSON.parse(text) as Record<string, unknown>) : null;
+      } catch {
+        parsed = null;
+      }
+      if (!orchResp.ok) {
+        logger.warn('[BlueprintsUploadInit] upstream non-2xx', {
+          suite_id: suiteId,
+          status: orchResp.status,
+        });
+        const upstreamMessage =
+          (parsed && ((parsed.message as string) || (parsed.error as string))) ||
+          `Backend returned ${orchResp.status}`;
+        res.status(orchResp.status).json({
+          error: 'UPLOAD_INIT_UPSTREAM_ERROR',
+          message: upstreamMessage,
+          correlation_id: correlationId,
+        });
+        return;
+      }
+      res.status(200).json(parsed ?? {});
+    } catch (err: unknown) {
+      clearTimeout(timer);
+      const isTimeout = err instanceof Error && err.name === 'AbortError';
+      logger.error('[BlueprintsUploadInit] fetch failed', {
+        suite_id: suiteId,
+        reason: err instanceof Error ? err.name + ': ' + err.message.slice(0, 120) : 'unknown',
+        is_timeout: isTimeout,
+      });
+      res.status(isTimeout ? 504 : 502).json({
+        error: isTimeout ? 'ORCHESTRATOR_TIMEOUT' : 'ORCHESTRATOR_UNREACHABLE',
+        message: isTimeout ? 'Backend did not respond in time' : 'Could not reach backend service',
+        correlation_id: correlationId,
+      });
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Signed-upload flow (2026-05-19) — POST /api/v1/blueprints/upload-complete
+// ---------------------------------------------------------------------------
+// Confirms the Storage PUT completed and triggers Drew's 5-stage pipeline.
+// Capability token scope: `blueprints:upload_complete`. Returns 202 + dispatch
+// shape so the polling hook can take over from project_id.
+// ---------------------------------------------------------------------------
+
+router.post(
+  '/api/v1/blueprints/upload-complete',
+  express.json({ limit: '1mb' }),
+  async (req: Request, res: Response) => {
+    const suiteId = requireAuth(req, res);
+    if (!suiteId) return;
+
+    const orchestratorUrl = resolveOrchestratorUrl();
+    if (!orchestratorUrl) {
+      res.status(503).json({
+        error: 'ORCHESTRATOR_UNAVAILABLE',
+        message: 'Backend service is not configured',
+      });
+      return;
+    }
+
+    const officeIdRaw = (req.headers['x-office-id'] as string) || '';
+    const officeId =
+      typeof officeIdRaw === 'string' && officeIdRaw.trim() ? officeIdRaw.trim() : suiteId;
+    const tenantId = suiteId;
+    const actorId = ((req as any).authenticatedUserId as string) || suiteId;
+    const correlationId =
+      (req.headers['x-correlation-id'] as string) ||
+      (typeof (req.body ?? {}).correlation_id === 'string'
+        ? ((req.body as Record<string, unknown>).correlation_id as string)
+        : '') ||
+      `corr_${crypto.randomUUID()}`;
+    const traceId = (req.headers['x-trace-id'] as string) || correlationId;
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const uploadId = typeof body.upload_id === 'string' ? body.upload_id.trim() : '';
+    const filename = typeof body.filename === 'string' ? body.filename.trim() : '';
+
+    if (!uploadId || !filename) {
+      res.status(400).json({
+        error: 'INVALID_INPUT',
+        message: 'upload_id and filename are required',
+        correlation_id: correlationId,
+      });
+      return;
+    }
+
+    if (!resolveSigningKey()) {
+      res.status(503).json({
+        error: 'SIGNING_KEY_UNAVAILABLE',
+        message: 'Capability token signing key not configured',
+      });
+      return;
+    }
+    const minted = mintCapabilityToken({
+      scope: 'blueprints:upload_complete',
+      tenant_id: tenantId,
+      suite_id: suiteId,
+      office_id: officeId,
+      correlation_id: correlationId,
+    });
+    if (!minted) {
+      res.status(503).json({
+        error: 'SIGNING_KEY_UNAVAILABLE',
+        message: 'Capability token signing key not configured',
+      });
+      return;
+    }
+
+    logger.info('[BlueprintsUploadComplete] dispatch start', {
+      suite_id: suiteId,
+      office_id: officeId,
+      trace_id: traceId,
+      correlation_id: correlationId,
+      upload_id: uploadId,
+    });
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30_000);
+    try {
+      const orchResp = await fetch(`${orchestratorUrl}/v1/blueprints/upload-complete`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Tenant-Id': tenantId,
+          'X-Suite-Id': suiteId,
+          'X-Office-Id': officeId,
+          'X-Actor-Id': actorId,
+          'X-Correlation-Id': correlationId,
+          'X-Trace-Id': traceId,
+          Authorization: `Bearer ${minted.token}`,
+        },
+        body: JSON.stringify({
+          upload_id: uploadId,
+          filename,
+          suite_id: suiteId,
+          office_id: officeId,
+          correlation_id: correlationId,
+          capability_token: JSON.stringify(minted.token),
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      const text = await orchResp.text();
+      let parsed: Record<string, unknown> | null = null;
+      try {
+        parsed = text ? (JSON.parse(text) as Record<string, unknown>) : null;
+      } catch {
+        parsed = null;
+      }
+      if (!orchResp.ok) {
+        logger.warn('[BlueprintsUploadComplete] upstream non-2xx', {
+          suite_id: suiteId,
+          status: orchResp.status,
+        });
+        const upstreamMessage =
+          (parsed && ((parsed.message as string) || (parsed.error as string))) ||
+          `Backend returned ${orchResp.status}`;
+        res.status(orchResp.status).json({
+          error: 'UPLOAD_COMPLETE_UPSTREAM_ERROR',
+          message: upstreamMessage,
+          correlation_id: correlationId,
+        });
+        return;
+      }
+      res.status(202).json(parsed ?? {});
+    } catch (err: unknown) {
+      clearTimeout(timer);
+      const isTimeout = err instanceof Error && err.name === 'AbortError';
+      logger.error('[BlueprintsUploadComplete] fetch failed', {
+        suite_id: suiteId,
+        reason: err instanceof Error ? err.name + ': ' + err.message.slice(0, 120) : 'unknown',
+        is_timeout: isTimeout,
+      });
+      res.status(isTimeout ? 504 : 502).json({
+        error: isTimeout ? 'ORCHESTRATOR_TIMEOUT' : 'ORCHESTRATOR_UNREACHABLE',
+        message: isTimeout ? 'Backend did not respond in time' : 'Could not reach backend service',
+        correlation_id: correlationId,
+      });
+    }
   },
 );
 

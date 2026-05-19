@@ -632,8 +632,10 @@ app.use((req, res, next) => {
   }
   next();
 });
-// Blueprint upload has its own route-level JSON parser with 75mb limit —
-// skip the global 1mb parser so large PDFs reach the route-level middleware.
+// Uniform 1MB global JSON parser. As of 2026-05-19 all blueprint uploads use
+// the signed-PUT direct flow (upload-init → Storage PUT → upload-complete);
+// no Express route receives raw file bytes. Legacy /api/v1/blueprints/upload
+// also caps at 1MB (deprecated ≤ 5MB residential path).
 const _globalJson = express.json({
   limit: '1mb',
   verify: (req: any, _res, buf) => {
@@ -645,10 +647,7 @@ const _globalJson = express.json({
     }
   },
 });
-app.use((req, res, next) => {
-  if (req.path === '/api/v1/blueprints/upload') return next();
-  return _globalJson(req, res, next);
-});
+app.use(_globalJson);
 // Round 3 hotfix: Anam's webhook runtime occasionally posts /v1/tools/* with a
 // non-application/json Content-Type (or none at all). The global express.json
 // above ignores those, leaving req.body = {} and breaking every tool call with
