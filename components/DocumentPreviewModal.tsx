@@ -397,20 +397,20 @@ function DocumentPreviewModalInner({ visible, onClose, type, documentName, panda
   const [stripePdfLoading, setStripePdfLoading] = useState(false);
   const [stripePdfError, setStripePdfError] = useState<string | null>(null);
 
+  // Effect 1: Fetch the PDF and create the blob URL. Does NOT revoke on
+  // cleanup. Under React StrictMode the effect cleanup fires twice on
+  // every mount — revoking the blob URL in cleanup races with the iframe
+  // mounting against it, producing the "Framing ''" CSP storm seen in
+  // prod on 2026-05-19 (the iframe lost its blob src mid-render and fell
+  // back to empty-src, which CSP blocks). Revocation is owned by Effect 2
+  // (visible→false transition).
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (!visible || !livePreviewUrl || !livePreviewUrl.startsWith('/api/stripe/invoices/')) {
-      setStripePdfBlobUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
-      setStripePdfError(null);
-      setStripePdfLoading(false);
       return;
     }
 
     let cancelled = false;
-    let createdUrl: string | null = null;
     setStripePdfLoading(true);
     setStripePdfError(null);
 
@@ -418,9 +418,7 @@ function DocumentPreviewModalInner({ visible, onClose, type, documentName, panda
       try {
         const headers: Record<string, string> = { Accept: 'application/pdf' };
         if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-        // Diagnostic log so production issues can be traced from the console
-        // (PII-safe: we log only the URL path and response metadata, never
-        // the JWT or PDF body bytes).
+        // PII-safe diagnostics (path + metadata only, never JWT/body).
         // eslint-disable-next-line no-console
         console.log('[InvoicePDF] fetch start', { url: livePreviewUrl, hasAuth: !!session?.access_token });
         const resp = await fetch(livePreviewUrl, { headers, credentials: 'include' });
@@ -445,10 +443,16 @@ function DocumentPreviewModalInner({ visible, onClose, type, documentName, panda
           setStripePdfError('PDF response was empty');
           return;
         }
-        createdUrl = URL.createObjectURL(blob);
+        const url = URL.createObjectURL(blob);
         // eslint-disable-next-line no-console
-        console.log('[InvoicePDF] blob URL', { url: createdUrl });
-        setStripePdfBlobUrl(createdUrl);
+        console.log('[InvoicePDF] blob URL', { url });
+        // Swap-then-revoke: if a stale URL was already in state (e.g. user
+        // re-opened modal on a different invoice), revoke AFTER the new
+        // one is set so the iframe never references a freed handle.
+        setStripePdfBlobUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return url;
+        });
       } catch (err) {
         if (cancelled) return;
         // eslint-disable-next-line no-console
@@ -461,9 +465,22 @@ function DocumentPreviewModalInner({ visible, onClose, type, documentName, panda
 
     return () => {
       cancelled = true;
-      if (createdUrl) URL.revokeObjectURL(createdUrl);
+      // INTENTIONALLY no revoke here — see Effect 2.
     };
   }, [visible, livePreviewUrl, session?.access_token]);
+
+  // Effect 2: Revoke the blob URL only when the modal actually closes.
+  // The URL is owned by React state (not effect closure), so StrictMode
+  // double-cleanup cannot race the iframe mount.
+  useEffect(() => {
+    if (visible) return;
+    setStripePdfBlobUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setStripePdfError(null);
+    setStripePdfLoading(false);
+  }, [visible]);
 
 
   // When modal opens with a pandadocDocumentId, fetch a preview session
@@ -662,8 +679,12 @@ function DocumentPreviewModalInner({ visible, onClose, type, documentName, panda
                     );
                   }
                   if (stripePdfBlobUrl) {
+                    // key={blobUrl} forces React to unmount the old iframe
+                    // and mount a fresh one whenever the URL changes — no
+                    // stale src reference, no empty-src interlude.
                     return (
                       <iframe
+                        key={stripePdfBlobUrl}
                         src={stripePdfBlobUrl}
                         style={{
                           width: '100%',
@@ -671,7 +692,7 @@ function DocumentPreviewModalInner({ visible, onClose, type, documentName, panda
                           border: 'none',
                           backgroundColor: '#ffffff',
                         }}
-                        title="Document Preview"
+                        title={documentName || 'Document Preview'}
                       />
                     );
                   }
