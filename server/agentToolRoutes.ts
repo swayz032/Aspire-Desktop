@@ -2287,6 +2287,120 @@ router.post('/v1/tools/execute', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /v1/tools/knowledge_search
+ *
+ * Bypass for Anam's broken SERVER_RAG runtime. The Knowledge_Ava tool was
+ * configured as type=SERVER_RAG and started returning TCP RST in ~30ms on
+ * every invocation (verified 2026-05-20 across transcripts 0532e80c and
+ * 91aeb827). Anam's underlying knowledge data is fine — we verified that
+ * /v1/knowledge/groups/{folderId}/search returns content in ~2s. Only the
+ * SERVER_RAG bridge is broken.
+ *
+ * This route proxies tool invocations from Anam: it receives {query} from
+ * the persona LLM, fans out to Anam's working knowledge search across all
+ * configured folder IDs, merges the top-N hits, and returns a compact
+ * tool-response payload the persona can quote from.
+ *
+ * Folder IDs are baked in from server/kb/ava/v6/folder-ids.json (canonical
+ * mapping locked 2026-05-07).
+ */
+router.post('/v1/tools/knowledge_search', async (req: Request, res: Response) => {
+  if (!verifySecret(req, res)) return;
+
+  const body = getRequestBody(req);
+  const query: string = (body?.query ?? '').toString().trim();
+  if (!query) {
+    return res.json({ results: [], note: 'No query supplied.' });
+  }
+
+  const ANAM_KEY = process.env.ANAM_API_KEY || '';
+  if (!ANAM_KEY) {
+    logger.warn('[AgentTool] knowledge_search ANAM_API_KEY missing — degraded');
+    return res.json({ results: [], note: 'Knowledge base is not reachable right now.' });
+  }
+
+  // Canonical Ava folder IDs (locked in server/kb/ava/v6/folder-ids.json).
+  // Hard-coded here so a single env outage cannot derail the lookup.
+  const FOLDER_IDS = [
+    '9a611731-5591-4523-b0ba-3bcc69c037a1', // Ava Voice Rules
+    '1fc73148-cf54-4499-8095-c5583a73d409', // Ava Tools and Cards
+    '8ff9e175-537d-43db-9611-7197c3f78311', // Ava Invoicing and Quotes
+  ];
+
+  const TOP_N_PER_FOLDER = 3;
+  const MAX_CHARS_PER_HIT = 1500;
+  const REQ_TIMEOUT_MS = 6000;
+
+  try {
+    const hits: Array<{ folder: string; filename: string; content: string }> = [];
+
+    await Promise.all(FOLDER_IDS.map(async (folderId) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), REQ_TIMEOUT_MS);
+      try {
+        const r = await fetch(
+          `https://api.anam.ai/v1/knowledge/groups/${folderId}/search`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${ANAM_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ query }),
+            signal: controller.signal,
+          },
+        );
+        if (!r.ok) {
+          logger.warn('[AgentTool] knowledge_search folder_failed', {
+            folderId, status: r.status,
+          });
+          return;
+        }
+        const raw = await r.json() as Array<{ documentId?: string; filename?: string; content?: string }>;
+        const top = (Array.isArray(raw) ? raw : []).slice(0, TOP_N_PER_FOLDER);
+        for (const h of top) {
+          const content = (h?.content || '').slice(0, MAX_CHARS_PER_HIT);
+          if (!content) continue;
+          hits.push({
+            folder: folderId,
+            filename: h?.filename || 'unknown',
+            content,
+          });
+        }
+      } catch (err) {
+        logger.warn('[AgentTool] knowledge_search folder_error', {
+          folderId, error: err instanceof Error ? err.message : 'unknown',
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }));
+
+    logger.info('[AgentTool] knowledge_search', {
+      query: query.slice(0, 80),
+      hits: hits.length,
+    });
+
+    return res.json({
+      query,
+      results: hits,
+      note: hits.length === 0
+        ? 'No matching workflow content found.'
+        : null,
+    });
+  } catch (err) {
+    logger.error('[AgentTool] knowledge_search error', {
+      error: err instanceof Error ? err.message : 'unknown',
+    });
+    return res.json({
+      query,
+      results: [],
+      note: 'Knowledge lookup ran into an issue.',
+    });
+  }
+});
+
+/**
  * POST /v1/tools/office-note
  *
  * Saves a request/intent to Office Memory for voice→video session continuity.
