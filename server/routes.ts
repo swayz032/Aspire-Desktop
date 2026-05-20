@@ -5033,34 +5033,124 @@ router.post('/api/authority-queue/:id/approve', async (req: Request, res: Respon
               ${correlationId}, 'USER', ${userId || null}, 'sha256', NOW())
     `);
 
-    // After successful approval, trigger resume execution via orchestrator
+    // After successful approval, execute the deferred action. Production
+    // 2026-05-20 root cause: orchestrator `/v1/resume/:id` was returning
+    // non-ok status so desktop showed "Approved, but send failed" and the
+    // Stripe invoice stayed in DRAFT — customer never got the email.
+    //
+    // Strategy: try `/v1/resume/:id` first (canonical orchestrator path).
+    // If it fails AND the approval is a Quinn invoice.create, fall back to
+    // direct Stripe finalize+send using the resource_id (Stripe invoice ID)
+    // from approval_requests. This makes Approve robust against
+    // orchestrator outages or unimplemented resume handlers.
     const officeId = getDefaultOfficeId();
+
+    // 1) Try canonical orchestrator resume
+    let resumeOk = false;
+    let resumeData: any = null;
     try {
       const orchestratorUrl = resolveOrchestratorUrl();
-      if (!orchestratorUrl) {
-        throw new Error('ORCHESTRATOR_NOT_CONFIGURED');
+      if (orchestratorUrl) {
+        const resumeRes = await fetch(`${orchestratorUrl}/v1/resume/${id}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-suite-id': suiteId,
+            'x-office-id': officeId || '',
+            'x-actor-id': userId || '',
+          },
+        });
+        resumeOk = resumeRes.ok;
+        try { resumeData = await resumeRes.json(); } catch { resumeData = null; }
+        if (resumeOk) {
+          return res.json({ approved: true, executed: true, receiptId, ...(resumeData || {}) });
+        }
+        logger.warn('Orchestrator /v1/resume returned non-ok, attempting direct Stripe fallback', {
+          approval_id: id, resumeStatus: resumeRes.status,
+        });
+      } else {
+        logger.warn('Orchestrator URL not configured; using direct Stripe fallback', { approval_id: id });
       }
-      const resumeRes = await fetch(`${orchestratorUrl}/v1/resume/${id}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-suite-id': suiteId,
-          'x-office-id': officeId || '',
-          'x-actor-id': userId || '',
-        },
+    } catch (resumeErr) {
+      logger.warn('Orchestrator /v1/resume call threw, attempting direct Stripe fallback', {
+        approval_id: id, error: resumeErr instanceof Error ? resumeErr.message : 'unknown',
       });
-      const resumeData = await resumeRes.json();
+    }
+
+    // 2) Fallback: direct Stripe finalize + send when the approval is a
+    // Quinn invoice.create AND resource_id is a Stripe invoice ID.
+    try {
+      const detailLookup = await db.execute(sql`
+        SELECT tool, operation, resource_type, resource_id
+        FROM approval_requests
+        WHERE approval_id = ${id}
+        LIMIT 1
+      `);
+      const detailRows = (detailLookup.rows || detailLookup) as any[];
+      const detail = detailRows[0];
+      const isQuinnInvoice = detail
+        && detail.tool === 'invoke_quinn'
+        && detail.operation === 'invoice.create'
+        && detail.resource_type === 'invoice'
+        && typeof detail.resource_id === 'string'
+        && detail.resource_id.startsWith('in_');
+
+      if (!isQuinnInvoice) {
+        // Not an invoice approval — we don't have a direct fallback path.
+        // Surface the resume failure so the user can retry.
+        return res.json({
+          approved: true,
+          executed: false,
+          error: 'Resume execution failed and no direct fallback for this action type',
+          retry_available: true,
+          receiptId,
+          ...(resumeData || {}),
+        });
+      }
+
+      const stripeKey = process.env.STRIPE_CONNECT_SECRET_KEY || process.env.STRIPE_SECRET_KEY || '';
+      if (!stripeKey) {
+        logger.error('Approve fallback: STRIPE key not configured', { approval_id: id });
+        return res.json({
+          approved: true,
+          executed: false,
+          error: 'STRIPE_NOT_CONFIGURED',
+          retry_available: true,
+          receiptId,
+        });
+      }
+
+      const { default: Stripe } = await import('stripe');
+      const stripe = new Stripe(stripeKey);
+      const stripeInvoiceId = detail.resource_id as string;
+
+      let invoice = await stripe.invoices.retrieve(stripeInvoiceId);
+      if (invoice.status === 'draft') {
+        invoice = await stripe.invoices.finalizeInvoice(stripeInvoiceId, { auto_advance: false });
+      }
+      if (invoice.status === 'open' || invoice.status === 'uncollectible') {
+        invoice = await stripe.invoices.sendInvoice(stripeInvoiceId);
+      }
+      const sent = invoice.status === 'open' || invoice.status === 'paid';
+
+      logger.info('Approve fallback: Stripe finalize+send succeeded', {
+        approval_id: id, stripeInvoiceId, status: invoice.status, sent,
+      });
+
       return res.json({
         approved: true,
-        executed: resumeRes.ok,
-        ...resumeData,
+        executed: sent,
+        stripeStatus: invoice.status,
+        fallback: 'direct_stripe',
+        receiptId,
       });
-    } catch (resumeErr) {
-      // Approval succeeded but execution failed — return partial success
+    } catch (fallbackErr) {
+      const msg = fallbackErr instanceof Error ? fallbackErr.message : 'unknown';
+      logger.error('Approve fallback Stripe path failed', { approval_id: id, error: msg });
       return res.json({
         approved: true,
         executed: false,
-        error: 'Resume execution failed',
+        error: msg,
         retry_available: true,
         receiptId,
       });

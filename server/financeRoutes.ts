@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import Stripe from 'stripe';
 import { db } from './db';
 import { sql } from 'drizzle-orm';
 import { createReceipt } from './receiptService';
@@ -9,17 +8,6 @@ import { getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
 import { logger } from './logger';
 import { withBreakerAction } from './circuitBreaker';
-
-// Stripe client lazy-initialized so this module doesn't fail to load when
-// STRIPE_SECRET_KEY is missing in dev. Used only by the approve endpoint to
-// finalize + send invoices created by Quinn.
-const stripeKey = process.env.STRIPE_CONNECT_SECRET_KEY || process.env.STRIPE_SECRET_KEY || '';
-let _stripeInstance: Stripe | null = null;
-function getStripeForApprove(): Stripe | null {
-  if (!stripeKey) return null;
-  if (!_stripeInstance) _stripeInstance = new Stripe(stripeKey);
-  return _stripeInstance;
-}
 
 const router = Router();
 
@@ -726,143 +714,16 @@ router.get('/api/authority-queue', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/api/authority-queue/:id/approve', async (req: Request, res: Response) => {
-  // Law #6: Tenant isolation — use authenticated context, never trust client-supplied IDs
-  const suiteId = (req as any).authenticatedSuiteId;
-  if (!suiteId) {
-    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
-  }
-  try {
-    const eventId = parseInt(req.params.id as string, 10);
-    const officeId = req.body.officeId || getDefaultOfficeId();
-    const approvedBy = req.body.approvedBy || 'owner';
-    const correlationId = (req.headers['x-correlation-id'] as string) || req.body.correlation_id || `corr_${crypto.randomUUID()}`;
-
-    // Check current status (idempotent)
-    const check = await db.execute(sql`
-      SELECT event_id, status, metadata FROM finance_events
-      WHERE event_id = ${eventId} AND suite_id = ${suiteId} AND office_id = ${officeId}
-        AND event_type = 'proposal_created'
-      LIMIT 1
-    `);
-
-    const checkRows = (check.rows || check) as any[];
-    if (checkRows.length === 0) {
-      return res.status(404).json({ error: 'Proposal not found' });
-    }
-
-    if (checkRows[0].status === 'approved') {
-      return res.json({ id: eventId, status: 'approved', executed: true, message: 'Already approved' });
-    }
-
-    if (checkRows[0].status === 'denied') {
-      return res.status(409).json({ error: 'Cannot approve a denied proposal' });
-    }
-
-    // === Wire Approve → Stripe finalize + send ===
-    // Production transcript 2026-05-19 78dc8fa7 surfaced this gap: the
-    // approve endpoint marked the proposal as approved in the database
-    // but never actually sent the Stripe invoice to the customer. The
-    // desktop drawer checks `result.body.executed === true` (see
-    // components/AuthorityQueueDrawer.tsx:118) and shows
-    // "Approved, but send failed" when it's not. The Stripe invoice was
-    // sitting in DRAFT status indefinitely.
-    //
-    // The proposal metadata stores the stripe_invoice_id from Quinn's
-    // CREATE call (orchestrator writes it during the proposal_created
-    // event). We pull it here, finalize the draft, then send.
-    const metadata = checkRows[0].metadata || {};
-    const stripeInvoiceId = metadata.stripe_invoice_id
-      || metadata.inputs?.stripe_invoice_id
-      || metadata.inputs?.stripeInvoiceId
-      || null;
-
-    let executed = false;
-    let stripeStatus: string | null = null;
-    let stripeError: string | null = null;
-    const stripe = getStripeForApprove();
-
-    if (stripe && stripeInvoiceId && metadata.type === 'invoice') {
-      try {
-        // Step 1: finalize the draft invoice (transitions draft → open).
-        // Safe to call on already-finalized invoices — Stripe returns the
-        // existing invoice unchanged.
-        let invoice = await stripe.invoices.retrieve(stripeInvoiceId);
-        if (invoice.status === 'draft') {
-          invoice = await stripe.invoices.finalizeInvoice(stripeInvoiceId, {
-            auto_advance: false, // don't kick off Stripe's auto-collection
-          });
-        }
-
-        // Step 2: send the invoice email to the customer. Stripe's
-        // sendInvoice() is idempotent — if the invoice was already sent
-        // it just returns the current state. Skip if the invoice has
-        // already been collected or voided.
-        if (invoice.status === 'open' || invoice.status === 'uncollectible') {
-          invoice = await stripe.invoices.sendInvoice(stripeInvoiceId);
-        }
-
-        stripeStatus = invoice.status || 'unknown';
-        executed = invoice.status === 'open' || invoice.status === 'paid';
-        logger.info('Stripe invoice sent on approve', {
-          eventId,
-          stripeInvoiceId,
-          status: stripeStatus,
-          customerEmail: invoice.customer_email,
-        });
-      } catch (stripeErr: unknown) {
-        const msg = stripeErr instanceof Error ? stripeErr.message : 'unknown stripe error';
-        stripeError = msg;
-        logger.error('Stripe finalize/send failed on approve', {
-          eventId, stripeInvoiceId, error: msg,
-        });
-        // Don't fail the whole approve — the proposal is still marked
-        // approved; surface the send failure so the user can retry
-        // from the Finance Hub.
-      }
-    } else if (!stripeInvoiceId) {
-      logger.warn('Approve endpoint: no stripe_invoice_id in proposal metadata', { eventId });
-      stripeError = 'NO_STRIPE_INVOICE_ID';
-    } else if (!stripe) {
-      logger.warn('Approve endpoint: Stripe key not configured', { eventId });
-      stripeError = 'STRIPE_NOT_CONFIGURED';
-    }
-
-    // Mark the proposal as approved regardless of Stripe outcome — the
-    // user explicitly approved it, that audit trail stands. Stripe send
-    // is a separate concern surfaced via `executed` + `stripeError`.
-    await db.execute(sql`
-      UPDATE finance_events SET status = 'approved'
-      WHERE event_id = ${eventId} AND suite_id = ${suiteId} AND office_id = ${officeId}
-    `);
-
-    const receiptId = await createReceipt({
-      suiteId,
-      officeId,
-      actionType: 'execute_action',
-      inputs: { eventId, action: 'approve', approvedBy, correlation_id: correlationId, stripeInvoiceId },
-      outputs: { status: 'approved', executed, stripeStatus, stripeError },
-      metadata: { event_type: 'authority.item.approved', proposalTitle: metadata.title, stripeStatus, executed },
-    });
-
-    logger.info('Authority item approved', { eventId, approvedBy, executed, stripeStatus });
-
-    res.json({
-      id: eventId,
-      status: 'approved',
-      executed,
-      approvedBy,
-      receiptId,
-      correlation_id: correlationId,
-      ...(stripeStatus ? { stripeStatus } : {}),
-      ...(stripeError ? { error: stripeError } : {}),
-    });
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'unknown';
-    logger.error('Authority approve error', { error: msg });
-    res.status(500).json({ error: 'INTERNAL_ERROR', message: msg });
-  }
-});
+// NOTE: The /api/authority-queue/:id/approve route is intentionally NOT
+// defined in this file. The canonical handler lives in routes.ts:4987
+// because the Authority Queue persists in the `approval_requests` table
+// (text approval_id, e.g. "appr-quinn-e678ac973eb9"), not in finance_events
+// (integer event_id). PR #50 mistakenly added a duplicate handler here
+// that queried finance_events with parseInt(id) — it never matched any
+// row and never fired (Express matched routes.ts first by registration
+// order). Removed 2026-05-20 after DB inspection confirmed approval_requests
+// is the canonical store. The full direct-Stripe fallback also lives in
+// routes.ts now.
 
 router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response) => {
   // Law #6: Tenant isolation — use authenticated context, never trust client-supplied IDs
