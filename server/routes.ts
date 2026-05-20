@@ -5496,14 +5496,15 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
         speechEnhancementLevel: 0.5,
       },
       voiceGenerationOptions: {
-        // 2026-05-11 (W12.5): calmer voice profile. User reported high-pitch
-        // perky tone — the underlying voice is "Hope - Bubbly, Gossipy and
-        // Girly" which leans expressive. Higher stability dampens the
-        // expression swings (less pitch variance, more even delivery).
-        // Speed back to neutral 1.0 — 1.05 was slightly rushed and
-        // amplified the perky feel on greetings.
-        speed: 1.0,
-        stability: 0.75,
+        // 2026-05-20: lowered speed 1.0 → 0.93 after production transcript
+        // e7af770f. User reported Ava sometimes talks fast, especially on
+        // email read-backs where the user couldn't catch a mishear. 0.93
+        // is ~7% slower — calm, deliberate, lets the user track each
+        // chunk of an email read-back. Combined with higher stability
+        // (0.85, was 0.75) for less pitch variance on the chunked reads.
+        // History: 1.05 (perky) → 1.0 (neutral, 2026-05-11) → 0.93 (now).
+        speed: 0.93,
+        stability: 0.85,
         similarityBoost: 0.8,
       },
     };
