@@ -144,6 +144,7 @@ export function usePropertyData(
                   interior: { count: 0, photos: [] },
                   exterior: { count: 0, photos: [] },
                   roof: { count: 0, photos: [] },
+                  streetView: { count: 0, photos: [] },
                   uncategorized: { count: 0, photos: [] },
                 },
                 sources: [],
