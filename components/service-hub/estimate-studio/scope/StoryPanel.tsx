@@ -38,7 +38,12 @@ interface Props {
 const READING_MAX_WIDTH = 720;
 
 export function StoryPanel({ story, isPolling, onConfirmFact }: Props): React.ReactElement {
-  if (!story || story.phases.length === 0) {
+  // Wave 18l: backend phase shape doesn't match frontend (markdown vs body_md,
+  // phase_number vs key/title, no facts[]). Defensive read until contracts are
+  // harmonized — coalesce undefined arrays/strings so the panel renders the
+  // markdown narrative instead of crashing on .length / .map of undefined.
+  const phases = story?.phases ?? [];
+  if (!story || phases.length === 0) {
     return (
       <View style={styles.empty} testID="story-panel-empty">
         <View style={styles.emptyIconCircle}>
@@ -71,7 +76,7 @@ export function StoryPanel({ story, isPolling, onConfirmFact }: Props): React.Re
           <Text style={styles.headline}>Project Story</Text>
           <View style={styles.headlineMeta}>
             <Text style={styles.headlineMetaText}>
-              {Math.round(story.mean_confidence * 100)}% mean confidence
+              {Math.round((story.mean_confidence ?? 0) * 100)}% mean confidence
             </Text>
             {story.updated_at ? (
               <Text style={styles.headlineMetaText}>
@@ -81,9 +86,9 @@ export function StoryPanel({ story, isPolling, onConfirmFact }: Props): React.Re
           </View>
         </View>
 
-        {story.phases.map((phase, idx) => (
+        {phases.map((phase, idx) => (
           <PhaseSection
-            key={phase.key}
+            key={phase.key ?? `phase-${idx}`}
             phase={phase}
             phaseNumber={idx + 1}
             onConfirmFact={onConfirmFact}
@@ -107,12 +112,12 @@ function PhaseSection({
   return (
     <View
       style={styles.phase}
-      testID={`story-phase-${phase.key}`}
+      testID={`story-phase-${phase.key ?? phaseNumber}`}
     >
       <Pressable
         onPress={() => setExpanded((v) => !v)}
         accessibilityRole="button"
-        accessibilityLabel={`${phase.title} — ${expanded ? 'collapse' : 'expand'}`}
+        accessibilityLabel={`${phase.title ?? `Phase ${phaseNumber}`} — ${expanded ? 'collapse' : 'expand'}`}
         style={({ hovered, pressed }: any) => [
           styles.phaseHeader,
           hovered && styles.phaseHeaderHover,
@@ -122,7 +127,7 @@ function PhaseSection({
         <View style={styles.phaseNumber}>
           <Text style={styles.phaseNumberText}>{phaseNumber}</Text>
         </View>
-        <Text style={styles.phaseTitle}>{phase.title}</Text>
+        <Text style={styles.phaseTitle}>{phase.title ?? `Phase ${phaseNumber}`}</Text>
         <Ionicons
           name={expanded ? 'chevron-down' : 'chevron-forward'}
           size={16}
@@ -131,10 +136,12 @@ function PhaseSection({
       </Pressable>
       {expanded ? (
         <View style={styles.phaseBody}>
-          <Text style={styles.phaseBodyText}>{phase.body_md}</Text>
-          {phase.facts.length > 0 ? (
+          <Text style={styles.phaseBodyText}>
+            {phase.body_md ?? (phase as { markdown?: string }).markdown ?? ''}
+          </Text>
+          {(phase.facts ?? []).length > 0 ? (
             <View style={styles.factWrap}>
-              {phase.facts.map((fact) => (
+              {(phase.facts ?? []).map((fact) => (
                 <FactChip
                   key={fact.key}
                   fact={fact}

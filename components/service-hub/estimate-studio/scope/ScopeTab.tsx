@@ -73,22 +73,27 @@ export function ScopeTab(): React.ReactElement {
   const ui = useScopeUi();
   const { setActiveCard } = scopeUiActions();
 
+  // Wave 18l: defensive — backend may return null/undefined arrays during
+  // hydration or schema drift. Coalesce before reading .length / .filter.
+  const _assemblies = story.assemblies ?? [];
+  const _missingInputs = story.missingInputs ?? [];
+  const _materials = story.materials ?? [];
   const includedCount = useMemo(
-    () => story.assemblies.filter((a) => a.in_base_scope).length,
-    [story.assemblies],
+    () => _assemblies.filter((a) => a.in_base_scope).length,
+    [_assemblies],
   );
-  const excludedCount = story.assemblies.length - includedCount;
+  const excludedCount = _assemblies.length - includedCount;
   const openMissing = useMemo(
-    () => story.missingInputs.filter((m) => m.status === 'open').length,
-    [story.missingInputs],
+    () => _missingInputs.filter((m) => m.status === 'open').length,
+    [_missingInputs],
   );
   const alternateCount = useMemo(
-    () => story.assemblies.filter((a) => a.alternate_note != null).length,
-    [story.assemblies],
+    () => _assemblies.filter((a) => a.alternate_note != null).length,
+    [_assemblies],
   );
   const tariffCount = useMemo(
-    () => story.materials.filter((m) => m.tariff_flagged).length,
-    [story.materials],
+    () => _materials.filter((m) => m.tariff_flagged).length,
+    [_materials],
   );
 
   // Empty state — no upload yet. Stage a clear path back to Plans & Photos.
