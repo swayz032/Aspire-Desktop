@@ -35,6 +35,7 @@ import { usePathname, useRouter, type Href } from 'expo-router';
 import { ProjectAddressBar } from '../ProjectAddressBar';
 import { MaterialsSlotBar } from '../materials/MaterialsSlotBar';
 import { useEstimateStudioActions } from '@/hooks/useEstimateStudioActions';
+import { useBlueprintUploadSnapshot } from '@/lib/blueprintUploadStore';
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -77,7 +78,12 @@ export function TimRailControlsTab() {
   const pathname = usePathname() ?? '';
   const router = useRouter();
   const { width } = useWindowDimensions();
-  const { onUpload, onNewProject } = useEstimateStudioActions();
+  const { onUpload, onNewProject, onRemoveProject } = useEstimateStudioActions();
+  // Wave 17: read upload snapshot so Remove Project only shows when something
+  // is loaded (no point in offering "remove" when canvas is already empty).
+  const blueprintSnapshot = useBlueprintUploadSnapshot();
+  const hasActiveProject =
+    blueprintSnapshot.projectId !== null || blueprintSnapshot.phase !== 'idle';
 
   const isMaterialsTab =
     pathname.endsWith('/materials') || pathname.endsWith('/materials/');
@@ -149,6 +155,16 @@ export function TimRailControlsTab() {
             testID="tim-rail-controls-new-project"
             accessibilityLabel="Start a new estimate project"
           />
+          {/* Wave 17: Remove Project — clears canvas state only. Projects
+              auto-save to Service Memory, so nothing is destroyed; this just
+              gets the in-flight blueprint out of the way. Hidden when no
+              project is loaded (no reason to offer it). */}
+          {hasActiveProject ? (
+            <RemoveProjectButton
+              onPress={onRemoveProject}
+              testID="tim-rail-controls-remove-project"
+            />
+          ) : null}
         </View>
       </Section>
     </ScrollView>
@@ -286,6 +302,56 @@ function PrimaryButton({
     </Pressable>
   );
 }
+
+// ─── Remove Project (Wave 17) ────────────────────────────────────────────────
+// Destructive-tinted ghost button. Sits under "New Project" when a project
+// is loaded so the contractor can clear the canvas without losing the
+// project — it's auto-saved to Service Memory either way.
+function RemoveProjectButton({
+  onPress,
+  testID,
+}: {
+  onPress: () => void;
+  testID?: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel="Remove current blueprint from canvas (project stays saved in Service Memory)"
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      style={({ hovered, pressed, focused }: any) => [
+        styles.button,
+        removeStyles.buttonRemove,
+        hovered && removeStyles.buttonRemoveHover,
+        pressed && styles.buttonPressed,
+        focused && (styles.buttonFocused as any),
+      ]}
+    >
+      <Ionicons name="close-circle-outline" size={15} color="rgba(255,140,140,0.95)" />
+      <Text style={removeStyles.buttonLabelRemove}>Remove Project</Text>
+    </Pressable>
+  );
+}
+
+const removeStyles = StyleSheet.create({
+  buttonRemove: {
+    backgroundColor: 'rgba(255,90,90,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,90,90,0.22)',
+  },
+  buttonRemoveHover: {
+    backgroundColor: 'rgba(255,90,90,0.12)',
+    borderColor: 'rgba(255,90,90,0.45)',
+  },
+  buttonLabelRemove: {
+    color: 'rgba(255,180,180,0.95)',
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.15,
+  },
+});
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 

@@ -11144,6 +11144,37 @@ router.get('/api/v1/blueprints/projects/:id/status', async (req: Request, res: R
   );
 });
 
+// ─── Wave 17: 5 missing sub-resource GET proxies ─────────────────────────
+// Backend (Wave 2.7) has these endpoints; the desktop server proxy never
+// registered them, so the new Scope / Takeoff / Materials Blueprint / Estimate
+// tabs were getting 404s and falling back to empty states despite the DB
+// holding 494 symbols / 17 assemblies / 52 materials / 8 story rows for the
+// active GAVNN project. Adding all five as straight read-through proxies.
+function _registerBlueprintSubResource(suffix: string, label: string): void {
+  router.get(`/api/v1/blueprints/projects/:id/${suffix}`, async (req: Request, res: Response) => {
+    const projectId = String(req.params.id ?? '').trim();
+    if (!projectId) {
+      res.status(400).json({ error: 'INVALID_PROJECT_ID', message: 'project id is required' });
+      return;
+    }
+    // Pass through any query string verbatim (e.g. sheet_id filter on symbols).
+    const qs = req.url.includes('?') ? '?' + req.url.split('?')[1] : '';
+    await _forwardBlueprintGet(
+      req,
+      res,
+      `/v1/blueprints/projects/${encodeURIComponent(projectId)}/${suffix}${qs}`,
+      label,
+    );
+  });
+}
+_registerBlueprintSubResource('symbols', 'BlueprintSymbolsList');
+_registerBlueprintSubResource('assemblies', 'BlueprintAssembliesList');
+_registerBlueprintSubResource('materials', 'BlueprintMaterialsList');
+_registerBlueprintSubResource('story', 'BlueprintStoryGet');
+_registerBlueprintSubResource('missing-inputs', 'BlueprintMissingInputsList');
+// Some frontend hooks use snake_case path — accept both forms.
+_registerBlueprintSubResource('missing_inputs', 'BlueprintMissingInputsList');
+
 // ---------------------------------------------------------------------------
 // Wave 5.1a-5 — POST /api/v1/blueprints/projects/:id/materials/:mid/override
 // ---------------------------------------------------------------------------

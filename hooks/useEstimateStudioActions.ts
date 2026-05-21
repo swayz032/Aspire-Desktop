@@ -14,16 +14,24 @@
  * what user actions explicitly request.
  */
 import { useCallback } from 'react';
+import { resetBlueprintUpload } from '@/lib/blueprintUploadStore';
+import { setActiveSheetId } from '@/lib/activeSheetStore';
 
 interface EstimateStudioActions {
   onUpload: () => void;
   onNewProject: () => void;
+  onRemoveProject: () => void;
 }
 
+/**
+ * Wave 17: NewProject + RemoveProject both clear the active blueprint state
+ * from the canvas. Projects auto-persist to Service Memory (Wave 9), so
+ * "removing" never deletes — it just gets the in-flight state out of the way
+ * so the next upload starts fresh. Without this clear, localStorage held the
+ * old project forever and the rest of the tabs kept reading stale state.
+ */
 export function useEstimateStudioActions(): EstimateStudioActions {
   const onUpload = useCallback(() => {
-    // Future: open evidence upload sheet (photos, PDFs, plans).
-    // Today: emit a benign event so the click is observable in dev.
     if (typeof window !== 'undefined') {
       try {
         window.dispatchEvent(new CustomEvent('estimate-studio:upload'));
@@ -33,8 +41,24 @@ export function useEstimateStudioActions(): EstimateStudioActions {
     }
   }, []);
 
+  const clearActiveBlueprint = useCallback(() => {
+    // Wave 17: reset the module store (also wipes the localStorage snapshot)
+    // and drop the active-sheet selection so per-sheet Context payload
+    // doesn't hold a dangling reference.
+    try {
+      resetBlueprintUpload();
+    } catch {
+      /* noop */
+    }
+    try {
+      setActiveSheetId(null);
+    } catch {
+      /* noop */
+    }
+  }, []);
+
   const onNewProject = useCallback(() => {
-    // Future: open the new-project flow (address + service + scope).
+    clearActiveBlueprint();
     if (typeof window !== 'undefined') {
       try {
         window.dispatchEvent(new CustomEvent('estimate-studio:new-project'));
@@ -42,7 +66,18 @@ export function useEstimateStudioActions(): EstimateStudioActions {
         /* noop */
       }
     }
-  }, []);
+  }, [clearActiveBlueprint]);
 
-  return { onUpload, onNewProject };
+  const onRemoveProject = useCallback(() => {
+    clearActiveBlueprint();
+    if (typeof window !== 'undefined') {
+      try {
+        window.dispatchEvent(new CustomEvent('estimate-studio:remove-project'));
+      } catch {
+        /* noop */
+      }
+    }
+  }, [clearActiveBlueprint]);
+
+  return { onUpload, onNewProject, onRemoveProject };
 }
