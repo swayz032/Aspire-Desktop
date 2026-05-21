@@ -36,6 +36,7 @@ import {
   ACCEPTED_MIME_TYPES,
 } from '@/lib/api/blueprintsApi';
 import { UploadProgressInline } from './UploadProgressInline';
+import { PremiumBlueprintLoader } from './PremiumBlueprintLoader';
 import type { UploadPhase, UploadProgress } from '@/hooks/useBlueprintUpload';
 import type { StageProgress } from '@/lib/api/blueprintsApi';
 
@@ -299,23 +300,26 @@ export function UploadDropZone({
     }
 
     if (phase === 'reading' || phase === 'uploading' || phase === 'ingesting' || phase === 'classifying') {
-      // CANVAS LOADING STATE — calm, seamless, zero clutter.
-      // Aspire design rule: canvas hosts ONE focused element. The cinematic
-      // 5-stage timeline + narration + insight cards + sheet thumbnail rail
-      // live in the Tim Rail Context tab (PlansPhotosContextPayload). Here,
-      // we render only: loading ring + filename + elapsed timer.
+      // CANVAS LOADING STATE — Wave 11k premium upgrade.
+      // Single focused PremiumBlueprintLoader (canvas particle ribbon on web,
+      // multi-ring pulse on native), tight Drew-branded headline + filename,
+      // tabular elapsed clock. Cinematic 5-stage timeline still lives in Tim
+      // Rail Context tab — this canvas remains uncluttered.
       const elapsed = formatElapsed(startedAtMs ?? Date.now(), nowTick);
       return (
         <View style={styles.body} testID={`dropzone-${phase}`}>
-          <LoadingRing size={56} />
-          <Text style={styles.title} numberOfLines={1}>
-            {filename ?? 'Analyzing blueprint'}
-          </Text>
-          <Text style={styles.subtitle}>
-            Drew is analyzing your blueprint
-            <Text style={styles.elapsedSep}>{'  ·  '}</Text>
-            <Text style={styles.elapsed}>{elapsed}</Text>
-          </Text>
+          <PremiumBlueprintLoader size={160} particleCount={2} speed={1} hueRange={[36, 50]} />
+          <View style={styles.loaderTextBlock}>
+            <Text style={styles.eyebrow}>Drew · Blueprint Analysis</Text>
+            <Text style={styles.titleHero} numberOfLines={1}>
+              {filename ?? 'Analyzing blueprint'}
+            </Text>
+            <View style={styles.subtitleRow}>
+              <Text style={styles.subtitlePremium}>Reading geometry</Text>
+              <Text style={styles.elapsedSep}>{' · '}</Text>
+              <Text style={styles.elapsed}>{elapsed}</Text>
+            </View>
+          </View>
         </View>
       );
     }
@@ -489,11 +493,48 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     letterSpacing: -0.1,
   },
-  elapsed: {
-    color: 'rgba(255,255,255,0.85)',
-    fontVariant: ['tabular-nums'],
-    fontWeight: '600',
+  // Wave 11k — premium loader text block
+  loaderTextBlock: {
+    alignItems: 'center',
+    marginTop: 18,
+    gap: 8,
+  },
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    color: 'rgba(251,191,36,0.85)',
+    textAlign: 'center',
+  },
+  titleHero: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.98)',
+    letterSpacing: -0.45,
+    textAlign: 'center',
+    maxWidth: 460,
+    // subtle text shadow gives lift on dark canvas
+    textShadowColor: 'rgba(251,191,36,0.18)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 18,
+  },
+  subtitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subtitlePremium: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.72)',
     letterSpacing: -0.05,
+  },
+  elapsed: {
+    color: 'rgba(251,191,36,0.92)',
+    fontVariant: ['tabular-nums'],
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    fontSize: 13,
   },
   elapsedSep: {
     color: 'rgba(255,255,255,0.35)',
