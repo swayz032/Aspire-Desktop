@@ -12,13 +12,21 @@
  *
  * Aspire Law #7: pure render. Mode state lives in `useHeroMode`.
  */
-import React, { useEffect, useRef } from 'react';
+import React, { Suspense, useEffect, useRef } from 'react';
 import { View, StyleSheet, Animated } from 'react-native';
 import { LiveStreetViewHero } from './LiveStreetViewHero';
-import { LiveHouseInspectorHero } from './LiveHouseInspectorHero';
 import { PhotoGalleryHero } from './PhotoGalleryHero';
+import { SheenBlock } from './InsightCardBase';
 import type { PropertyData } from '@/services/serviceHub/propertyDataApi';
 import type { HeroMode } from '@/hooks/useHeroMode';
+
+// Wave 18n: lazy-load Cesium-backed hero so the ~3MB Cesium bundle is NOT
+// downloaded on every Visuals visit. Boots only after the user clicks the
+// Aerial 3D / Earth thumbnail. Combined with conditional mounting below,
+// this ends the auto-boot OOM on the default Street View hero.
+const LiveHouseInspectorHero = React.lazy(() =>
+  import('./LiveHouseInspectorHero').then((m) => ({ default: m.LiveHouseInspectorHero })),
+);
 
 interface Props {
   mode: HeroMode;
@@ -29,7 +37,22 @@ interface Props {
 
 const FADE_MS = 200;
 
+// Wave 18n: Cesium fallback while bundle loads. Matches hero skeleton.
+function CesiumLazyFallback() {
+  return (
+    <View style={styles.lazyFallback} testID="hero-switcher-cesium-loading">
+      <SheenBlock width="100%" height="100%" radius={12} />
+    </View>
+  );
+}
+
 export function HeroSwitcher({ mode, onModeChange, data, loading }: Props) {
+  // Wave 18n: only mount Cesium-backed heroes when they're the active mode.
+  // Pre-mounting at opacity:0 still ran the useEffect that booted Cesium —
+  // causing a WebGL context to allocate on every Visuals page load even
+  // when the user never clicked Aerial 3D. Conditional mount = robust.
+  const isAerialActive = mode === 'aerial';
+  const isEarthActive = mode === 'earth';
   // One opacity value per layer so we can cross-fade between them.
   const opacities = useRef<Record<HeroMode, Animated.Value>>({
     streetview: new Animated.Value(mode === 'streetview' ? 1 : 0),
@@ -66,32 +89,38 @@ export function HeroSwitcher({ mode, onModeChange, data, loading }: Props) {
       </Animated.View>
 
       <Animated.View
-        pointerEvents={mode === 'aerial' ? 'auto' : 'none'}
+        pointerEvents={isAerialActive ? 'auto' : 'none'}
         style={[styles.layer, { opacity: opacities.aerial }]}
       >
         {/* Aerial 3D mode renders the CesiumJS House Inspector — Google
-            Photorealistic 3D Tiles + INVERSE clipping polygon so only the
-            house mesh is visible on a dark stage. Replaces the old broken
-            Aerial Video API and the Map3DElement Earth view. The bottom
-            card label stays "Aerial 3D" as the user-facing name. */}
-        <LiveHouseInspectorHero
-          coords={data?.coords}
-          address={data?.address?.formatted}
-          loading={loading}
-          onReturn={() => onModeChange('streetview')}
-        />
+            Photorealistic 3D Tiles. Wave 18n: lazy-mounted ONLY when active
+            so Cesium doesn't auto-boot on every Visuals page load. */}
+        {isAerialActive && (
+          <Suspense fallback={<CesiumLazyFallback />}>
+            <LiveHouseInspectorHero
+              coords={data?.coords}
+              address={data?.address?.formatted}
+              loading={loading}
+              onReturn={() => onModeChange('streetview')}
+            />
+          </Suspense>
+        )}
       </Animated.View>
 
       <Animated.View
-        pointerEvents={mode === 'earth' ? 'auto' : 'none'}
+        pointerEvents={isEarthActive ? 'auto' : 'none'}
         style={[styles.layer, { opacity: opacities.earth }]}
       >
-        <LiveHouseInspectorHero
-          coords={data?.coords}
-          address={data?.address?.formatted}
-          loading={loading}
-          onReturn={() => onModeChange('streetview')}
-        />
+        {isEarthActive && (
+          <Suspense fallback={<CesiumLazyFallback />}>
+            <LiveHouseInspectorHero
+              coords={data?.coords}
+              address={data?.address?.formatted}
+              loading={loading}
+              onReturn={() => onModeChange('streetview')}
+            />
+          </Suspense>
+        )}
       </Animated.View>
 
       <Animated.View
@@ -165,5 +194,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+  },
+  lazyFallback: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#0F0F12',
   },
 });

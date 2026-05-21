@@ -363,20 +363,21 @@ export function LiveHouseInspectorHero({ coords, address, loading, onReturn }: P
         // unmount-create-unmount pattern was leaking contexts and tripping
         // the browser's per-page WebGL ceiling (chrome caps at ~16).
         if (viewerRef.current) {
-          try {
-            viewerRef.current.destroy();
-          } catch {
-            /* swallow */
+          const priorViewer = viewerRef.current;
+          if (tilesetRef.current) {
+            try { priorViewer.scene.primitives.remove(tilesetRef.current); } catch { /* swallow */ }
+            tilesetRef.current = null;
           }
+          try { priorViewer.destroy(); } catch { /* swallow */ }
           viewerRef.current = null;
         }
 
-        // 3) Boot Viewer with the "premium" stack, retry with a stripped-down
-        //    config if WebGL initialization fails. Some GPUs / contexts can't
-        //    handle msaa=8 + resolutionScale=2 + preserveDrawingBuffer; we'd
-        //    rather render a non-AA scene than show the generic error overlay.
+        // 3) Boot Viewer with a SINGLE minimal config. Wave 18n: the prior
+        //    premium → fallback retry stack double-allocated WebGL contexts
+        //    and crashed Chrome with "Aw, Snap! Out of Memory" in production.
+        //    Robustness > polish: one attempt, low-power profile, no MSAA,
+        //    no super-sampling, no FXAA, no HDR, no preserveDrawingBuffer.
         let viewer: any;
-        let usedFallback = false;
         try {
           viewer = new Cesium.Viewer(containerRef.current, {
             baseLayerPicker: false,
@@ -389,66 +390,32 @@ export function LiveHouseInspectorHero({ coords, address, loading, onReturn }: P
             fullscreenButton: false,
             infoBox: false,
             selectionIndicator: false,
-            msaaSamples: 8, // Maxed to 8 for 4K crispness
-            contextOptions: { webgl: { alpha: false, antialias: true, preserveDrawingBuffer: true } },
-          } as unknown as ConstructorParameters<typeof Cesium.Viewer>[1]);
-        } catch (premiumErr) {
-          // eslint-disable-next-line no-console
-          console.warn('[LiveHouseInspectorHero] premium WebGL init failed, retrying minimal:', premiumErr);
-          if (cancelled) return;
-          viewer = new Cesium.Viewer(containerRef.current, {
-            baseLayerPicker: false,
-            geocoder: false,
-            homeButton: false,
-            sceneModePicker: false,
-            navigationHelpButton: false,
-            animation: false,
-            timeline: false,
-            fullscreenButton: false,
-            infoBox: false,
-            selectionIndicator: false,
             msaaSamples: 0,
-            contextOptions: { webgl: { alpha: false, antialias: false, preserveDrawingBuffer: false } },
+            contextOptions: {
+              webgl: {
+                alpha: false,
+                antialias: false,
+                preserveDrawingBuffer: false,
+                powerPreference: 'low-power',
+              },
+            },
           } as unknown as ConstructorParameters<typeof Cesium.Viewer>[1]);
-          usedFallback = true;
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('[LiveHouseInspectorHero] WebGL init failed:', err);
+          if (!cancelled) setStatus('error');
+          return;
         }
-
-        // Resolution scale: 2.0 only on the premium path. On fallback we run
-        // at native scale so we never re-trigger the same exhaustion that
-        // killed the premium attempt.
-        viewer.resolutionScale = usedFallback ? 1.0 : 2.0;
-
-        // Premium look knobs — skipped on fallback path.
-        if (!usedFallback) {
-          try {
-            viewer.scene.postProcessStages.fxaa.enabled = true;
-            viewer.scene.postProcessStages.fxaa.uniforms.edgeThreshold = 0.1;
-          } catch {
-            /* swallow */
-          }
-          try {
-            // ACES tonemapping is the default in modern Cesium; this just makes
-            // sure HDR is on so the photorealistic mesh exposes correctly.
-            (viewer.scene as unknown as { highDynamicRange: boolean }).highDynamicRange = true;
-          } catch {
-            /* swallow */
-          }
-        }
-        // Keep sky + atmosphere + globe visible. Photorealistic 3D Tiles
-        // for residential addresses (e.g. Forest Park GA) have noticeable
-        // mesh holes that the inverse-clip approach laid bare. Keeping
-        // context (street, trees, sky) hides the artifacts and reads as
-        // a proper aerial inspection.
+        viewer.resolutionScale = 1.0;
         viewer.scene.fog.enabled = false;
-        viewer.scene.fog.enabled = false;
-
         viewerRef.current = viewer;
 
         // 4) Load Google Photorealistic 3D Tiles.
         const apiKey = resolveBrowserMapsKey();
         if (!apiKey) {
           setStatus('error');
-          viewer.destroy();
+          try { viewer.destroy(); } catch { /* swallow */ }
+          viewerRef.current = null;
           return;
         }
         // Use Google's 2026 next-gen Photorealistic 3D Tiles dataset
@@ -463,21 +430,29 @@ export function LiveHouseInspectorHero({ coords, address, loading, onReturn }: P
         try {
           tileset = await Cesium.Cesium3DTileset.fromUrl(TILE_URL_NEXT_GEN, {
             showCreditsOnScreen: true,
-            // Lower = sharper. Default 16. 1 forces highest LOD download.
-            maximumScreenSpaceError: 1,
+            // Wave 18n: SSE=16 (Cesium default) caps memory at ~16× less than
+            // the prior SSE=1 ultra-LOD setting. Still ships a sharp residential
+            // mesh; SSE=1 was overkill and a major OOM contributor.
+            maximumScreenSpaceError: 16,
           });
         } catch (err) {
           // eslint-disable-next-line no-console
           console.warn('[LiveHouseInspectorHero] next-gen tiles failed, falling back:', err);
           tileset = await Cesium.Cesium3DTileset.fromUrl(TILE_URL_LEGACY, {
             showCreditsOnScreen: true,
-            maximumScreenSpaceError: 1,
+            maximumScreenSpaceError: 16,
           });
         }
         if (cancelled) {
-          viewer.destroy();
+          try { viewer.scene.primitives.remove(tileset); } catch { /* swallow */ }
+          try { viewer.destroy(); } catch { /* swallow */ }
+          viewerRef.current = null;
           return;
         }
+        // Wave 18n: explicit 384MB ceiling — Cesium default is unbounded
+        // growth bound only by SSE, which on slow networks pulled tiles
+        // until the tab exceeded Chrome's per-renderer budget.
+        try { tileset.maximumMemoryUsage = 384; } catch { /* swallow */ }
         viewer.scene.primitives.add(tileset);
         tilesetRef.current = tileset;
 
@@ -535,16 +510,18 @@ export function LiveHouseInspectorHero({ coords, address, loading, onReturn }: P
     return () => {
       cancelled = true;
       const viewer = viewerRef.current;
+      // Wave 18n: tileset destroyed BEFORE viewer. Reverse order leaves the
+      // tileset attached to a destroyed scene and leaks the WebGL context.
+      if (viewer && tilesetRef.current) {
+        try { viewer.scene.primitives.remove(tilesetRef.current); } catch { /* swallow */ }
+      }
+      tilesetRef.current = null;
       if (viewer) {
-        try {
-          viewer.destroy();
-        } catch {
-          /* swallow */
-        }
+        try { viewer.destroy(); } catch { /* swallow */ }
       }
       viewerRef.current = null;
-      tilesetRef.current = null;
       centerCartesianRef.current = null;
+      boundingSphereRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coords?.lat, coords?.lng, address]);
