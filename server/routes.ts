@@ -896,7 +896,13 @@ async function fetchCanonicalAnamAvaToolIds(anamApiKey: string): Promise<Canonic
         let score = 0;
         if (type.includes('server')) score += 2;
         if (subtype === 'knowledge' || subtype === 'rag') score += 4;
-        return { id, score, strict: type.includes('server') && (subtype === 'knowledge' || subtype === 'rag') };
+        // 2026-05-20: 'webhook' subtype is also strict — the Knowledge_Ava
+        // tool is now a SERVER_WEBHOOK proxy to /v1/tools/knowledge_search
+        // (Anam's native SERVER_RAG started 30ms-RST'ing every call). Same
+        // semantic guarantee: server-side knowledge bridge. See validator
+        // companion edit in validateAnamAvaToolset.
+        if (subtype === 'webhook') score += 3;
+        return { id, score, strict: type.includes('server') && (subtype === 'knowledge' || subtype === 'rag' || subtype === 'webhook') };
       })
       .filter((entry) => entry.id.length > 0)
       .sort((a, b) => b.score - a.score);
