@@ -55,7 +55,15 @@ export function EstimateTab(): React.ReactElement {
   const upload = useBlueprintUploadSnapshot();
   const { address } = useProjectAddress();
   const router = useRouter();
-  const projectId = upload.response?.project_id ?? null;
+  // Wave 18e fix: after Wave 11n's projectId-clobber repair, upload.response is
+  // deliberately null on the dedup path. Use the 3-way fallback PlansPhotosTab
+  // + TakeoffTab use so Estimate doesn't render its empty state when a project
+  // IS loaded.
+  const projectId =
+    upload.response?.ingest?.project_id ??
+    upload.response?.project_id ??
+    upload.projectId ??
+    null;
   const story = useBlueprintStory(projectId);
   const ui = useEstimateUi();
   const { setActiveCard } = estimateUiActions();

@@ -59,7 +59,15 @@ export function ScopeTab(): React.ReactElement {
   const { address } = useProjectAddress();
   const advancedMode = useAdvancedMode();
   const router = useRouter();
-  const projectId = upload.response?.project_id ?? null;
+  // Wave 18e fix: after Wave 11n's projectId-clobber repair, upload.response is
+  // deliberately null on the dedup path. The actual projectId lives at
+  // upload.projectId. Match the same 3-way fallback PlansPhotosTab uses so
+  // Scope doesn't render its empty state when a project IS loaded.
+  const projectId =
+    upload.response?.ingest?.project_id ??
+    upload.response?.project_id ??
+    upload.projectId ??
+    null;
   const story = useBlueprintStory(projectId);
   const actions = useBlueprintActions();
   const ui = useScopeUi();
