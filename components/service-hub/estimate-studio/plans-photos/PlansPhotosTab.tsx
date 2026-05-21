@@ -35,7 +35,7 @@ import {
   type PlansPhotosCardKey,
 } from '@/lib/plansPhotosUiStore';
 import { UploadDropZone } from './UploadDropZone';
-import { SheetThumbnailGrid } from './SheetThumbnailGrid';
+import { SheetCanvasView } from './SheetCanvasView';
 import { BlueprintFailureCard } from './BlueprintFailureCard';
 import { getDisciplineStyle } from './disciplines';
 
@@ -118,14 +118,14 @@ export function PlansPhotosTab(): React.ReactElement {
           />
         );
       case 'sheets':
+        // Wave 11o: replaced the 5-col SheetThumbnailGrid with a canvas-on-
+        // stage layout (big active sheet + bottom chip strip + pan/zoom).
+        // SheetThumbnailGrid stays exported for the revisions/disciplines
+        // detail cards that still want the grid format.
         return hasProject ? (
-          <SheetThumbnailGrid
+          <SheetCanvasView
             sheets={poll.sheets}
-            revisions={poll.revisions}
-            isLoading={poll.isFirstLoad}
-            stageProgress={poll.stageProgress}
-            sheetCount={liveSheetCount}
-            testID="plans-photos-thumbnail-grid"
+            testID="plans-photos-sheet-canvas"
           />
         ) : (
           <EmptyCardPlaceholder
