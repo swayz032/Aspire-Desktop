@@ -1,0 +1,711 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ProductCard — premium fields matches card structure snapshot 1`] = `
+<View
+  style={
+    [
+      {
+        "backgroundColor": "rgba(255,255,255,0.025)",
+        "borderColor": "rgba(255,255,255,0.06)",
+        "borderRadius": 12,
+        "borderWidth": 1,
+        "gap": 8,
+        "overflow": "hidden",
+        "padding": 10,
+      },
+      false,
+      false,
+      {},
+    ]
+  }
+  testID="materials-product-card-test-001"
+>
+  <View
+    style={
+      {
+        "aspectRatio": 1,
+        "backgroundColor": "rgba(255,255,255,0.04)",
+        "borderRadius": 10,
+        "overflow": "hidden",
+        "position": "relative",
+        "width": "100%",
+      }
+    }
+  >
+    <View
+      accessibilityElementsHidden={true}
+      importantForAccessibility="no-hide-descendants"
+      style={
+        {
+          "backgroundColor": "rgba(255,255,255,0.04)",
+          "bottom": 0,
+          "left": 0,
+          "position": "absolute",
+          "right": 0,
+          "top": 0,
+        }
+      }
+    />
+    <Image
+      accessibilityLabel="Behr Marquee 5-gal Matte Interior Paint"
+      onLoad={[Function]}
+      resizeMode="cover"
+      source={
+        {
+          "uri": "https://img/test.jpg",
+        }
+      }
+      style={
+        [
+          {
+            "height": "100%",
+            "width": "100%",
+          },
+          {
+            "opacity": 0,
+          },
+        ]
+      }
+    />
+    <View
+      style={
+        {
+          "flexDirection": "row",
+          "gap": 4,
+          "justifyContent": "space-between",
+          "left": 6,
+          "position": "absolute",
+          "right": 6,
+          "top": 6,
+        }
+      }
+    >
+      <View
+        style={
+          [
+            {
+              "alignItems": "center",
+              "backgroundColor": "rgba(8,8,12,0.78)",
+              "borderColor": "rgba(255,255,255,0.10)",
+              "borderRadius": 5,
+              "borderWidth": 1,
+              "flexDirection": "row",
+              "gap": 4,
+              "paddingHorizontal": 6,
+              "paddingVertical": 3,
+            },
+            {
+              "backgroundColor": "rgba(52,199,89,0.18)",
+              "borderColor": "rgba(52,199,89,0.40)",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "backgroundColor": "rgba(255,255,255,0.50)",
+                "borderRadius": 3,
+                "height": 5,
+                "width": 5,
+              },
+              {
+                "backgroundColor": "#34c759",
+              },
+            ]
+          }
+        />
+        <Text
+          style={
+            [
+              {
+                "color": "rgba(255,255,255,0.85)",
+                "fontSize": 9,
+                "fontWeight": "700",
+                "letterSpacing": 0.6,
+              },
+              {
+                "color": "#34c759",
+              },
+            ]
+          }
+          testID="materials-stock-chip-test-001"
+        >
+          IN STOCK
+        </Text>
+      </View>
+      <View
+        style={
+          {
+            "alignItems": "center",
+            "backgroundColor": "rgba(8,8,12,0.78)",
+            "borderColor": "rgba(255,255,255,0.10)",
+            "borderRadius": 5,
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "gap": 4,
+            "paddingHorizontal": 6,
+            "paddingVertical": 3,
+          }
+        }
+      >
+        <Text
+          allowFontScaling={false}
+          selectable={false}
+          style={
+            [
+              {
+                "color": "rgba(255,255,255,0.75)",
+                "fontSize": 9,
+              },
+              undefined,
+              {
+                "fontFamily": "ionicons",
+                "fontStyle": "normal",
+                "fontWeight": "normal",
+              },
+              {},
+            ]
+          }
+        >
+          
+        </Text>
+        <Text
+          style={
+            {
+              "color": "rgba(255,255,255,0.85)",
+              "fontSize": 9,
+              "fontWeight": "700",
+              "letterSpacing": 0.6,
+            }
+          }
+          testID="materials-drive-chip-test-001"
+        >
+          18 MIN
+        </Text>
+      </View>
+    </View>
+  </View>
+  <View
+    style={
+      {
+        "flexDirection": "row",
+        "flexWrap": "wrap",
+        "gap": 4,
+        "marginTop": 2,
+      }
+    }
+  >
+    <View
+      style={
+        {
+          "backgroundColor": "rgba(251,191,36,0.06)",
+          "borderColor": "rgba(251,191,36,0.18)",
+          "borderRadius": 4,
+          "borderWidth": 1,
+          "paddingHorizontal": 6,
+          "paddingVertical": 2,
+        }
+      }
+    >
+      <Text
+        numberOfLines={1}
+        style={
+          {
+            "color": "rgba(251,191,36,0.85)",
+            "fontSize": 8.5,
+            "fontWeight": "700",
+            "letterSpacing": 0.5,
+          }
+        }
+      >
+        Free delivery
+      </Text>
+    </View>
+    <View
+      style={
+        {
+          "backgroundColor": "rgba(251,191,36,0.06)",
+          "borderColor": "rgba(251,191,36,0.18)",
+          "borderRadius": 4,
+          "borderWidth": 1,
+          "paddingHorizontal": 6,
+          "paddingVertical": 2,
+        }
+      }
+    >
+      <Text
+        numberOfLines={1}
+        style={
+          {
+            "color": "rgba(251,191,36,0.85)",
+            "fontSize": 8.5,
+            "fontWeight": "700",
+            "letterSpacing": 0.5,
+          }
+        }
+      >
+        Limited stock
+      </Text>
+    </View>
+  </View>
+  <View
+    style={
+      {
+        "gap": 3,
+        "minHeight": 80,
+      }
+    }
+  >
+    <Text
+      numberOfLines={1}
+      style={
+        {
+          "color": "rgba(255,255,255,0.50)",
+          "fontSize": 9,
+          "fontWeight": "700",
+          "letterSpacing": 1,
+          "textTransform": "uppercase",
+        }
+      }
+    >
+      Behr
+    </Text>
+    <Text
+      numberOfLines={2}
+      style={
+        {
+          "color": "rgba(255,255,255,0.92)",
+          "fontSize": 12,
+          "fontWeight": "600",
+          "letterSpacing": -0.1,
+          "lineHeight": 15,
+        }
+      }
+    >
+      Marquee 5-gal Matte Interior Paint
+    </Text>
+    <View
+      style={
+        {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "gap": 3,
+          "marginTop": 2,
+        }
+      }
+    >
+      <Text
+        allowFontScaling={false}
+        selectable={false}
+        style={
+          [
+            {
+              "color": "#fbbf24",
+              "fontSize": 10,
+            },
+            undefined,
+            {
+              "fontFamily": "ionicons",
+              "fontStyle": "normal",
+              "fontWeight": "normal",
+            },
+            {},
+          ]
+        }
+      >
+        
+      </Text>
+      <Text
+        style={
+          {
+            "color": "rgba(255,255,255,0.78)",
+            "fontSize": 10.5,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "600",
+          }
+        }
+      >
+        4.7
+      </Text>
+      <Text
+        style={
+          {
+            "color": "rgba(255,255,255,0.45)",
+            "fontSize": 10,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+          }
+        }
+      >
+        · 
+        1.8k
+      </Text>
+    </View>
+    <View
+      style={
+        {
+          "alignItems": "baseline",
+          "flexDirection": "row",
+          "flexWrap": "wrap",
+          "gap": 4,
+          "marginTop": 2,
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#fbbf24",
+            "fontSize": 17,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "700",
+            "letterSpacing": -0.3,
+          }
+        }
+      >
+        $218.00
+      </Text>
+      <Text
+        style={
+          {
+            "color": "rgba(255,255,255,0.50)",
+            "fontSize": 10,
+          }
+        }
+      >
+        / 
+        pail
+      </Text>
+      <View
+        style={
+          {
+            "backgroundColor": "rgba(239,68,68,0.14)",
+            "borderColor": "rgba(239,68,68,0.32)",
+            "borderRadius": 4,
+            "borderWidth": 1,
+            "paddingHorizontal": 5,
+            "paddingVertical": 2,
+          }
+        }
+      >
+        <Text
+          style={
+            {
+              "color": "#ef4444",
+              "fontSize": 8,
+              "fontWeight": "800",
+              "letterSpacing": 0.6,
+            }
+          }
+        >
+          SALE
+        </Text>
+      </View>
+    </View>
+    <Text
+      numberOfLines={1}
+      style={
+        {
+          "color": "rgba(255,255,255,0.52)",
+          "fontSize": 9.5,
+          "letterSpacing": 0.1,
+          "marginTop": 1,
+        }
+      }
+      testID="materials-avail-test-001"
+    >
+      Pickup today
+    </Text>
+    <Text
+      numberOfLines={1}
+      style={
+        {
+          "color": "rgba(255,255,255,0.40)",
+          "fontSize": 9,
+          "letterSpacing": 0.2,
+          "marginTop": 1,
+        }
+      }
+    >
+      Home Depot Forest Park · 4790 Jonesboro Rd, Forest Park, GA
+    </Text>
+    <View
+      style={
+        {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "gap": 4,
+          "marginTop": 2,
+        }
+      }
+    >
+      <Text
+        allowFontScaling={false}
+        selectable={false}
+        style={
+          [
+            {
+              "color": "rgba(255,255,255,0.55)",
+              "fontSize": 10,
+            },
+            undefined,
+            {
+              "fontFamily": "ionicons",
+              "fontStyle": "normal",
+              "fontWeight": "normal",
+            },
+            {},
+          ]
+        }
+      >
+        
+      </Text>
+      <Text
+        style={
+          {
+            "color": "rgba(255,255,255,0.48)",
+            "fontSize": 9,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "letterSpacing": 0.3,
+          }
+        }
+      >
+        Aisle 24 · Bay 3
+      </Text>
+    </View>
+    <Text
+      numberOfLines={1}
+      style={
+        {
+          "color": "rgba(251,191,36,0.70)",
+          "fontSize": 9,
+          "fontWeight": "600",
+          "letterSpacing": 0.2,
+          "marginTop": 2,
+        }
+      }
+      testID="materials-variants-test-001"
+    >
+      + 
+      3
+       
+      colors
+    </Text>
+    <Text
+      numberOfLines={1}
+      style={
+        {
+          "color": "rgba(255,255,255,0.28)",
+          "fontSize": 8.5,
+          "fontVariant": [
+            "tabular-nums",
+          ],
+          "letterSpacing": 0.2,
+          "marginTop": 2,
+        }
+      }
+      testID="materials-sku-test-001"
+    >
+      SKU 305832 · Model #X-100
+    </Text>
+  </View>
+  <View
+    style={
+      {
+        "flexDirection": "row",
+        "gap": 6,
+        "marginTop": 2,
+      }
+    }
+  >
+    <View
+      accessibilityLabel="Add Marquee 5-gal Matte Interior Paint to bundle"
+      accessibilityRole="button"
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": undefined,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        [
+          {
+            "alignItems": "center",
+            "backgroundColor": "rgba(251,191,36,0.12)",
+            "borderColor": "rgba(251,191,36,0.34)",
+            "borderRadius": 7,
+            "borderWidth": 1,
+            "flex": 1,
+            "flexDirection": "row",
+            "gap": 5,
+            "justifyContent": "center",
+            "minHeight": 36,
+            "paddingVertical": 8,
+          },
+          false,
+          undefined,
+          false,
+          {},
+        ]
+      }
+      testID="materials-add-btn-test-001"
+    >
+      <Text
+        allowFontScaling={false}
+        selectable={false}
+        style={
+          [
+            {
+              "color": "#fbbf24",
+              "fontSize": 13,
+            },
+            undefined,
+            {
+              "fontFamily": "ionicons",
+              "fontStyle": "normal",
+              "fontWeight": "normal",
+            },
+            {},
+          ]
+        }
+      >
+        
+      </Text>
+      <Text
+        style={
+          [
+            {
+              "color": "#fbbf24",
+              "fontSize": 10,
+              "fontWeight": "700",
+              "letterSpacing": 0.7,
+            },
+            false,
+          ]
+        }
+      >
+        ADD
+      </Text>
+    </View>
+    <View
+      accessibilityLabel="Compare Marquee 5-gal Matte Interior Paint across sellers"
+      accessibilityRole="button"
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": undefined,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        [
+          {
+            "alignItems": "center",
+            "backgroundColor": "rgba(255,255,255,0.04)",
+            "borderColor": "rgba(255,255,255,0.10)",
+            "borderRadius": 7,
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "gap": 5,
+            "minHeight": 36,
+            "paddingHorizontal": 10,
+            "paddingVertical": 8,
+          },
+          undefined,
+          false,
+          {},
+        ]
+      }
+      testID="materials-compare-btn-test-001"
+    >
+      <Text
+        allowFontScaling={false}
+        selectable={false}
+        style={
+          [
+            {
+              "color": "rgba(255,255,255,0.78)",
+              "fontSize": 12,
+            },
+            undefined,
+            {
+              "fontFamily": "ionicons",
+              "fontStyle": "normal",
+              "fontWeight": "normal",
+            },
+            {},
+          ]
+        }
+      >
+        
+      </Text>
+      <Text
+        style={
+          {
+            "color": "rgba(255,255,255,0.78)",
+            "fontSize": 10,
+            "fontWeight": "700",
+            "letterSpacing": 0.7,
+          }
+        }
+      >
+        COMPARE
+      </Text>
+    </View>
+  </View>
+</View>
+`;

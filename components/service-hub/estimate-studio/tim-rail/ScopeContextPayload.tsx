@@ -21,10 +21,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useBlueprintUploadSnapshot } from '@/lib/blueprintUploadStore';
 import { useBlueprintStory } from '@/hooks/useBlueprintStory';
+import { useBlueprintProjectPoll } from '@/hooks/useBlueprintProjectPoll';
+import {
+  plansPhotosUiActions,
+  type PlansPhotosCardKey,
+} from '@/lib/plansPhotosUiStore';
+import { scopeUiActions, type ScopeCardKey } from '@/lib/scopeUiStore';
 import { ContextTabPayload, type ContextSection } from '../shell/ContextTabPayload';
 import { UploadProgressInline } from '../plans-photos/UploadProgressInline';
-import type { TruthClass } from '@/lib/api/blueprintsApi';
+import type { TruthClass, BlueprintSheetRead } from '@/lib/api/blueprintsApi';
 import { getTruthStyle } from '../scope/TruthBadge';
+import { getDisciplineStyle } from '../plans-photos/disciplines';
 
 interface Props {
   projectId?: string | null;
@@ -46,6 +53,32 @@ export function ScopeContextPayload({ projectId }: Props): React.ReactElement {
   const snap = useBlueprintUploadSnapshot();
   const effectiveProjectId = projectId ?? snap.response?.project_id ?? null;
   const story = useBlueprintStory(effectiveProjectId);
+  const poll = useBlueprintProjectPoll(effectiveProjectId);
+  const { setActiveCard: setScopeCard } = scopeUiActions();
+  const { setActiveCard: setPlansCard } = plansPhotosUiActions();
+
+  // Top sheets — best 3-5 by sheet_number ordering (proxy for symbol density
+  // until backend exposes per-sheet symbol counts on the read endpoint).
+  const topSheets: ReadonlyArray<BlueprintSheetRead> = React.useMemo(() => {
+    const ordered = poll.sheets
+      .slice()
+      .filter((s) => !s.supersedes_id || true) // keep all leaves; backend will rank later
+      .sort((a, b) => {
+        const na = parseInt(a.sheet_number ?? '', 10);
+        const nb = parseInt(b.sheet_number ?? '', 10);
+        if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+        return (a.sheet_number ?? '').localeCompare(b.sheet_number ?? '');
+      });
+    return ordered.slice(0, 5);
+  }, [poll.sheets]);
+
+  const jumpToSheet = (): void => {
+    setPlansCard('sheets' as PlansPhotosCardKey);
+    router.push('/service-hub/estimate-studio/plans-photos');
+  };
+  const jumpScope = (k: ScopeCardKey): void => {
+    setScopeCard(k);
+  };
 
   const confidencePct = story.story
     ? Math.round(story.story.mean_confidence * 100)
@@ -100,7 +133,17 @@ export function ScopeContextPayload({ projectId }: Props): React.ReactElement {
           );
         }
         return (
-          <View style={styles.truthBar} testID="scope-context-truth-bar">
+          <Pressable
+            onPress={() => jumpScope('truth')}
+            accessibilityRole="button"
+            accessibilityLabel="Jump to Truth Distribution chart"
+            style={({ hovered, pressed }: { hovered?: boolean; pressed: boolean }) => [
+              styles.truthBar,
+              hovered && styles.truthBarHover,
+              pressed && styles.truthBarPressed,
+            ]}
+            testID="scope-context-truth-bar"
+          >
             <View style={styles.truthBarTrack}>
               {truthEntries.map((entry) => {
                 const pct = (entry.count / truthTotal) * 100;
@@ -133,7 +176,7 @@ export function ScopeContextPayload({ projectId }: Props): React.ReactElement {
                 );
               })}
             </View>
-          </View>
+          </Pressable>
         );
       },
     },
@@ -141,7 +184,17 @@ export function ScopeContextPayload({ projectId }: Props): React.ReactElement {
       key: 'missing-inputs',
       title: 'Missing Inputs',
       render: () => (
-        <View style={styles.missingRow} testID="scope-context-missing">
+        <Pressable
+          onPress={() => jumpScope('missing_inputs')}
+          accessibilityRole="button"
+          accessibilityLabel={`Jump to Missing Inputs (${openMissing} open)`}
+          style={({ hovered, pressed }: { hovered?: boolean; pressed: boolean }) => [
+            styles.missingRow,
+            hovered && styles.missingRowHover,
+            pressed && styles.missingRowPressed,
+          ]}
+          testID="scope-context-missing"
+        >
           <View style={styles.missingStat}>
             <Text style={styles.missingValue}>{openMissing}</Text>
             <Text style={styles.missingLabel}>open</Text>
@@ -149,10 +202,79 @@ export function ScopeContextPayload({ projectId }: Props): React.ReactElement {
           <Text style={styles.missingHint}>
             {openMissing === 0
               ? 'All known-unknowns resolved.'
-              : 'Open the Missing Inputs chip to confirm in field.'}
+              : 'Tap to jump to Missing Inputs and confirm in field.'}
           </Text>
-        </View>
+        </Pressable>
       ),
+    },
+    {
+      key: 'jump-to-sheet',
+      title: 'Jump to Sheet',
+      render: () => {
+        if (topSheets.length === 0) {
+          return (
+            <Text style={styles.empty}>
+              No sheets indexed yet — upload a plan set.
+            </Text>
+          );
+        }
+        return (
+          <View style={styles.sheetWrap} testID="scope-context-sheet-jumps">
+            {topSheets.map((sheet) => {
+              const ds = sheet.discipline
+                ? getDisciplineStyle(sheet.discipline)
+                : null;
+              const label =
+                sheet.sheet_code ?? sheet.sheet_number ?? 'Sheet';
+              const title =
+                sheet.sheet_title ??
+                (sheet.discipline ? `${sheet.discipline} sheet` : null);
+              return (
+                <Pressable
+                  key={sheet.id}
+                  onPress={jumpToSheet}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open sheet ${label} in Plans & Photos`}
+                  style={({ hovered, pressed }: { hovered?: boolean; pressed: boolean }) => [
+                    styles.sheetBtn,
+                    hovered && styles.sheetBtnHover,
+                    pressed && styles.sheetBtnPressed,
+                  ]}
+                  testID={`scope-context-sheet-${sheet.id}`}
+                >
+                  {ds ? (
+                    <View
+                      style={[
+                        styles.sheetCode,
+                        { backgroundColor: ds.fg + '22' },
+                      ]}
+                    >
+                      <Text style={[styles.sheetCodeText, { color: ds.fg }]}>
+                        {ds.code}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <View style={styles.sheetBody}>
+                    <Text style={styles.sheetLabel} numberOfLines={1}>
+                      {label}
+                    </Text>
+                    {title ? (
+                      <Text style={styles.sheetMeta} numberOfLines={1}>
+                        {title}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={12}
+                    color="rgba(255,255,255,0.55)"
+                  />
+                </Pressable>
+              );
+            })}
+          </View>
+        );
+      },
     },
     {
       key: 'linked-destinations',
@@ -240,7 +362,18 @@ const styles = StyleSheet.create({
   },
   truthBar: {
     gap: 8,
-    paddingHorizontal: 2,
+    paddingHorizontal: 4,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  truthBarHover: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  truthBarPressed: {
+    opacity: 0.82,
   },
   truthBarTrack: {
     flexDirection: 'row',
@@ -274,7 +407,67 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingHorizontal: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  missingRowHover: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  missingRowPressed: {
+    opacity: 0.82,
+  },
+  sheetWrap: {
+    gap: 5,
+    paddingHorizontal: 2,
+  },
+  sheetBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    borderRadius: 7,
+    backgroundColor: 'rgba(255,255,255,0.025)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  sheetBtnHover: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  sheetBtnPressed: {
+    opacity: 0.82,
+  },
+  sheetCode: {
+    minWidth: 28,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignItems: 'center',
+  },
+  sheetCodeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
+  sheetBody: {
+    flex: 1,
+    gap: 1,
+  },
+  sheetLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.88)',
+    letterSpacing: -0.05,
+  },
+  sheetMeta: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.50)',
+    letterSpacing: -0.05,
   },
   missingStat: {
     alignItems: 'center',

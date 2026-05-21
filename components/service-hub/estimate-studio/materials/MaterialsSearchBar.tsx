@@ -70,6 +70,7 @@ const WEB_TRANSITION: WebViewStyle =
 const MODE_SEGMENTS: { value: MaterialsMode; label: string; testID: string }[] = [
   { value: 'tool', label: 'Tool', testID: 'materials-mode-toggle-tool' },
   { value: 'supplier', label: 'Supplier', testID: 'materials-mode-toggle-supplier' },
+  { value: 'blueprint', label: 'Blueprint', testID: 'materials-mode-toggle-blueprint' },
 ];
 
 function InlineModeToggle() {

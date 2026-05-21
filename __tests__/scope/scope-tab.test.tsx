@@ -278,10 +278,14 @@ jest.mock('@/hooks/useBlueprintActions', () => {
 
 import { ScopeTab } from '@/components/service-hub/estimate-studio/scope/ScopeTab';
 import { TruthBadge } from '@/components/service-hub/estimate-studio/scope/TruthBadge';
+import { scopeUiActions } from '@/lib/scopeUiStore';
 
 beforeEach(() => {
   mockPush.mockClear();
   mockResolveMissingInput.mockClear();
+  // Wave 12 — scopeUiStore is module-level, so tests must reset between
+  // cases or the previously-selected chip leaks across describe blocks.
+  scopeUiActions().reset();
 });
 
 describe('Scope Tab — Wave 7 shell', () => {
@@ -327,6 +331,12 @@ describe('Scope Tab — Wave 7 shell', () => {
     fireEvent.press(getByTestId('bottom-chip-tariff'));
     await waitFor(() => expect(getByTestId('tariff-exposure-card')).toBeTruthy());
 
+    // Click "Truth Distribution" chip → TruthDistributionChart appears.
+    fireEvent.press(getByTestId('bottom-chip-truth'));
+    await waitFor(() =>
+      expect(getByTestId('truth-distribution-chart')).toBeTruthy(),
+    );
+
     // Story panel should no longer be the visible card (CanvasCardSwitcher
     // mounts only the active card).
     expect(queryByTestId('story-panel')).toBeNull();
@@ -338,7 +348,7 @@ describe('Scope Tab — Wave 7 shell', () => {
     const { getByTestId } = render(<ScopeTab />);
 
     // Switch to Missing Inputs chip (await the 200ms cross-fade).
-    fireEvent.press(getByTestId('bottom-chip-missing'));
+    fireEvent.press(getByTestId('bottom-chip-missing_inputs'));
     await waitFor(() => expect(getByTestId('missing-inputs-list')).toBeTruthy());
 
     // Open the confirm form.
@@ -409,5 +419,71 @@ describe('TruthBadge — Wave 7 variant rendering', () => {
       <TruthBadge truth="observed" confidence={0.91} />,
     );
     expect(queryByText(/0\.91/)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Wave 12 — scopeUiStore + Truth Distribution chip.
+// ---------------------------------------------------------------------------
+
+describe('Scope Tab — Wave 12 store + truth chip', () => {
+  it('Missing Inputs badge counter reflects the number of open inputs', () => {
+    mockUploadSnapState = mockUploadSnap;
+    mockStoryState = makeStoryState({
+      missingInputs: [
+        { input_id: 'mi_1', description: 'A', status: 'open' },
+        { input_id: 'mi_2', description: 'B', status: 'open' },
+        { input_id: 'mi_3', description: 'C', status: 'resolved' },
+      ],
+    });
+    const { getByTestId } = render(<ScopeTab />);
+    const chip = getByTestId('bottom-chip-missing_inputs');
+    // The chip's accessibilityLabel includes the open count via the stat.
+    expect(String(chip.props.accessibilityLabel)).toMatch(/2 open/);
+  });
+
+  it('Truth Distribution chip renders the chart card', async () => {
+    mockUploadSnapState = mockUploadSnap;
+    mockStoryState = makeStoryState({});
+    const { getByTestId } = render(<ScopeTab />);
+
+    fireEvent.press(getByTestId('bottom-chip-truth'));
+    await waitFor(() =>
+      expect(getByTestId('truth-distribution-chart')).toBeTruthy(),
+    );
+    // Hero confidence value should render the mean_confidence-derived percent.
+    expect(getByTestId('truth-chart-confirmed-share')).toBeTruthy();
+    expect(getByTestId('truth-chart-bar-card')).toBeTruthy();
+  });
+
+  it('store-driven jumps swap the canvas (setActiveCard from outside ScopeTab)', async () => {
+    mockUploadSnapState = mockUploadSnap;
+    mockStoryState = makeStoryState({});
+    const { getByTestId } = render(<ScopeTab />);
+
+    // External caller (e.g. Tim Rail Context "Jump to Truth") drives the store.
+    act(() => {
+      scopeUiActions().setActiveCard('truth');
+    });
+
+    await waitFor(() =>
+      expect(getByTestId('truth-distribution-chart')).toBeTruthy(),
+    );
+  });
+
+  it('Truth chart shows empty state when no facts have streamed', () => {
+    mockUploadSnapState = mockUploadSnap;
+    mockStoryState = makeStoryState({
+      story: null,
+      assemblies: [],
+      materials: [],
+      missingInputs: [],
+    });
+    // Pre-select the truth chip via the store so the empty branch renders.
+    act(() => {
+      scopeUiActions().setActiveCard('truth');
+    });
+    const { getByTestId } = render(<ScopeTab />);
+    expect(getByTestId('truth-distribution-empty')).toBeTruthy();
   });
 });

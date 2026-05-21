@@ -1,13 +1,13 @@
+/**
+ * Estimate route — Wave 15.
+ *
+ * Mounts the EstimateTab orchestrator. The Tim Rail Context tab is mounted
+ * separately by the Estimate Studio shell (TimRailContextTab.tsx) and
+ * routes-detects this path to render EstimateContextPayload.
+ */
 import React from 'react';
-import { TabPlaceholder } from '@/components/service-hub/estimate-studio/TabPlaceholder';
+import { EstimateTab } from '@/components/service-hub/estimate-studio/estimate/EstimateTab';
 
-export default function EstimateTab() {
-  return (
-    <TabPlaceholder
-      tabName="Estimate"
-      phaseN={9}
-      icon="calculator-outline"
-      description="Base / Recommended / Premium options. Money stack. Quinn quote / Clara proposal handoff. LAST — when upstream tabs feed it. Phase 9."
-    />
-  );
+export default function EstimateRoute(): React.ReactElement {
+  return <EstimateTab />;
 }

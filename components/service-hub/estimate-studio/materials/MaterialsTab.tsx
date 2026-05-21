@@ -37,6 +37,8 @@ import { useMaterialOverride } from '@/hooks/useMaterialOverride';
 import type { TakeoffMaterial } from '@/lib/api/blueprintsApi';
 import { FromBlueprintCard } from './FromBlueprintCard';
 import { MaterialOverridePanel } from './MaterialOverridePanel';
+import { BlueprintModeFeed } from './BlueprintModeFeed';
+import type { BlueprintTileMaterial } from './BlueprintModeTile';
 
 import { MaterialsEmptyState } from './MaterialsEmptyState';
 import { ProductGrid } from './ProductGrid';
@@ -53,9 +55,100 @@ import { MaterialsRouteHero } from './MaterialsRouteHero';
  * keeps the React hook count stable across re-renders.
  */
 export function MaterialsTab() {
-  const { canvasView } = useMaterialsSearchContext();
+  const { canvasView, mode } = useMaterialsSearchContext();
   if (canvasView === 'route') return <MaterialsRouteHero />;
+  if (mode === 'blueprint') return <MaterialsTabBlueprint />;
   return <MaterialsTabResults />;
+}
+
+/**
+ * Wave 14 — Blueprint mode feed. Renders Drew's curated picks as Tool-mode
+ * tiles (shape preserved verbatim, additive Blueprint badges only). The
+ * surrounding chrome (search bar, mode toggle, bundle bar) is identical to
+ * the other modes — only the FEED swaps.
+ */
+function MaterialsTabBlueprint() {
+  const { bundle: bundleApi } = useMaterialsSearchContext();
+  const {
+    bundle,
+    addToBundle,
+    clearBundle,
+    bundleSubtotal,
+    bundleSupplierCount,
+    bundleItemCount,
+    pushToEstimate,
+  } = bundleApi;
+
+  const bundleMaterialIds = useMemo(
+    () => new Set(bundle.map((b) => b.product.id)),
+    [bundle],
+  );
+  const hasSupplierLines = useMemo(
+    () => bundle.some((b) => b.kind === 'supplier_line'),
+    [bundle],
+  );
+
+  const handleAdd = useCallback(
+    (m: BlueprintTileMaterial) => {
+      // Project the Drew material into the existing Product shape so it
+      // flows through the existing bundle hook without changing its contract.
+      // Tool-mode tiles add Product; Blueprint tiles use the same surface
+      // for first-class bundle persistence.
+      const product = {
+        id: m.material_id,
+        title: m.line_item,
+        brand: (m.brand ?? m.supplier_name ?? 'Drew pick') as string,
+        imageUrl: m.image_url ?? '',
+        price: typeof m.unit_price === 'number' ? m.unit_price : 0,
+        unit: m.unit,
+        rating: 0,
+        reviewCount: 0,
+        source: 'specialty' as const,
+        fetchedAt: new Date().toISOString(),
+        store: {
+          id: m.supplier_name ?? 'blueprint',
+          name: m.supplier_name ?? 'Drew pick',
+          driveMinutes: 0,
+          inStock: true,
+        },
+      };
+      addToBundle(product, Math.max(1, Math.round(m.quantity || 1)));
+    },
+    [addToBundle],
+  );
+
+  const handlePushToEstimate = useCallback(() => {
+    void pushToEstimate().catch((err) => {
+      if (__DEV__) console.warn('[materials/blueprint] pushToEstimate failed', err);
+    });
+  }, [pushToEstimate]);
+
+  const handleDraftRfq = useCallback(() => {
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.info('[materials/blueprint] draftRfq (stub)');
+    }
+  }, []);
+
+  return (
+    <View style={styles.tab} testID="materials-tab-blueprint">
+      <View style={styles.blueprintBody}>
+        <BlueprintModeFeed
+          onAddToBundle={handleAdd}
+          bundleMaterialIds={bundleMaterialIds}
+        />
+      </View>
+      <BundleSummaryBar
+        itemCount={bundleItemCount}
+        supplierCount={bundleSupplierCount}
+        subtotal={bundleSubtotal}
+        onPushToEstimate={handlePushToEstimate}
+        onDraftRfq={handleDraftRfq}
+        onClear={clearBundle}
+        hasSupplierLines={hasSupplierLines}
+      />
+    </View>
+  );
 }
 
 function MaterialsTabResults() {
@@ -486,6 +579,10 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
     gap: 12,
+  },
+  blueprintBody: {
+    flex: 1,
+    paddingBottom: 96, // leave room for sticky BundleSummaryBar
   },
   scroll: {
     flex: 1,

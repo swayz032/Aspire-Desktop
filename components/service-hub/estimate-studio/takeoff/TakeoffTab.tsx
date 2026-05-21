@@ -1,37 +1,54 @@
-/**
- * TakeoffTab — Wave 8 (Commercial Blueprint mode).
+﻿/**
+ * TakeoffTab â€” Wave 13 (Commercial Blueprint mode, canvas-on-stage).
  *
  * Owner of the Takeoff UX. Layout:
  *
- *   [ModeSwitcher: Commercial · Residential · Smart Room (Phase 8) · Roofing (Phase 8)]
- *   [CanvasCardSwitcher hosts ONE focused card]
- *   [BottomChipStrip: Sheet Viewer · Assemblies · Quantities · Symbol Legend]
+ *   [ModeSwitcher: Commercial Â· Residential Â· Smart Room (soon) Â· Roofing (soon)]
+ *   [Canvas â€” switches on activeCard via store]
+ *   [BottomChipStrip: Sheet Viewer Â· Assemblies Â· Quantities Â· Symbol Legend]
  *
- * Empty state (no project yet): a centered hint pointing users back to
- * Plans & Photos. Once a project is uploaded the shell switches into
- * Commercial mode by default with the Sheet Viewer card active.
+ * Wave 13 deltas vs Wave 8:
+ *   - UI state moved to `takeoffUiStore` so the Tim Rail Context tab can
+ *     observe (and Wave 14 Controls can drive) without prop-drilling.
+ *   - Sheet Viewer card uses the new `SheetViewerWithOverlay` (big sheet
+ *     on stage + bottom chip strip + slide-in side panel) â€” replaces the
+ *     left-thumbnail-strip layout from Wave 8.
+ *   - Quantities card swaps to `QuantityTableEditable` (inline-edit cells,
+ *     truth dropdown, Save-all).
+ *   - Assemblies card swaps to `AssemblyTableV2` (adds tariff column +
+ *     row-click highlights source sheets on the bottom chip strip).
+ *   - Legend card swaps to `SymbolLegendPanel` (12-discipline visual key
+ *     with per-discipline show/hide toggle wired to the store).
  *
- * Wave 2.7 degradation: if symbol/assembly/material GET endpoints return
- * 404/501, the per-card body renders a "Wave 2.7 backend pending" hint
- * and the rest of the UX is fully exercisable.
+ * Backward compatibility: the original Wave 8 components (SheetViewer,
+ * AssemblyTable, QuantityTable, SymbolLegend) remain on disk and continue
+ * to power Residential mode + tests that target older selectors.
  *
- * Law #7: pure render layer. Hooks (`useTakeoff*`) own all fetch logic.
+ * Aspire Law #7: render layer only. Hooks own all fetch logic.
  */
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Link } from 'expo-router';
 import { useBlueprintUploadSnapshot } from '@/lib/blueprintUploadStore';
+import { useBlueprintProjectPoll } from '@/hooks/useBlueprintProjectPoll';
 import { useTakeoffSymbols } from '@/hooks/useTakeoffSymbols';
 import { useTakeoffAssemblies } from '@/hooks/useTakeoffAssemblies';
 import { useTakeoffMaterials } from '@/hooks/useTakeoffMaterials';
 import { usePushToMaterials } from '@/hooks/usePushToMaterials';
 import type {
   BlueprintSheet,
+  BlueprintSheetRead,
   TakeoffSymbol,
 } from '@/lib/api/blueprintsApi';
+import {
+  takeoffUiActions,
+  useTakeoffUi,
+  type TakeoffCard,
+  type TakeoffMode,
+} from '@/lib/takeoffUiStore';
 import { BottomChipStrip, type BottomChip } from '../shell/BottomChipStrip';
-import { ModeSwitcher, type TakeoffMode } from './ModeSwitcher';
+import { ModeSwitcher, type TakeoffMode as LegacyMode } from './ModeSwitcher';
 import { CommercialBlueprintMode } from './CommercialBlueprintMode';
 import { ResidentialBlueprintMode } from './ResidentialBlueprintMode';
 import type { TakeoffCardKey, TakeoffSharedState } from './takeoffShared';
@@ -39,48 +56,114 @@ import type { TakeoffCardKey, TakeoffSharedState } from './takeoffShared';
 const WAVE_27_NOTE =
   'Symbol overlay + assemblies require Wave 2.7 backend reads (PR pending merge).';
 
+// ---------------------------------------------------------------------------
+// Card-key adapter â€” store uses snake_case ('sheet_viewer'), the shared
+// TakeoffSharedState uses kebab ('sheet-viewer'). Map between them so
+// existing tests + Residential mode keep working without churn.
+// ---------------------------------------------------------------------------
+
+const CARD_TO_LEGACY: Record<TakeoffCard, TakeoffCardKey> = {
+  sheet_viewer: 'sheet-viewer',
+  assemblies: 'assemblies',
+  quantities: 'quantities',
+  symbol_legend: 'legend',
+};
+const LEGACY_TO_CARD: Record<TakeoffCardKey, TakeoffCard> = {
+  'sheet-viewer': 'sheet_viewer',
+  assemblies: 'assemblies',
+  quantities: 'quantities',
+  legend: 'symbol_legend',
+};
+
+// Mode adapter â€” store uses snake_case, legacy ModeSwitcher uses kebab.
+const MODE_TO_LEGACY: Record<TakeoffMode, LegacyMode> = {
+  commercial: 'commercial',
+  residential: 'residential',
+  smart_room: 'smart-room',
+  roofing: 'roofing',
+};
+const LEGACY_TO_MODE: Record<LegacyMode, TakeoffMode> = {
+  commercial: 'commercial',
+  residential: 'residential',
+  'smart-room': 'smart_room',
+  roofing: 'roofing',
+};
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 export function TakeoffTab(): React.ReactElement {
   const snap = useBlueprintUploadSnapshot();
-  const projectId = snap.response?.project_id ?? null;
-  const sheetIdsFromUpload = snap.response?.ingest.sheet_ids ?? [];
+  const projectId =
+    snap.response?.ingest?.project_id ??
+    snap.response?.project_id ??
+    snap.projectId ??
+    null;
 
-  // Wave 6.5 backend `listSheets()` not yet wired — synthesize sheets from
-  // the upload response so the SheetViewer has something to render.
-  // Wave 6.5 / 9 will replace this with the real `useBlueprintProject` data.
-  const sheets: BlueprintSheet[] = useMemo(
+  // â”€â”€â”€â”€ UI store â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const ui = useTakeoffUi();
+  const actions = takeoffUiActions();
+
+  // â”€â”€â”€â”€ Live polling (drives the real sheet list) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const poll = useBlueprintProjectPoll(projectId);
+
+  // Real sheets from the poll hook â†’ fall back to synthesized stubs from
+  // the upload response so the viewer has something to render before the
+  // first poll lands.
+  const sheetIdsFromUpload = snap.response?.ingest?.sheet_ids ?? [];
+  const sheets: BlueprintSheetRead[] = useMemo(() => {
+    if (poll.sheets.length > 0) return poll.sheets;
+    return sheetIdsFromUpload.map((id, idx) => ({
+      id,
+      sheet_number: `A${(idx + 1).toString().padStart(3, '0')}`,
+      sheet_code: null,
+      sheet_title: null,
+      discipline: null,
+      scale: null,
+      revision: 0,
+      supersedes_id: null,
+      thumbnail_url: null,
+      seal_detected: false,
+      created_at: new Date().toISOString(),
+    }));
+  }, [poll.sheets, sheetIdsFromUpload]);
+
+  // Legacy BlueprintSheet shape â€” required by the Wave 8 Residential mode
+  // + CommercialBlueprintMode shared shell (kept for backward compat).
+  const legacySheets: BlueprintSheet[] = useMemo(
     () =>
-      sheetIdsFromUpload.map((id, idx) => ({
-        sheet_id: id,
-        sheet_number: `A${(idx + 1).toString().padStart(3, '0')}`,
-        discipline: null,
-        revision: 0,
+      sheets.map((s) => ({
+        sheet_id: s.id,
+        sheet_number: s.sheet_number ?? '',
+        discipline: s.discipline,
+        revision: s.revision ?? 0,
         superseded_by_sheet_id: null,
-        thumbnail_url: null,
+        thumbnail_url: s.thumbnail_url,
       })),
-    [sheetIdsFromUpload],
+    [sheets],
   );
 
-  const [mode, setMode] = useState<TakeoffMode>('commercial');
-  const [activeCard, setActiveCard] = useState<TakeoffCardKey>('sheet-viewer');
-  const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
-  const [selectedSymbol, setSelectedSymbol] = useState<TakeoffSymbol | null>(null);
-  const [overlayVisible, setOverlayVisible] = useState(true);
-
   // Auto-select first sheet when sheets land.
-  React.useEffect(() => {
-    if (!activeSheetId && sheets.length > 0) {
-      setActiveSheetId(sheets[0].sheet_id);
+  useEffect(() => {
+    if (!ui.activeSheetId && sheets.length > 0) {
+      actions.setActiveSheetId(sheets[0].id);
     }
-  }, [sheets, activeSheetId]);
+    // actions is a stable factory call â€” safe to exclude.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sheets, ui.activeSheetId]);
 
-  // Hooks (degrade gracefully on Wave 2.7 404).
-  const sym = useTakeoffSymbols(projectId, { sheet_id: activeSheetId ?? undefined });
+  // â”€â”€â”€â”€ Data hooks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const sym = useTakeoffSymbols(projectId, {
+    sheet_id: ui.activeSheetId ?? undefined,
+  });
   const asm = useTakeoffAssemblies(projectId);
   const mat = useTakeoffMaterials(projectId);
   const push = usePushToMaterials(projectId);
 
-  // Local override map for symbol confirm/reclassify/drop actions (Wave 8
-  // persists nothing; Wave 9 wires the PATCH endpoint).
+  // Local override map (Wave 8 contract â€” confirm/reclassify/drop on
+  // the legacy SymbolActionModal still uses this). New side panel actions
+  // are pure console.info stubs.
   const [symbolOverrides, setSymbolOverrides] = useState<
     Record<string, { status?: TakeoffSymbol['status']; override_class?: string }>
   >({});
@@ -109,17 +192,22 @@ export function TakeoffTab(): React.ReactElement {
               ? { status: 'reclassified', override_class: newClass ?? symbol.class }
               : { status: 'dropped' },
       }));
-      setSelectedSymbol(null);
+      actions.setSelectedSymbolId(null);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
-  const toggleOverlay = useCallback(() => setOverlayVisible((v) => !v), []);
+  // Selected-symbol object for downstream consumers.
+  const selectedSymbol = useMemo(
+    () => mergedSymbols.find((s) => s.symbol_id === ui.selectedSymbolId) ?? null,
+    [mergedSymbols, ui.selectedSymbolId],
+  );
 
   const sharedState: TakeoffSharedState = {
-    activeCard,
-    activeSheetId,
-    setActiveSheetId,
+    activeCard: CARD_TO_LEGACY[ui.activeCard],
+    activeSheetId: ui.activeSheetId,
+    setActiveSheetId: actions.setActiveSheetId,
     symbols: mergedSymbols,
     symbolsEndpointMissing: sym.endpointMissing,
     isLoadingSymbols: sym.isLoading,
@@ -130,19 +218,19 @@ export function TakeoffTab(): React.ReactElement {
     materialsEndpointMissing: mat.endpointMissing,
     isLoadingMaterials: mat.isLoading,
     selectedSymbol,
-    setSelectedSymbol,
-    overlayVisible,
-    toggleOverlay,
+    setSelectedSymbol: (s) => actions.setSelectedSymbolId(s?.symbol_id ?? null),
+    overlayVisible: ui.overlayVisible,
+    toggleOverlay: actions.toggleOverlayVisible,
     applySymbolAction,
     push,
     markMaterialsInBundle: mat.markInBundle,
   };
 
-  // Chip strip
-  const chips: BottomChip<TakeoffCardKey>[] = useMemo(
+  // â”€â”€â”€â”€ Chip strip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const chips: BottomChip<TakeoffCard>[] = useMemo(
     () => [
       {
-        key: 'sheet-viewer',
+        key: 'sheet_viewer',
         icon: 'map-outline',
         label: 'Sheet Viewer',
         stat: sheets.length > 0 ? `${sheets.length} sheets` : 'Upload first',
@@ -155,7 +243,7 @@ export function TakeoffTab(): React.ReactElement {
         stat: asm.endpointMissing
           ? 'Wave 2.7 pending'
           : asm.isLoading
-            ? 'Loading…'
+            ? 'Loadingâ€¦'
             : `${asm.assemblies.length} derived`,
         badge: asm.assemblies.length > 0 ? `${asm.assemblies.length}` : undefined,
       },
@@ -166,12 +254,12 @@ export function TakeoffTab(): React.ReactElement {
         stat: mat.endpointMissing
           ? 'Wave 2.7 pending'
           : mat.isLoading
-            ? 'Loading…'
+            ? 'Loadingâ€¦'
             : `${mat.materials.length} items`,
         badge: mat.materials.length > 0 ? `${mat.materials.length}` : undefined,
       },
       {
-        key: 'legend',
+        key: 'symbol_legend',
         icon: 'pricetags-outline',
         label: 'Symbol Legend',
         stat: 'CSI / AIA refs',
@@ -180,7 +268,7 @@ export function TakeoffTab(): React.ReactElement {
     [sheets.length, asm, mat],
   );
 
-  // Empty state
+  // â”€â”€â”€â”€ Empty state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (!projectId) {
     return (
       <View style={styles.tab} testID="takeoff-tab">
@@ -197,7 +285,10 @@ export function TakeoffTab(): React.ReactElement {
               accessibilityRole="link"
               accessibilityLabel="Go to Plans & Photos"
               testID="takeoff-empty-link"
-              style={({ hovered }: any) => [styles.emptyCta, hovered && styles.emptyCtaHover]}
+              style={({ hovered }: any) => [
+                styles.emptyCta,
+                hovered ? styles.emptyCtaHover : null,
+              ]}
             >
               <Ionicons name="cloud-upload-outline" size={14} color="#fbbf24" />
               <Text style={styles.emptyCtaText}>Open Plans & Photos</Text>
@@ -208,34 +299,67 @@ export function TakeoffTab(): React.ReactElement {
     );
   }
 
-  const ModeBody = mode === 'residential' ? ResidentialBlueprintMode : CommercialBlueprintMode;
+  const isResidential = ui.activeMode === 'residential';
 
   return (
     <View style={styles.tab} testID="takeoff-tab">
+      {/* Top mode-switcher pills */}
       <View style={styles.modeBar}>
-        <ModeSwitcher active={mode} onChange={setMode} />
+        <ModeSwitcher
+          active={MODE_TO_LEGACY[ui.activeMode]}
+          onChange={(legacy) => actions.setActiveMode(LEGACY_TO_MODE[legacy])}
+        />
       </View>
 
-      {(sym.endpointMissing || asm.endpointMissing || mat.endpointMissing) ? (
-        <View style={styles.wave27Banner} testID="takeoff-wave-27-banner" accessibilityRole="alert">
+      {/* Wave 2.7 banner â€” visible while any GET returns 404/501. */}
+      {sym.endpointMissing || asm.endpointMissing || mat.endpointMissing ? (
+        <View
+          style={styles.wave27Banner}
+          testID="takeoff-wave-27-banner"
+          accessibilityRole="alert"
+        >
           <Ionicons name="information-circle-outline" size={13} color="#fbbf24" />
           <Text style={styles.wave27Text}>{WAVE_27_NOTE}</Text>
         </View>
       ) : null}
 
+      {/* Canvas â€” Commercial uses new Wave 13 surface; Residential keeps Wave 8 shell. */}
       <View style={styles.canvas}>
-        <ModeBody state={sharedState} sheets={sheets} />
+        {isResidential ? (
+          <ResidentialBlueprintMode state={sharedState} sheets={legacySheets} />
+        ) : (
+          <CommercialBlueprintMode
+            state={sharedState}
+            sheets={legacySheets}
+            sheetsV2={sheets}
+            materialsForAssemblyTable={mat.materials}
+            highlightedSheetIds={ui.highlightedSheetIds}
+            hiddenDisciplines={ui.hiddenSymbolDisciplines}
+            onAssemblyRowClick={actions.setHighlightedSheetIds}
+            onToggleSymbolDiscipline={actions.toggleSymbolDiscipline}
+          />
+        )}
       </View>
 
       <BottomChipStrip
         chips={chips}
-        activeKey={activeCard}
-        onChange={setActiveCard}
+        activeKey={ui.activeCard}
+        onChange={(k) => actions.setActiveCard(k)}
         testID="takeoff-chip-strip"
       />
     </View>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Re-export for testing helpers and the Context tab.
+// ---------------------------------------------------------------------------
+
+export { LEGACY_TO_CARD, CARD_TO_LEGACY };
+
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
   tab: {

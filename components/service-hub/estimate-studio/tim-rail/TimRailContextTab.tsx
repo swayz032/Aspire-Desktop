@@ -13,9 +13,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { usePathname } from 'expo-router';
 import { PropertySummaryCard } from './PropertySummaryCard';
 import { MaterialsRouteContextCard } from './MaterialsRouteContextCard';
+import { MaterialsBlueprintContextCard } from './MaterialsBlueprintContextCard';
 import { PlansPhotosContextPayload } from './PlansPhotosContextPayload';
 import { ScopeContextPayload } from './ScopeContextPayload';
 import { TakeoffContextPayload } from './TakeoffContextPayload';
+import { EstimateContextPayload } from './EstimateContextPayload';
 import { ServiceBriefCard } from '@/components/service-hub/ServiceBriefCard';
 import { useTenant } from '@/providers';
 import { useBlueprintUploadSnapshot } from '@/lib/blueprintUploadStore';
@@ -55,6 +57,8 @@ export function TimRailContextTab({ data, loading, error, onRetry }: Props) {
     pathname.endsWith('/scope') || pathname.endsWith('/scope/');
   const isTakeoffTab =
     pathname.endsWith('/takeoff') || pathname.endsWith('/takeoff/');
+  const isEstimateTab =
+    pathname.endsWith('/estimate') || pathname.endsWith('/estimate/');
   // Wave 5.1b: Service Hub routes get a Service Memory brief card. Exclude
   // the Estimate Studio sub-tabs that already render their own per-tab
   // Context payload (Plans & Photos / Scope / Takeoff). Materials carries
@@ -118,6 +122,11 @@ export function TimRailContextTab({ data, loading, error, onRetry }: Props) {
       {/* Materials-tab-only — renders null off-route via context check. */}
       <MaterialsRouteContextCard />
 
+      {/* Wave 14: Blueprint-mode payload — renders only on /materials when
+          mode='blueprint' and a project is active. Additive; never replaces
+          the Tool/Supplier route card above. */}
+      <MaterialsBlueprintContextCard />
+
       {/* Plans & Photos payload: pipeline status + discipline counts + last
           upload. Renders null off-route. Property facts carry over below. */}
       {isPlansPhotosTab && <PlansPhotosContextPayload />}
@@ -131,6 +140,10 @@ export function TimRailContextTab({ data, loading, error, onRetry }: Props) {
           symbol confidence + tariff exposure. Property facts carry over below. */}
       {isTakeoffTab && <TakeoffContextPayload />}
 
+      {/* Estimate payload (Wave 15): bid health light, confidence, blocking
+          missing inputs, suggested next step, "view source story" deep link. */}
+      {isEstimateTab && <EstimateContextPayload />}
+
       {/* Service Memory brief (Wave 5.1b): renders on /service-hub/* EXCEPT
           the Estimate Studio sub-tabs that already host their own per-tab
           Context payload (Plans & Photos / Scope / Takeoff) and the
@@ -140,6 +153,7 @@ export function TimRailContextTab({ data, loading, error, onRetry }: Props) {
         !isPlansPhotosTab &&
         !isScopeTab &&
         !isTakeoffTab &&
+        !isEstimateTab &&
         !isMaterialsTab &&
         activeOfficeId && <ServiceBriefCard officeId={activeOfficeId} />}
 

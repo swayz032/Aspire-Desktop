@@ -239,8 +239,15 @@ function _deriveFilters(products: Product[]): MaterialsFilter[] {
 const SUGGESTED_QUERIES = ['paint', 'drywall sheets', 'roofing materials', 'electrical tools'];
 
 interface UseMaterialsSearchOptions {
-  /** 'tool' (Home Depot retail, default) or 'supplier' (Yelp B2B). */
-  mode?: 'tool' | 'supplier';
+  /**
+   * Search mode driver.
+   *   - 'tool'      — Home Depot retail (default).
+   *   - 'supplier'  — Yelp B2B specialty.
+   *   - 'blueprint' — UI-only mode (Wave 14). The search hook treats this as
+   *                   'tool' for network purposes — Blueprint Mode's feed is
+   *                   driven by useTakeoffMaterials, not the search endpoint.
+   */
+  mode?: 'tool' | 'supplier' | 'blueprint';
 }
 
 export function useMaterialsSearch(
@@ -309,11 +316,15 @@ export function useMaterialsSearch(
 
       // Real API call via Express proxy
       try {
+        // Blueprint mode is UI-only; the backend search endpoint only knows
+        // 'tool' / 'supplier'. Coerce to 'tool' so a stray submit in Blueprint
+        // mode behaves like a regular Tool search rather than 400ing.
+        const apiMode: 'tool' | 'supplier' = mode === 'supplier' ? 'supplier' : 'tool';
         const resp = await searchMaterials(
           authenticatedFetch,
           {
             q,
-            mode,
+            mode: apiMode,
             address: projectAddress || undefined,
             officeId: officeId ?? '',
           },

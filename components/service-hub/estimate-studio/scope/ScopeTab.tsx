@@ -1,22 +1,30 @@
 /**
- * ScopeTab — Wave 7 orchestrator.
+ * ScopeTab — Wave 12 (canvas-on-stage refactor).
  *
- * Owner of the Scope UX. Mirrors the Wave 6A shell pattern:
+ * Owner of the Scope UX. Mirrors the Wave 11o Plans & Photos canvas pattern:
  *
  *   - Top: project breadcrumb (address + last-updated timestamp)
- *   - Optional: Wave 2.7 backend-deferred banner (when the GET endpoints
- *     return 404; honest localhost behavior per the plan)
+ *   - Optional: Wave 2.7 backend-deferred banner (when GET endpoints return 404)
  *   - Canvas: CanvasCardSwitcher hosts ONE focused card at a time
- *   - Bottom: BottomChipStrip with 6 chips (Story / Included / Not in Base /
- *     Missing Inputs / Alternates / Tariff Exposure)
+ *   - Bottom: BottomChipStrip with 7 chips
+ *       (Story / Included / Not in Base / Missing Inputs / Alternates /
+ *        Tariff Exposure / Truth Distribution)
+ *
+ * Wave 12 changes from Wave 7:
+ *   - activeCard moved from local useState into `scopeUiStore` so the Tim Rail
+ *     Context payload can drive chip selection from "Jump to Missing Inputs"
+ *     and "Jump to Truth" affordances without prop-drilling.
+ *   - Added Truth Distribution chart as the 7th chip (visual confidence story).
+ *   - Chip keys re-normalised to snake_case to match the store API.
  *
  * Empty state (no project uploaded yet): big illustration + CTA back to
- * Plans & Photos.
+ * Plans & Photos. Pixel-stable: minHeight floors the canvas at 320 so it
+ * never collapses (CLS=0).
  *
  * Law #7: render layer only. Data fetching lives in useBlueprintStory();
  * mutations live in useBlueprintActions().
  */
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -24,6 +32,7 @@ import { useBlueprintUploadSnapshot } from '@/lib/blueprintUploadStore';
 import { useProjectAddress } from '@/hooks/useProjectAddress';
 import { useBlueprintStory } from '@/hooks/useBlueprintStory';
 import { useBlueprintActions } from '@/hooks/useBlueprintActions';
+import { scopeUiActions, useScopeUi, type ScopeCardKey } from '@/lib/scopeUiStore';
 import { CanvasCardSwitcher } from '../shell/CanvasCardSwitcher';
 import { BottomChipStrip, type BottomChip } from '../shell/BottomChipStrip';
 import { StoryPanel } from './StoryPanel';
@@ -32,14 +41,7 @@ import { NotInBaseCard } from './NotInBaseCard';
 import { MissingInputsList } from './MissingInputsList';
 import { AlternatesCard } from './AlternatesCard';
 import { TariffExposureCard } from './TariffExposureCard';
-
-type CardKey =
-  | 'story'
-  | 'included'
-  | 'not-in-base'
-  | 'missing'
-  | 'alternates'
-  | 'tariff';
+import { TruthDistributionChart } from './TruthDistributionChart';
 
 const EMPTY_STATE_COPY = 'Drop a plan set in Plans & Photos to see the story here.';
 
@@ -50,8 +52,8 @@ export function ScopeTab(): React.ReactElement {
   const projectId = upload.response?.project_id ?? null;
   const story = useBlueprintStory(projectId);
   const actions = useBlueprintActions();
-
-  const [activeCard, setActiveCard] = useState<CardKey>('story');
+  const ui = useScopeUi();
+  const { setActiveCard } = scopeUiActions();
 
   const includedCount = useMemo(
     () => story.assemblies.filter((a) => a.in_base_scope).length,
@@ -89,7 +91,7 @@ export function ScopeTab(): React.ReactElement {
             onPress={() => router.push('/service-hub/estimate-studio/plans-photos')}
             accessibilityRole="button"
             accessibilityLabel="Go to Plans & Photos"
-            style={({ hovered, pressed }: any) => [
+            style={({ hovered, pressed }: { hovered?: boolean; pressed: boolean }) => [
               styles.emptyCta,
               hovered && styles.emptyCtaHover,
               pressed && styles.emptyCtaPressed,
@@ -104,7 +106,24 @@ export function ScopeTab(): React.ReactElement {
     );
   }
 
-  const chips: BottomChip<CardKey>[] = [
+  // Confirmed share — for the truth chip stat.
+  const truthCounts = story.story?.truth_distribution;
+  const truthTotal = truthCounts
+    ? Object.values(truthCounts).reduce((sum, n) => sum + (n ?? 0), 0)
+    : 0;
+  const confirmedShare =
+    truthTotal > 0 && truthCounts
+      ? Math.round(
+          (((truthCounts.observed ?? 0) +
+            (truthCounts.field_confirmed ?? 0) +
+            (truthCounts.vendor_confirmed ?? 0) +
+            (truthCounts.permit_confirmed ?? 0)) /
+            truthTotal) *
+            100,
+        )
+      : null;
+
+  const chips: BottomChip<ScopeCardKey>[] = [
     {
       key: 'story',
       icon: 'book-outline',
@@ -122,13 +141,13 @@ export function ScopeTab(): React.ReactElement {
       stat: `${includedCount} assembl${includedCount === 1 ? 'y' : 'ies'}`,
     },
     {
-      key: 'not-in-base',
+      key: 'not_in_base',
       icon: 'close-circle-outline',
       label: 'Not in Base',
       stat: `${excludedCount} excluded`,
     },
     {
-      key: 'missing',
+      key: 'missing_inputs',
       icon: 'help-circle-outline',
       label: 'Missing Inputs',
       stat: `${openMissing} open`,
@@ -146,24 +165,35 @@ export function ScopeTab(): React.ReactElement {
       label: 'Tariff Exposure',
       stat: `${tariffCount} flagged`,
     },
+    {
+      key: 'truth',
+      icon: 'analytics-outline',
+      label: 'Truth Distribution',
+      stat:
+        confirmedShare != null
+          ? `${confirmedShare}% confirmed`
+          : story.isPolling
+            ? 'Counting…'
+            : 'No facts yet',
+    },
   ];
 
-  const cards: Record<CardKey, React.ReactNode> = {
+  const cards: Record<ScopeCardKey, React.ReactNode> = {
     story: (
       <StoryPanel
         story={story.story}
         isPolling={story.isPolling}
         onConfirmFact={(fact) => {
-          // Jump to Missing Inputs and focus the matching row.
+          // Jump to Missing Inputs and let the user resolve it there.
           if (fact.missing_input_id) {
-            setActiveCard('missing');
+            setActiveCard('missing_inputs');
           }
         }}
       />
     ),
     included: <IncludedWorkCard assemblies={story.assemblies} />,
-    'not-in-base': <NotInBaseCard assemblies={story.assemblies} />,
-    missing: (
+    not_in_base: <NotInBaseCard assemblies={story.assemblies} />,
+    missing_inputs: (
       <MissingInputsList
         projectId={projectId}
         inputs={story.missingInputs}
@@ -177,6 +207,14 @@ export function ScopeTab(): React.ReactElement {
       <AlternatesCard assemblies={story.assemblies} actions={actions} />
     ),
     tariff: <TariffExposureCard materials={story.materials} />,
+    truth: (
+      <TruthDistributionChart
+        story={story.story}
+        assemblies={story.assemblies}
+        materials={story.materials}
+        isPolling={story.isPolling}
+      />
+    ),
   };
 
   return (
@@ -197,7 +235,7 @@ export function ScopeTab(): React.ReactElement {
         ) : null}
       </View>
 
-      {/* Wave 2.7 backend-not-deployed banner (Tonio: honest localhost UX). */}
+      {/* Wave 2.7 backend-not-deployed banner (honest localhost UX). */}
       {!story.backendDeployed ? (
         <View
           style={styles.banner}
@@ -217,7 +255,7 @@ export function ScopeTab(): React.ReactElement {
 
       <View style={styles.canvas}>
         <CanvasCardSwitcher
-          activeCardKey={activeCard}
+          activeCardKey={ui.activeCard}
           cards={cards}
           testID="scope-canvas-switcher"
         />
@@ -225,7 +263,7 @@ export function ScopeTab(): React.ReactElement {
 
       <BottomChipStrip
         chips={chips}
-        activeKey={activeCard}
+        activeKey={ui.activeCard}
         onChange={setActiveCard}
         testID="scope-chip-strip"
       />
@@ -251,6 +289,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 18,
     gap: 12,
+    minHeight: 320, // CLS=0 — canvas never collapses across transitions.
   },
   breadcrumb: {
     flexDirection: 'row',

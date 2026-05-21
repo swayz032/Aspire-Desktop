@@ -30,9 +30,12 @@ export type MaterialsCanvasView = 'results' | 'route';
  *   - 'tool'     — default. Retail product search (Home Depot / Lowe's / etc).
  *   - 'supplier' — B2B specialty-supplier search (precast, wholesale lumber,
  *                  rebar, MEP, etc). Backend query uses `mode=supplier`.
+ *   - 'blueprint'— Wave 14. Marketplace driven by Drew's curated picks for
+ *                  the active blueprint project. Pure render layer — no
+ *                  backend search query; pulls from useTakeoffMaterials.
  * Mode persists per session via this context.
  */
-export type MaterialsMode = 'tool' | 'supplier';
+export type MaterialsMode = 'tool' | 'supplier' | 'blueprint';
 
 /**
  * Pass E: keywords that trigger auto-flip from Tool → Supplier mode when the
