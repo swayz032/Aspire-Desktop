@@ -33,8 +33,11 @@ export function useTakeoffSymbols(
   opts: ListTakeoffSymbolsOptions = {},
 ): UseTakeoffSymbolsResult {
   const { authenticatedFetch } = useAuthFetch();
-  const tenant = useTenant() as { officeId?: string };
-  const officeId = tenant.officeId ?? '';
+  // Wave 18f fix: useTenant() returns {tenant, isLoading, error, refresh}.
+  // officeId lives at .tenant.officeId — reading the top-level was always
+  // undefined, so the hook short-circuited and never fetched.
+  const tenantCtx = useTenant();
+  const officeId = tenantCtx.tenant?.officeId ?? '';
   const [symbols, setSymbols] = useState<TakeoffSymbol[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);

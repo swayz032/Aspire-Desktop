@@ -29,8 +29,9 @@ export interface UseTakeoffMaterialsResult {
 
 export function useTakeoffMaterials(projectId: string | null): UseTakeoffMaterialsResult {
   const { authenticatedFetch } = useAuthFetch();
-  const tenant = useTenant() as { officeId?: string };
-  const officeId = tenant.officeId ?? '';
+  // Wave 18f fix: useTenant() returns {tenant, isLoading, error, refresh}.
+  const tenantCtx = useTenant();
+  const officeId = tenantCtx.tenant?.officeId ?? '';
   const [materials, setMaterials] = useState<TakeoffMaterial[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);

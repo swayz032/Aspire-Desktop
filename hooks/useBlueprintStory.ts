@@ -61,8 +61,9 @@ export const EMPTY_TRUTH_DIST: Record<TruthClass, number> = {
 
 export function useBlueprintStory(projectId: string | null): UseBlueprintStoryResult {
   const { authenticatedFetch } = useAuthFetch();
-  const tenant = useTenant() as { officeId?: string };
-  const officeId = tenant.officeId ?? '';
+  // Wave 18f fix: useTenant() returns {tenant, isLoading, error, refresh}.
+  const tenantCtx = useTenant();
+  const officeId = tenantCtx.tenant?.officeId ?? '';
 
   const [story, setStory] = useState<BlueprintStory | null>(null);
   const [assemblies, setAssemblies] = useState<BlueprintAssembly[]>([]);
