@@ -383,9 +383,17 @@ export async function aggregatePropertyData(
     }
 
     const heroBase = verdict.formatted ?? verdict.suggestedAddress ?? cleanAddress;
+    // Wave 18m: pass geocoded coords to the Street View proxy so it queries
+    // by exact lat/lng instead of the address string. The Street View Static
+    // API's "nearest pano to address" search lands on the wrong road for
+    // large parcels (airports, industrial, campuses) — coords + a tight
+    // radius pin it to the building frontage.
+    const heroStreetViewUrl = coords
+      ? `/api/places/streetview?address=${encodeURIComponent(heroBase)}&lat=${coords.lat}&lng=${coords.lng}`
+      : `/api/places/streetview?address=${encodeURIComponent(heroBase)}`;
     const heroPayload: PropertyData['hero'] | undefined = coords
       ? {
-          streetViewProxyUrl: `/api/places/streetview?address=${encodeURIComponent(heroBase)}`,
+          streetViewProxyUrl: heroStreetViewUrl,
           aerialThumbUrl: heroBase
             ? `/api/property/aerial-thumb?address=${encodeURIComponent(heroBase)}`
             : undefined,
@@ -573,7 +581,13 @@ export async function aggregatePropertyData(
 
   // Street view fallback proxy (client-side panorama is primary; this is the
   // static-image fallback for environments where Maps JS can't load).
-  const streetViewProxyUrl = `/api/places/streetview?address=${encodeURIComponent(formattedAddress)}`;
+  //
+  // Wave 18m: prefer geocoded coords over the address string. See note on the
+  // hero block above — "nearest pano to address" lands off-target for big
+  // parcels; explicit lat/lng + the proxy's radius hint aims at the building.
+  const streetViewProxyUrl = coords
+    ? `/api/places/streetview?address=${encodeURIComponent(formattedAddress)}&lat=${coords.lat}&lng=${coords.lng}`
+    : `/api/places/streetview?address=${encodeURIComponent(formattedAddress)}`;
   sources.push({
     name: 'streetView',
     fetchedAt: nowIso(),

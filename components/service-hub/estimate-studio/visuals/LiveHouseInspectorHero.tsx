@@ -358,40 +358,81 @@ export function LiveHouseInspectorHero({ coords, address, loading, onReturn }: P
         // namespace without re-importing.
         (window as unknown as { Cesium?: typeof Cesium }).Cesium = Cesium;
 
-        // 3) Boot Viewer with the "premium" stack.
-        const viewer = new Cesium.Viewer(containerRef.current, {
-          baseLayerPicker: false,
-          geocoder: false,
-          homeButton: false,
-          sceneModePicker: false,
-          navigationHelpButton: false,
-          animation: false,
-          timeline: false,
-          fullscreenButton: false,
-          infoBox: false,
-          selectionIndicator: false,
-          msaaSamples: 8, // Maxed to 8 for 4K crispness
-          contextOptions: { webgl: { alpha: false, antialias: true, preserveDrawingBuffer: true } },
-        } as unknown as ConstructorParameters<typeof Cesium.Viewer>[1]);
-
-        // Force 2.0 resolution scale for "Crisp 4K" super-sampling.
-        // On a Retina/4K display (DPR 2), this renders at 4.0 relative to 
-        // standard CSS pixels — extreme high fidelity.
-        viewer.resolutionScale = 2.0;
-
-        // Premium look knobs.
-        try {
-          viewer.scene.postProcessStages.fxaa.enabled = true;
-          viewer.scene.postProcessStages.fxaa.uniforms.edgeThreshold = 0.1;
-        } catch {
-          /* swallow */
+        // Wave 18m: defensively destroy any prior viewer instance BEFORE
+        // creating a new one so the previous WebGL context is freed. The
+        // unmount-create-unmount pattern was leaking contexts and tripping
+        // the browser's per-page WebGL ceiling (chrome caps at ~16).
+        if (viewerRef.current) {
+          try {
+            viewerRef.current.destroy();
+          } catch {
+            /* swallow */
+          }
+          viewerRef.current = null;
         }
+
+        // 3) Boot Viewer with the "premium" stack, retry with a stripped-down
+        //    config if WebGL initialization fails. Some GPUs / contexts can't
+        //    handle msaa=8 + resolutionScale=2 + preserveDrawingBuffer; we'd
+        //    rather render a non-AA scene than show the generic error overlay.
+        let viewer: any;
+        let usedFallback = false;
         try {
-          // ACES tonemapping is the default in modern Cesium; this just makes
-          // sure HDR is on so the photorealistic mesh exposes correctly.
-          (viewer.scene as unknown as { highDynamicRange: boolean }).highDynamicRange = true;
-        } catch {
-          /* swallow */
+          viewer = new Cesium.Viewer(containerRef.current, {
+            baseLayerPicker: false,
+            geocoder: false,
+            homeButton: false,
+            sceneModePicker: false,
+            navigationHelpButton: false,
+            animation: false,
+            timeline: false,
+            fullscreenButton: false,
+            infoBox: false,
+            selectionIndicator: false,
+            msaaSamples: 8, // Maxed to 8 for 4K crispness
+            contextOptions: { webgl: { alpha: false, antialias: true, preserveDrawingBuffer: true } },
+          } as unknown as ConstructorParameters<typeof Cesium.Viewer>[1]);
+        } catch (premiumErr) {
+          // eslint-disable-next-line no-console
+          console.warn('[LiveHouseInspectorHero] premium WebGL init failed, retrying minimal:', premiumErr);
+          if (cancelled) return;
+          viewer = new Cesium.Viewer(containerRef.current, {
+            baseLayerPicker: false,
+            geocoder: false,
+            homeButton: false,
+            sceneModePicker: false,
+            navigationHelpButton: false,
+            animation: false,
+            timeline: false,
+            fullscreenButton: false,
+            infoBox: false,
+            selectionIndicator: false,
+            msaaSamples: 0,
+            contextOptions: { webgl: { alpha: false, antialias: false, preserveDrawingBuffer: false } },
+          } as unknown as ConstructorParameters<typeof Cesium.Viewer>[1]);
+          usedFallback = true;
+        }
+
+        // Resolution scale: 2.0 only on the premium path. On fallback we run
+        // at native scale so we never re-trigger the same exhaustion that
+        // killed the premium attempt.
+        viewer.resolutionScale = usedFallback ? 1.0 : 2.0;
+
+        // Premium look knobs — skipped on fallback path.
+        if (!usedFallback) {
+          try {
+            viewer.scene.postProcessStages.fxaa.enabled = true;
+            viewer.scene.postProcessStages.fxaa.uniforms.edgeThreshold = 0.1;
+          } catch {
+            /* swallow */
+          }
+          try {
+            // ACES tonemapping is the default in modern Cesium; this just makes
+            // sure HDR is on so the photorealistic mesh exposes correctly.
+            (viewer.scene as unknown as { highDynamicRange: boolean }).highDynamicRange = true;
+          } catch {
+            /* swallow */
+          }
         }
         // Keep sky + atmosphere + globe visible. Photorealistic 3D Tiles
         // for residential addresses (e.g. Forest Park GA) have noticeable

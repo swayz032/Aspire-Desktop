@@ -8607,14 +8607,15 @@ async function handleStreetViewProxy(req: Request, res: Response): Promise<void>
   // Whitelist: address must be printable ASCII (no control chars / unicode
   // injection). Length cap keeps the upstream URL bounded.
   const ADDRESS_RE = /^[A-Za-z0-9\s,.\-#'/]+$/;
+  const LATLNG_RE = /^-?\d{1,3}(\.\d{1,8})?$/;
+  const hasValidCoords = lat && lng && LATLNG_RE.test(lat) && LATLNG_RE.test(lng);
   if (address) {
     if (address.length > 200 || !ADDRESS_RE.test(address)) {
       res.status(400).json({ error: 'INVALID_ADDRESS', message: 'Address must be printable ASCII, ≤200 chars.' });
       return;
     }
   } else if (lat && lng) {
-    const LATLNG_RE = /^-?\d{1,3}(\.\d{1,8})?$/;
-    if (!LATLNG_RE.test(lat) || !LATLNG_RE.test(lng)) {
+    if (!hasValidCoords) {
       res.status(400).json({ error: 'INVALID_COORDS', message: 'lat/lng must be numeric.' });
       return;
     }
@@ -8640,8 +8641,18 @@ async function handleStreetViewProxy(req: Request, res: Response): Promise<void>
 
   const params = new URLSearchParams();
   params.set('size', `${sizeW}x${sizeH}`);
-  if (address) params.set('location', address);
-  else params.set('location', `${lat},${lng}`);
+  // Wave 18m: when geocoded coords are present, prefer them over the address
+  // string. The Street View Static API's "nearest pano to address" lookup
+  // can land on the wrong road for large parcels — explicit lat/lng + the
+  // radius hint pin the search to the building frontage.
+  if (hasValidCoords) {
+    params.set('location', `${lat},${lng}`);
+    params.set('radius', '50'); // metres — keeps the pano near the parcel
+  } else if (address) {
+    params.set('location', address);
+  } else {
+    params.set('location', `${lat},${lng}`);
+  }
   params.set('fov', String(fov));
   params.set('source', 'outdoor'); // exclude indoor panoramas
   params.set('return_error_code', 'true'); // get 404 if no imagery instead of placeholder

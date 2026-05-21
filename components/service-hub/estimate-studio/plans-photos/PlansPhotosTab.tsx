@@ -37,6 +37,7 @@ import {
 import { UploadDropZone } from './UploadDropZone';
 import { SheetCanvasView } from './SheetCanvasView';
 import { BlueprintFailureCard } from './BlueprintFailureCard';
+import { PremiumBlueprintLoader } from './PremiumBlueprintLoader';
 import { getDisciplineStyle } from './disciplines';
 
 export function PlansPhotosTab(): React.ReactElement {
@@ -117,11 +118,41 @@ export function PlansPhotosTab(): React.ReactElement {
             onReset={upload.reset}
           />
         );
-      case 'sheets':
+      case 'sheets': {
         // Wave 11o: replaced the 5-col SheetThumbnailGrid with a canvas-on-
         // stage layout (big active sheet + bottom chip strip + pan/zoom).
         // SheetThumbnailGrid stays exported for the revisions/disciplines
         // detail cards that still want the grid format.
+        //
+        // Wave 18m: bridge the upload→first-poll gap with PremiumBlueprintLoader
+        // so the canvas never flashes "No sheets yet" between upload completion
+        // and the first sheet arrival. The flicker happened because hasProject
+        // flipped true (via upload.response or snapshot) BEFORE the first poll
+        // had returned, leaving SheetCanvasView's internal empty state to
+        // render for one frame. Gate that empty state on first-poll + upload
+        // settled so the loader owns the in-between moment.
+        const uploadInFlight =
+          upload.phase === 'reading' ||
+          upload.phase === 'init' ||
+          upload.phase === 'uploading' ||
+          upload.phase === 'completing' ||
+          upload.phase === 'ingesting' ||
+          upload.phase === 'classifying';
+        const awaitingFirstSheets =
+          hasProject && poll.sheets.length === 0 && poll.isFirstLoad;
+        if (uploadInFlight || awaitingFirstSheets) {
+          return (
+            <View style={styles.loaderHost} testID="plans-photos-bridging-loader">
+              <PremiumBlueprintLoader size={180} />
+              <Text style={styles.loaderTitle}>
+                {uploadInFlight ? 'Processing your blueprint…' : 'Loading sheets…'}
+              </Text>
+              <Text style={styles.loaderBody}>
+                Drew is preparing the canvas. This usually takes a few seconds.
+              </Text>
+            </View>
+          );
+        }
         return hasProject ? (
           <SheetCanvasView
             sheets={poll.sheets}
@@ -134,6 +165,7 @@ export function PlansPhotosTab(): React.ReactElement {
             body="Drop a plan set in the Controls tab to begin."
           />
         );
+      }
       case 'disciplines':
         return hasProject ? (
           <DisciplineBreakdownCard sheets={poll.sheets} />
@@ -340,6 +372,30 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
     minHeight: 320,
+  },
+  // Wave 18m bridge loader — shown between upload completion and first poll
+  // response so the canvas never flashes empty.
+  loaderHost: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+    padding: 28,
+    minHeight: 320,
+  },
+  loaderTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.92)',
+    letterSpacing: -0.2,
+    marginTop: 8,
+  },
+  loaderBody: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.55)',
+    textAlign: 'center',
+    maxWidth: 360,
+    lineHeight: 17,
   },
   placeholderHost: {
     flex: 1,
