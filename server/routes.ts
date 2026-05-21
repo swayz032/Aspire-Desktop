@@ -528,7 +528,13 @@ function validateAnamAvaToolset(tools: AnamPersonaTool[]): string[] {
       const kbType = normalizeAnamToolType(kbTool.type);
       const kbSubtype = getToolSubtype(kbTool);
       if (!kbType.includes('server')) issues.push('Knowledge tool must be server type');
-      if (!['knowledge', 'rag'].includes(kbSubtype)) issues.push('Knowledge tool subtype must be knowledge or rag');
+      // 2026-05-20: Anam's native SERVER_RAG runtime started returning TCP RST
+      // in ~30ms on every Knowledge_Ava invocation, so we swapped the tool to a
+      // SERVER_WEBHOOK that proxies to /v1/tools/knowledge_search (which calls
+      // Anam's working knowledge search API directly). Semantic intent of this
+      // gate is "knowledge bridge must be server-side"; webhook is now an
+      // accepted subtype alongside the native knowledge/rag types.
+      if (!['knowledge', 'rag', 'webhook'].includes(kbSubtype)) issues.push('Knowledge tool subtype must be knowledge, rag, or webhook');
     }
   }
 
