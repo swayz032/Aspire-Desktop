@@ -273,7 +273,8 @@ export function useMaterialsSearch(
 
   // Auth + tenant context
   const { authenticatedFetch } = useAuthFetch();
-  const { officeId } = useTenant();
+  const tenantCtx = useTenant();
+  const officeId = tenantCtx.tenant?.officeId ?? '';
   // Project address from Visuals tab — flows through to backend so the
   // search route can resolve closest HD store (Tool mode) or Yelp
   // `find_loc` (Supplier mode).

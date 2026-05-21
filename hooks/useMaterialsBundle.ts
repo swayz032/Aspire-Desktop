@@ -84,7 +84,8 @@ export interface UseMaterialsBundleResult {
 
 export function useMaterialsBundle(projectAddress: string = ''): UseMaterialsBundleResult {
   const { authenticatedFetch } = useAuthFetch();
-  const { officeId } = useTenant();
+  const tenantCtx = useTenant();
+  const officeId = tenantCtx.tenant?.officeId ?? '';
 
   const [bundle, setBundle] = useState<ApiBundleItem[]>([]);
   const [bundleSubtotal, setBundleSubtotal] = useState<number>(0);
