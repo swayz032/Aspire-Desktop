@@ -1091,7 +1091,7 @@ router.post('/v1/tools/draft', async (req: Request, res: Response) => {
 
       const supabase = createClient(supabaseUrl, supabaseKey);
 
-      const title = draftParams.subject || draftParams.title || 'Meeting';
+      let title = draftParams.subject || draftParams.title || 'Meeting';
       const description = draftParams.body || draftParams.description || '';
       const location = draftParams.location || '';
       const participants = draftParams.to ? [draftParams.to] : [];
@@ -1140,13 +1140,31 @@ router.post('/v1/tools/draft', async (req: Request, res: Response) => {
       const durationMinutes = draftParams.duration_minutes || 30;
       const endTime = new Date(startTime.getTime() + durationMinutes * 60 * 1000);
 
-      // Map draft_type to valid event_type (DB constraint: meeting, task, reminder, call, deadline, other)
+      // Map draft_type to valid event_type. DB constraint extended 2026-05-20
+      // to include 'job' (paid client work) and 'appointment' (consult/estimate).
       const eventTypeMap: Record<string, string> = {
         meeting: 'meeting', task: 'task', reminder: 'reminder', call: 'call',
         deadline: 'deadline', calendar: 'meeting', event: 'meeting',
         follow_up: 'reminder', follow_up_call: 'call',
+        // Trade-job aliases — client-paid work on site
+        job: 'job', service: 'job', service_call: 'job', work: 'job',
+        painting: 'job', plumbing: 'job', electrical: 'job', hvac: 'job',
+        installation: 'job', repair: 'job',
+        // Customer-facing appointment aliases — consults, estimates, visits
+        appointment: 'appointment', estimate: 'appointment', consultation: 'appointment',
+        visit: 'appointment', walkthrough: 'appointment',
       };
       const eventType = eventTypeMap[draft_type] || 'other';
+
+      // Smart title fallback: if title is empty or the literal "Meeting",
+      // build a descriptive default from event_type + participant.
+      if (!title || title.trim().toLowerCase() === 'meeting' || title.trim() === '') {
+        const primary = (participants && participants[0]) || draftParams.to || '';
+        if (eventType === 'job' || eventType === 'appointment') {
+          const verb = draftParams.service_type || draft_type || eventType;
+          title = primary ? `${verb} — ${primary}` : `${verb} appointment`;
+        }
+      }
 
       const { data: event, error: insertErr } = await supabase
         .from('calendar_events')
