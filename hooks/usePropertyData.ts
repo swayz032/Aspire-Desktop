@@ -106,6 +106,44 @@ export function usePropertyData(
             return;
           }
           case 'needs_correction': {
+            // Wave 18g: commercial-address handling. The backend returns
+            // `propertyData: null` whenever ATTOM has no record — which is
+            // every commercial property since ATTOM is residential-only. The
+            // address itself validated (we have suggestedAddress + full
+            // components). Don't block the user; accept the commercial
+            // address with empty ATTOM facts and proceed.
+            const comps = resp.components;
+            const hasFullAddress =
+              !!resp.suggestedAddress &&
+              !!comps?.street &&
+              !!comps?.city &&
+              !!comps?.state &&
+              !!comps?.zip;
+            if (hasFullAddress) {
+              // Synthesize a minimal PropertyData from the validated address
+              // components. ATTOM facts stay empty — UI surfaces that as
+              // "n/a for commercial" rather than blocking entry.
+              const synthetic: PropertyData = {
+                address: {
+                  formatted: resp.suggestedAddress!,
+                  street: comps!.street,
+                  city: comps!.city,
+                  state: comps!.state,
+                  zip: comps!.zip,
+                  country: comps!.country,
+                },
+                coords: { lat: 0, lng: 0 },
+                hero: {},
+                facts: {},
+                sources: [],
+              } as unknown as PropertyData;
+              setData(synthetic);
+              setVerdict(undefined);
+              setSuggestedAddress(undefined);
+              setStatus('partial');
+              return;
+            }
+            // Genuine needs-correction (ambiguous/incomplete address).
             setData(undefined);
             setSuggestedAddress(resp.suggestedAddress);
             setStatus('needs_correction');
