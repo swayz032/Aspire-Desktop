@@ -53,6 +53,51 @@ function formatElapsed(startedAtMs: number, nowMs: number): string {
 }
 
 /**
+ * RotatingPhrase — Wave 11k-v3. Cycles through premium phrases as Drew
+ * analyzes the blueprint, fading each one in/out. No filename, no chrome
+ * — just poetic narration of what Drew is doing right now.
+ *
+ * Phrases were picked to convey progressively deeper analysis so the
+ * waiting feels intentional. Cycle interval: ~2.4s.
+ */
+const DREW_PHRASES = [
+  'Reading the geometry',
+  'Discovering symbols',
+  'Mapping every fixture',
+  'Decoding the architect’s intent',
+  'Cross-referencing tariffs',
+  'Tagging the disciplines',
+  'Tracing the homerun circuits',
+  'Building your bid story',
+  'Flagging missing inputs',
+  'Locating supplier matches',
+];
+
+function RotatingPhrase({ nowTick }: { nowTick: number }): React.ReactElement {
+  const idx = Math.floor(nowTick / 2400) % DREW_PHRASES.length;
+  const fade = useRef(new Animated.Value(0)).current;
+  const phrase = DREW_PHRASES[idx];
+  useEffect(() => {
+    fade.setValue(0);
+    Animated.timing(fade, {
+      toValue: 1,
+      duration: 480,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [idx, fade]);
+  return (
+    <Animated.Text
+      style={[styles.rotatingPhrase, { opacity: fade }]}
+      accessibilityLiveRegion="polite"
+      numberOfLines={1}
+    >
+      {phrase}
+    </Animated.Text>
+  );
+}
+
+/**
  * LoadingRing — calm, centered, infinite rotation. Pure RN Animated so it
  * works on web + native. Matches the project's flat-premium amber-gold
  * accent without any cinematic clutter.
@@ -300,25 +345,17 @@ export function UploadDropZone({
     }
 
     if (phase === 'reading' || phase === 'uploading' || phase === 'ingesting' || phase === 'classifying') {
-      // CANVAS LOADING STATE — Wave 11k premium upgrade.
-      // Single focused PremiumBlueprintLoader (canvas particle ribbon on web,
-      // multi-ring pulse on native), tight Drew-branded headline + filename,
-      // tabular elapsed clock. Cinematic 5-stage timeline still lives in Tim
-      // Rail Context tab — this canvas remains uncluttered.
+      // CANVAS LOADING STATE — Wave 11k-v3.
+      // Large pulse loader (~300px), NO filename, NO halo (canvas IS the
+      // background). Rotating premium phrases that cycle as Drew works
+      // — every ~2.4s a new sentence fades in.
       const elapsed = formatElapsed(startedAtMs ?? Date.now(), nowTick);
       return (
         <View style={styles.body} testID={`dropzone-${phase}`}>
-          <PremiumBlueprintLoader size={160} particleCount={2} speed={1} hueRange={[36, 50]} />
+          <PremiumBlueprintLoader size={300} />
           <View style={styles.loaderTextBlock}>
-            <Text style={styles.eyebrow}>Drew · Blueprint Analysis</Text>
-            <Text style={styles.titleHero} numberOfLines={1}>
-              {filename ?? 'Analyzing blueprint'}
-            </Text>
-            <View style={styles.subtitleRow}>
-              <Text style={styles.subtitlePremium}>Reading geometry</Text>
-              <Text style={styles.elapsedSep}>{' · '}</Text>
-              <Text style={styles.elapsed}>{elapsed}</Text>
-            </View>
+            <RotatingPhrase nowTick={nowTick} />
+            <Text style={styles.elapsed}>{elapsed}</Text>
           </View>
         </View>
       );
@@ -493,48 +530,31 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     letterSpacing: -0.1,
   },
-  // Wave 11k — premium loader text block
+  // Wave 11k-v3 — minimal loader text block: rotating phrase + elapsed
   loaderTextBlock: {
     alignItems: 'center',
-    marginTop: 18,
-    gap: 8,
+    marginTop: 32,
+    gap: 14,
   },
-  eyebrow: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-    color: 'rgba(251,191,36,0.85)',
+  rotatingPhrase: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.92)',
+    letterSpacing: -0.2,
     textAlign: 'center',
-  },
-  titleHero: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.98)',
-    letterSpacing: -0.45,
-    textAlign: 'center',
-    maxWidth: 460,
-    // subtle text shadow gives lift on dark canvas
-    textShadowColor: 'rgba(251,191,36,0.18)',
+    maxWidth: 520,
+    // subtle gold lift on dark canvas
+    textShadowColor: 'rgba(251,191,36,0.20)',
     textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 18,
-  },
-  subtitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  subtitlePremium: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.72)',
-    letterSpacing: -0.05,
+    textShadowRadius: 14,
   },
   elapsed: {
     color: 'rgba(251,191,36,0.92)',
     fontVariant: ['tabular-nums'],
-    fontWeight: '700',
-    letterSpacing: 0.2,
-    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 1.2,
+    fontSize: 12,
+    textAlign: 'center',
   },
   elapsedSep: {
     color: 'rgba(255,255,255,0.35)',

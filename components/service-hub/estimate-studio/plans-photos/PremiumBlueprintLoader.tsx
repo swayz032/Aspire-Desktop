@@ -109,15 +109,7 @@ export function PremiumBlueprintLoader({ size = 160, testID = 'premium-loader' }
       accessibilityRole="progressbar"
       accessibilityLabel="Drew is analyzing your blueprint"
     >
-      {/* Soft halo glow behind everything */}
-      <View
-        pointerEvents="none"
-        style={[
-          styles.halo,
-          { width: size * 1.6, height: size * 1.6, borderRadius: size },
-        ]}
-      />
-      {/* Four staggered pulse rings, expanding outward */}
+      {/* Four staggered pulse rings, expanding outward — canvas IS the background. */}
       <PulseRing size={size} delay={0}    duration={2000} color={GOLD} />
       <PulseRing size={size} delay={500}  duration={2000} color="rgba(251,191,36,0.78)" />
       <PulseRing size={size} delay={1000} duration={2000} color="rgba(251,191,36,0.55)" />
@@ -158,14 +150,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
-  },
-  halo: {
-    position: 'absolute',
-    backgroundColor: 'rgba(251,191,36,0.05)',
-    shadowColor: GOLD,
-    shadowOpacity: 0.18,
-    shadowRadius: 48,
-    shadowOffset: { width: 0, height: 0 },
   },
 });
 
