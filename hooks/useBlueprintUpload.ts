@@ -188,8 +188,9 @@ export function useBlueprintUpload(): UseBlueprintUploadResult {
   // payload at runtime but isn't exposed on the TenantContextType interface
   // (pre-existing typing gap, see useMaterialsSearch:269). Same `as any`
   // shape; the runtime value is read correctly.
-  const tenant = useTenant() as { officeId?: string };
-  const officeId = tenant.officeId ?? '';
+  // Wave 18f fix: useTenant() returns {tenant, isLoading, error, refresh}.
+  const tenantCtx = useTenant();
+  const officeId = tenantCtx.tenant?.officeId ?? '';
 
   const [phase, setPhase] = useState<UploadPhase>('idle');
   const [progress, setProgress] = useState<UploadProgress>(INITIAL_PROGRESS);

@@ -46,8 +46,9 @@ export interface UsePushToMaterialsResult {
 
 export function usePushToMaterials(projectId: string | null): UsePushToMaterialsResult {
   const { authenticatedFetch } = useAuthFetch();
-  const tenant = useTenant() as { officeId?: string };
-  const officeId = tenant.officeId ?? '';
+  // Wave 18f fix: useTenant() returns {tenant, isLoading, error, refresh}.
+  const tenantCtx = useTenant();
+  const officeId = tenantCtx.tenant?.officeId ?? '';
 
   const [phase, setPhase] = useState<PushPhase>('idle');
   const [pendingMaterialIds, setPendingMaterialIds] = useState<string[]>([]);

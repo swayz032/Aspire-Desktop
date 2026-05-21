@@ -64,8 +64,9 @@ export function TimRailContextTab({ data, loading, error, onRetry }: Props) {
   // Context payload (Plans & Photos / Scope / Takeoff). Materials carries
   // its own MaterialsRouteContextCard above and is also excluded.
   const isServiceHubRoute = pathname.startsWith('/service-hub');
-  const tenant = useTenant() as { officeId?: string };
-  const activeOfficeId = tenant.officeId ?? '';
+  // Wave 18f fix: useTenant() returns {tenant, isLoading, error, refresh}.
+  const tenantCtx = useTenant();
+  const activeOfficeId = tenantCtx.tenant?.officeId ?? '';
 
   // FIX 1: On Plans & Photos, the property empty state must not leak into the
   // Context tab when a blueprint project is active OR an upload is in flight.

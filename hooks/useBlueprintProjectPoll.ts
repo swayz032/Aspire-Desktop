@@ -257,8 +257,9 @@ export function useBlueprintProjectPoll(
   projectId: string | null,
 ): UseBlueprintProjectPollResult {
   const { authenticatedFetch } = useAuthFetch();
-  const tenant = useTenant() as { officeId?: string };
-  const officeId = tenant.officeId ?? '';
+  // Wave 18f fix: useTenant() returns {tenant, isLoading, error, refresh}.
+  const tenantCtx = useTenant();
+  const officeId = tenantCtx.tenant?.officeId ?? '';
 
   const [project, setProject] = useState<BlueprintProject | null>(null);
   const [sheets, setSheets] = useState<BlueprintSheetRead[]>([]);

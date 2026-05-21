@@ -66,8 +66,9 @@ export function useMaterialOverride(
   projectId: string | null,
 ): UseMaterialOverrideResult {
   const { authenticatedFetch } = useAuthFetch();
-  const tenant = useTenant() as { officeId?: string };
-  const officeId = tenant.officeId ?? '';
+  // Wave 18f fix: useTenant() returns {tenant, isLoading, error, refresh}.
+  const tenantCtx = useTenant();
+  const officeId = tenantCtx.tenant?.officeId ?? '';
   const mountedRef = useRef(true);
 
   const [statusById, setStatusById] = useState<Record<string, OverrideStatus>>({});
