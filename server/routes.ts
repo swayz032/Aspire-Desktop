@@ -11283,6 +11283,67 @@ router.post(
   },
 );
 
+// ---------------------------------------------------------------------------
+// Wave 17.1 — POST /api/v1/blueprints/projects/:id/missing_inputs/:input_id/resolve
+// ---------------------------------------------------------------------------
+// Body: { value: string }
+//
+// Mints a YELLOW capability token with scope `blueprints:resolve_missing_input`
+// (Law #5) and forwards to the Python orchestrator via /v1/agents/invoke with
+// task=RESOLVE_MISSING_INPUT. Drew records the contractor-supplied value and
+// emits a blueprint_receipt (Law #2). Caller MUST present a confirmation
+// gesture (clicking "Confirm" on the missing-input card) BEFORE invoking.
+//
+// Dual-registered snake_case + kebab-case to match the GET pattern at
+// lines 11174-11176. The frontend hook uses snake_case.
+// ---------------------------------------------------------------------------
+const _resolveMissingInputHandler = async (req: Request, res: Response) => {
+  const projectId = String(req.params.id ?? '').trim();
+  const inputId = String(req.params.input_id ?? '').trim();
+  if (!projectId || !inputId) {
+    res.status(400).json({
+      error: 'INVALID_PARAMS',
+      message: 'project_id and input_id are required',
+    });
+    return;
+  }
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const value = typeof body.value === 'string' ? body.value.trim() : '';
+  if (!value) {
+    res.status(400).json({
+      error: 'INVALID_VALUE',
+      message: 'value is required and must be a non-empty string',
+    });
+    return;
+  }
+  await proxyForward({
+    orchestratorPath: '/v1/agents/invoke',
+    method: 'POST',
+    scope: 'blueprints:resolve_missing_input',
+    logTag: 'BlueprintsResolveMissingInput',
+    timeoutMs: 15_000,
+    body: {
+      agent: 'drew',
+      task: 'RESOLVE_MISSING_INPUT',
+      project_id: projectId,
+      input_id: inputId,
+      value,
+    },
+    req,
+    res,
+  });
+};
+router.post(
+  '/api/v1/blueprints/projects/:id/missing_inputs/:input_id/resolve',
+  express.json({ limit: '16kb' }),
+  _resolveMissingInputHandler,
+);
+router.post(
+  '/api/v1/blueprints/projects/:id/missing-inputs/:input_id/resolve',
+  express.json({ limit: '16kb' }),
+  _resolveMissingInputHandler,
+);
+
 export default router;
 
 
