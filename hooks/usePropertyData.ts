@@ -143,8 +143,18 @@ export function usePropertyData(
                 photos: {
                   interior: { count: 0, photos: [] },
                   exterior: { count: 0, photos: [] },
-                  roof: { count: 0, photos: [] },
-                  streetView: { count: 0, photos: [] },
+                  // Wave 18g.2: populate roof + streetView lanes from the
+                  // backend-resolved hero proxy URLs so the bottom photo
+                  // strip shows real imagery for commercial addresses
+                  // (Google Maps Static aerial + Street View Static work for
+                  // any coords Solar API has coverage for — verified for
+                  // 577 Gulfstream Rd HIGH-quality 2019 imagery).
+                  roof: resp.hero?.aerialThumbUrl
+                    ? { count: 1, thumbnailUrl: resp.hero.aerialThumbUrl, photos: [] }
+                    : { count: 0, photos: [] },
+                  streetView: resp.hero?.streetViewProxyUrl
+                    ? { count: 1, thumbnailUrl: resp.hero.streetViewProxyUrl, photos: [] }
+                    : { count: 0, photos: [] },
                   uncategorized: { count: 0, photos: [] },
                 },
                 sources: [],
