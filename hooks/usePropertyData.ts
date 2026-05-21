@@ -119,10 +119,15 @@ export function usePropertyData(
               !!comps?.city &&
               !!comps?.state &&
               !!comps?.zip;
-            if (hasFullAddress) {
+            // Wave 18g.1 — only synthesize when backend resolved real coords.
+            // Without coords, Street View hero loads ocean off Africa and
+            // Aerial 3D fails. Fall through to the genuine needs_correction
+            // branch in that case so the UI prompts the user instead.
+            if (hasFullAddress && resp.coords) {
               // Synthesize a minimal PropertyData from the validated address
-              // components. ATTOM facts stay empty — UI surfaces that as
-              // "n/a for commercial" rather than blocking entry.
+              // components + backend-resolved coords + hero URLs. ATTOM facts
+              // stay empty — UI surfaces that as "n/a for commercial" rather
+              // than blocking entry.
               const synthetic: PropertyData = {
                 address: {
                   formatted: resp.suggestedAddress!,
@@ -132,8 +137,8 @@ export function usePropertyData(
                   zip: comps!.zip,
                   country: comps!.country,
                 },
-                coords: { lat: 0, lng: 0 },
-                hero: {},
+                coords: resp.coords,
+                hero: resp.hero ?? {},
                 facts: {},
                 sources: [],
               } as unknown as PropertyData;

@@ -118,6 +118,13 @@ export type PropertyData = {
      * Aerial view is served by GET /api/property/aerial-video (separate endpoint).
      */
     streetViewProxyUrl?: string;
+    /**
+     * Google Static Maps satellite thumbnail of the property — used by the
+     * Aerial 3D lane tile so it shows a real top-down Earth image instead
+     * of a generic map icon. The big canvas still uses the live Cesium 3D
+     * Tiles experience (LiveHouseInspectorHero).
+     */
+    aerialThumbUrl?: string;
   };
   facts: {
     sqft?: number;
@@ -163,6 +170,14 @@ export type PropertyCorrectionResponse = {
   suggestedAddress: string;
   components?: AddressValidationVerdict['components'];
   propertyData: null;
+  /**
+   * Wave 18g.1 — even when the address "needs correction" (which is what
+   * ATTOM-less commercial addresses look like to Google Address Validation),
+   * we still attempt to resolve coords + hero URLs so the Street View / 3D
+   * Earth canvas can render. Optional because legacy callers may not set it.
+   */
+  coords?: { lat: number; lng: number };
+  hero?: PropertyData['hero'];
 };
 
 /** Wire response from POST /api/service-hub/property-data. */

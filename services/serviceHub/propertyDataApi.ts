@@ -176,6 +176,9 @@ export type PropertyCorrectionResponse = {
   suggestedAddress: string;
   components?: AddressValidationVerdict['components'];
   propertyData: null;
+  /** Wave 18g.1 — coords + hero URLs even on needs_correction (commercial). */
+  coords?: { lat: number; lng: number };
+  hero?: PropertyData['hero'];
 };
 
 // ---------------------------------------------------------------------------
@@ -194,6 +197,8 @@ export type PropertyDataResponse =
       suggestedAddress: string;
       components?: AddressValidationVerdict['components'];
       propertyData: null;
+      coords?: { lat: number; lng: number };
+      hero?: PropertyData['hero'];
     }
   | {
       kind: 'invalid';
@@ -325,6 +330,8 @@ export async function fetchPropertyData(
       suggestedAddress: json.suggestedAddress,
       components: json.components,
       propertyData: null,
+      coords: json.coords,
+      hero: json.hero,
     };
   }
 

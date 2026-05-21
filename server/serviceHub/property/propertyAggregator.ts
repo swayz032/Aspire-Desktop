@@ -360,20 +360,70 @@ export async function aggregatePropertyData(
       suite_id: ctx.suiteId,
       address: safeAddress(cleanAddress),
     });
-    await writeReceipt(ctx, cleanAddress, [
-      {
-        name: 'addressValidation',
-        fetchedAt: verdict.fetchedAt,
-        status: 'partial',
-        confidence: 'medium',
-      },
-    ], 'needs_correction');
+
+    // Wave 18g.1 — commercial addresses (e.g., 577 Gulfstream Rd, Savannah)
+    // routinely come back as 'needs_correction' because ATTOM has no record,
+    // but the address itself is real. Resolve coords (via geocoding if
+    // Validation didn't include them) so the Street View hero + Aerial 3D
+    // canvas can render. Without this, the FE synthesizes {lat:0, lng:0}
+    // and Street View loads ocean off Africa.
+    let coords = verdict.coords;
+    let coordsResolvedVia: 'verdict' | 'geocode' | 'none' = verdict.coords
+      ? 'verdict'
+      : 'none';
+    if (!coords) {
+      const geocodeResult = await withTimeout(
+        geocodeAddress(cleanAddress),
+        STAGE2_TIMEOUT_MS,
+      );
+      if (geocodeResult && geocodeResult.status === 'ok' && geocodeResult.coords) {
+        coords = geocodeResult.coords;
+        coordsResolvedVia = 'geocode';
+      }
+    }
+
+    const heroBase = verdict.formatted ?? verdict.suggestedAddress ?? cleanAddress;
+    const heroPayload: PropertyData['hero'] | undefined = coords
+      ? {
+          streetViewProxyUrl: `/api/places/streetview?address=${encodeURIComponent(heroBase)}`,
+          aerialThumbUrl: heroBase
+            ? `/api/property/aerial-thumb?address=${encodeURIComponent(heroBase)}`
+            : undefined,
+        }
+      : undefined;
+
+    await writeReceipt(
+      ctx,
+      cleanAddress,
+      [
+        {
+          name: 'addressValidation',
+          fetchedAt: verdict.fetchedAt,
+          status: 'partial',
+          confidence: 'medium',
+        },
+        ...(coordsResolvedVia === 'geocode'
+          ? ([
+              {
+                name: 'geocoding' as const,
+                fetchedAt: nowIso(),
+                status: 'ok' as const,
+                confidence: 'high' as const,
+              },
+            ])
+          : []),
+      ],
+      'needs_correction',
+      { errorReason: `coords_resolved_via=${coordsResolvedVia}` },
+    );
     return {
       kind: 'needs_correction',
       payload: {
         suggestedAddress: verdict.suggestedAddress ?? verdict.formatted ?? cleanAddress,
         components: verdict.components,
         propertyData: null,
+        coords,
+        hero: heroPayload,
       },
     };
   }
