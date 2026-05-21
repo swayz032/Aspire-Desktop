@@ -22,7 +22,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { useTenant } from '@/providers';
-import { setBlueprintUpload, resetBlueprintUpload } from '@/lib/blueprintUploadStore';
+import { setBlueprintUpload, resetBlueprintUpload, getBlueprintUpload } from '@/lib/blueprintUploadStore';
 import {
   requestSignedUpload,
   completeUpload,
@@ -228,8 +228,16 @@ export function useBlueprintUpload(): UseBlueprintUploadResult {
   useEffect(() => {
     // project_id appears on the response as soon as INGEST returns 'ok' or
     // 'dedup'; fall back to the top-level project_id the proxy echoes.
-    const projectId =
+    // Wave 11n: PRESERVE the existing store projectId if the derived one is
+    // null. The dedup + queued paths set projectId via an explicit
+    // setBlueprintUpload({projectId: result.project_id, ...}) call BEFORE this
+    // effect fires; without this fallback, the effect immediately clobbers
+    // the freshly-written UUID with null (because `response` state was reset
+    // to null in those paths). That left phase=success with projectId=null
+    // in localStorage — the "No sheets yet" empty card recurring bug.
+    const derivedProjectId =
       response?.ingest?.project_id ?? response?.project_id ?? null;
+    const projectId = derivedProjectId ?? getBlueprintUpload().projectId;
     setBlueprintUpload({
       phase,
       filename,

@@ -105,12 +105,29 @@ const INITIAL: BlueprintUploadSnapshot = {
 };
 
 // Wave 11m: restore persisted state on module load (before any subscriber).
-// The restored snapshot may have stale `phase` (e.g. 'ingesting') from a
-// previous session — that is INTENTIONAL. The poll hook (useBlueprintProjectPoll)
-// runs against the restored projectId, sees terminal stages, and updates the
-// UI accordingly. Worst case: user sees a brief flash of stale phase before
-// the live poll lands, which is far better than "No sheets yet" forever.
-const _persisted = _readPersisted();
+// Wave 11n: drop poisoned snapshots. If phase indicates a tracked project
+// (success/ingesting/classifying) but projectId is null, the snapshot is
+// internally inconsistent (caused by an earlier projectId-clobber race that
+// has since been fixed). Restoring it would re-render the "No sheets yet"
+// empty card forever. Wipe localStorage and start clean instead.
+const _persistedRaw = _readPersisted();
+const _persisted = (() => {
+  if (!_persistedRaw) return null;
+  const phase = _persistedRaw.phase;
+  const tracksProject =
+    phase === 'success' || phase === 'ingesting' || phase === 'classifying';
+  if (tracksProject && !_persistedRaw.projectId) {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        window.localStorage.removeItem(STORAGE_KEY);
+      } catch {
+        /* best effort */
+      }
+    }
+    return null;
+  }
+  return _persistedRaw;
+})();
 let state: BlueprintUploadSnapshot = _persisted
   ? { ...INITIAL, ...(_persisted as BlueprintUploadSnapshot), file: null }
   : INITIAL;
