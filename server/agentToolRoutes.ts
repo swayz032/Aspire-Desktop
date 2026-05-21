@@ -2349,6 +2349,28 @@ router.post('/v1/tools/knowledge_search', async (req: Request, res: Response) =>
   const MAX_CHARS_PER_HIT = 1500;
   const REQ_TIMEOUT_MS = 6000;
 
+  // 2026-05-21: Transcript 57ee4a32 showed Ava skipping STATE 3 (Quinn LOOKUP)
+  // and jumping straight to billing items, because Anam's fuzzy search on
+  // "send an invoice" returned STATE 9/10 chunks (high lexical overlap) and
+  // missed the early-state entry chunks. To guarantee correct workflow entry
+  // regardless of retrieval ranking, prepend a STATE 1-3 ENTRY anchor for
+  // invoicing/quote queries.
+  const INVOICE_TRIGGER_RE = /\b(invoice|quote|bill)\b/i;
+  const STATE_1_TO_3_ENTRY = `## STATE 1 → STATE 2 → STATE 3 ENTRY PATH (mandatory sequence)
+
+STATE 1 — TRIGGER: User says "send/draft/make/create + invoice/quote/bill" → respond "Sure thing. Who's it for?"
+
+STATE 2 — NAME_VERIFY: User gives customer name → echo back "Got it, {first} {last} — that right?" SLOWLY with a beat between first and last. WAIT for explicit "yes/correct/right". Never skip the pause.
+
+STATE 3 — INVOKE_QUINN LOOKUP (gate): The instant the user confirms with "yes" in STATE 2, your VERY NEXT action MUST be:
+  invoke_quinn({ agent: "quinn", task: "invoice", details: "<full customer name only>" })
+Speak the ack "Let me check if they're in your system." in the SAME turn as the tool call.
+NEVER ask for billing items, email, due date, or notes BEFORE Quinn LOOKUP fires.
+Quinn LOOKUP returns either:
+  - found → proceed to STATE 6 (billing items) with email already known
+  - needs_onboarding → STATE 4 (ask for email + "Company, phone, and address are optional.")`;
+
+
   try {
     const hits: Array<{ folder: string; filename: string; content: string }> = [];
 
@@ -2393,6 +2415,16 @@ router.post('/v1/tools/knowledge_search', async (req: Request, res: Response) =>
         clearTimeout(timeoutId);
       }
     }));
+
+    // Prepend the STATE 1-3 ENTRY anchor for invoicing/quote queries so the
+    // workflow entry path is always visible regardless of fuzzy-search ranking.
+    if (INVOICE_TRIGGER_RE.test(query) && /(send|draft|make|create|start|new|add)/i.test(query)) {
+      hits.unshift({
+        folder: '8ff9e175-537d-43db-9611-7197c3f78311',
+        filename: 'Invoicing_and_Quotes_v6.txt (STATE 1-3 ENTRY anchor)',
+        content: STATE_1_TO_3_ENTRY,
+      });
+    }
 
     logger.info('[AgentTool] knowledge_search', {
       query: query.slice(0, 80),
