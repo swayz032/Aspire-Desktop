@@ -27,6 +27,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useBlueprintUploadSnapshot } from '@/lib/blueprintUploadStore';
 import { useBlueprintProjectPoll } from '@/hooks/useBlueprintProjectPoll';
 import { useTakeoffMaterials } from '@/hooks/useTakeoffMaterials';
+import { useActiveSheetId } from '@/lib/activeSheetStore';
 import {
   plansPhotosUiActions,
   usePlansPhotosUi,
@@ -35,6 +36,7 @@ import {
 import { ContextTabPayload, type ContextSection } from '../shell/ContextTabPayload';
 import { UploadProgressInline } from '../plans-photos/UploadProgressInline';
 import { DrewStageProgress } from '../plans-photos/DrewStageProgress';
+import { SheetContextPayload } from '../plans-photos/SheetContextPayload';
 import { getDisciplineStyle } from '../plans-photos/disciplines';
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
@@ -115,9 +117,29 @@ export function PlansPhotosContextPayload(): React.ReactElement {
   const snap = useBlueprintUploadSnapshot();
   const ui = usePlansPhotosUi();
   const { setActiveCard, setFilterKey } = plansPhotosUiActions();
+  // Wave 16: per-sheet premium intelligence. When the user has a sheet
+  // focused on the canvas, the Context tab swaps from the project-wide
+  // payload (counters, pipeline, discipline counts) into the
+  // SheetContextPayload — a dense per-drawing dossier (sheet code · seal
+  // pill · symbols on this sheet · OCR snippet · metadata · fingerprint).
+  // The fallback path below is unchanged; this lets the rail react the
+  // moment a chip is clicked without losing the project-wide view when
+  // no sheet is focused.
+  const activeSheetId = useActiveSheetId();
 
   const projectId = snap.projectId;
   const poll = useBlueprintProjectPoll(projectId);
+
+  // When the active sheet exists in the polled list, hand the Context tab
+  // entirely to the sheet-specific payload. This is what the user clicks
+  // for — "premium context for this exact sheet". Project-wide telemetry
+  // is one click away (deselect / navigate Scope) but should never compete
+  // with the per-sheet dossier for the user's attention.
+  const hasActiveSheet =
+    activeSheetId != null && poll.sheets.some((s) => s.id === activeSheetId);
+  if (hasActiveSheet) {
+    return <SheetContextPayload testID="plans-photos-context-payload" />;
+  }
 
   const isBusy =
     snap.phase === 'reading' ||

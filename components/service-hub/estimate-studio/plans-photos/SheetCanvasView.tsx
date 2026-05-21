@@ -44,6 +44,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { BlueprintSheetRead } from '@/lib/api/blueprintsApi';
+import { setActiveSheetId } from '@/lib/activeSheetStore';
 import { getDisciplineStyle } from './disciplines';
 
 // Hand-rolled web pan + zoom (no external dep). CSS transform with
@@ -111,7 +112,7 @@ function SheetChip({ sheet, index, isActive, onPress }: ChipProps): React.ReactE
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`Sheet ${discStyle.code} ${num}, ${discStyle.label}`}
+      accessibilityLabel={`Sheet ${codeLabel}, ${subLabel}`}
       accessibilityState={{ selected: isActive }}
       style={({ hovered, pressed }: { hovered?: boolean; pressed: boolean }) => [
         styles.chip,
@@ -188,6 +189,21 @@ export function SheetCanvasView({
     () => sorted.find((s) => s.id === activeId) ?? sorted[0] ?? null,
     [sorted, activeId],
   );
+
+  // Wave 16: publish the focused sheet to the activeSheetStore so the Tim
+  // Rail Context tab can render a sheet-specific premium payload. Pure
+  // side-channel — local activeId remains the source of truth for the
+  // canvas itself. On unmount we clear the store so the Context tab
+  // doesn't keep a dangling reference to a sheet that's no longer in
+  // view (e.g. user navigates to Scope / Materials).
+  useEffect(() => {
+    setActiveSheetId(activeId);
+  }, [activeId]);
+  useEffect(() => {
+    return () => {
+      setActiveSheetId(null);
+    };
+  }, []);
 
   // Auto-scroll the active chip into view when it changes (premium UX —
   // no contractor should ever lose their place).
