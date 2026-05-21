@@ -140,6 +140,12 @@ export function usePropertyData(
                 coords: resp.coords,
                 hero: resp.hero ?? {},
                 facts: {},
+                photos: {
+                  interior: { count: 0, photos: [] },
+                  exterior: { count: 0, photos: [] },
+                  roof: { count: 0, photos: [] },
+                  uncategorized: { count: 0, photos: [] },
+                },
                 sources: [],
               } as unknown as PropertyData;
               setData(synthetic);
