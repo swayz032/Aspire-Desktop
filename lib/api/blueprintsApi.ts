@@ -269,6 +269,10 @@ export interface BlueprintProject {
 export interface BlueprintSheetRead {
   id: string;
   sheet_number: string | null;
+  /** Wave 11p — architectural sheet code from title block (e.g. "E-1", "C2.2"). */
+  sheet_code?: string | null;
+  /** Wave 11p — canonical title from title block (e.g. "Electrical Site Plan"). */
+  sheet_title?: string | null;
   discipline: string | null;
   scale: string | null;
   /** Integer revision. 0/null = original; 1+ = revised. */

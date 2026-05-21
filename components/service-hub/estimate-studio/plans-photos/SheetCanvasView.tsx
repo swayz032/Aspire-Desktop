@@ -99,7 +99,13 @@ interface ChipProps {
 
 function SheetChip({ sheet, index, isActive, onPress }: ChipProps): React.ReactElement {
   const discStyle = getDisciplineStyle(sheet.discipline);
-  const num = sheet.sheet_number ?? String(index + 1);
+  // Wave 11p — prefer architectural sheet_code (e.g. "E-1", "C2.2") over
+  // raw page index. Fall back to "{disciplineCode} {sheet_number}" when
+  // Drew couldn't extract a code from the title block (older projects /
+  // poor OCR / non-standard layouts).
+  const codeLabel =
+    sheet.sheet_code ?? `${discStyle.code} ${sheet.sheet_number ?? String(index + 1)}`;
+  const subLabel = sheet.sheet_title ?? discStyle.label;
 
   return (
     <Pressable
@@ -140,10 +146,10 @@ function SheetChip({ sheet, index, isActive, onPress }: ChipProps): React.ReactE
         </View>
       </View>
       <Text style={styles.chipLabel} numberOfLines={1}>
-        {discStyle.code} {num}
+        {codeLabel}
       </Text>
       <Text style={[styles.chipSubLabel, { color: discStyle.fg }]} numberOfLines={1}>
-        {discStyle.label}
+        {subLabel}
       </Text>
     </Pressable>
   );
@@ -240,10 +246,11 @@ export function SheetCanvasView({
         {activeSheet ? (
           <View style={styles.activeLabel}>
             <Text style={styles.activeLabelMain}>
-              {getDisciplineStyle(activeSheet.discipline).code} {activeSheet.sheet_number ?? '—'}
+              {activeSheet.sheet_code ??
+                `${getDisciplineStyle(activeSheet.discipline).code} ${activeSheet.sheet_number ?? '—'}`}
             </Text>
             <Text style={styles.activeLabelSub}>
-              {getDisciplineStyle(activeSheet.discipline).label}
+              {activeSheet.sheet_title ?? getDisciplineStyle(activeSheet.discipline).label}
               {activeSheet.revision ? ` · Rev ${activeSheet.revision}` : ''}
             </Text>
           </View>
