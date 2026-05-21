@@ -42,12 +42,22 @@ import { MissingInputsList } from './MissingInputsList';
 import { AlternatesCard } from './AlternatesCard';
 import { TariffExposureCard } from './TariffExposureCard';
 import { TruthDistributionChart } from './TruthDistributionChart';
+import { useAdvancedMode } from '@/hooks/useAdvancedMode';
 
 const EMPTY_STATE_COPY = 'Drop a plan set in Plans & Photos to see the story here.';
+
+// Wave 18b contractor-simple: default view shows only these 3 chips.
+// Advanced/admin view (?advanced=1) shows the full 7.
+const CONTRACTOR_CHIP_KEYS: ReadonlyArray<ScopeCardKey> = [
+  'story',
+  'included',      // re-labeled "The Buy List" below
+  'missing_inputs', // re-labeled "Need to Confirm" below
+];
 
 export function ScopeTab(): React.ReactElement {
   const upload = useBlueprintUploadSnapshot();
   const { address } = useProjectAddress();
+  const advancedMode = useAdvancedMode();
   const router = useRouter();
   const projectId = upload.response?.project_id ?? null;
   const story = useBlueprintStory(projectId);
@@ -123,7 +133,10 @@ export function ScopeTab(): React.ReactElement {
         )
       : null;
 
-  const chips: BottomChip<ScopeCardKey>[] = [
+  // Wave 18b — contractor-simple labels in default mode; technical labels in
+  // advanced. Default = "The Buy List" / "Need to Confirm" — speaks the way a
+  // contractor reads a job, not the way an estimator writes a spec.
+  const allChips: BottomChip<ScopeCardKey>[] = [
     {
       key: 'story',
       icon: 'book-outline',
@@ -137,8 +150,8 @@ export function ScopeTab(): React.ReactElement {
     {
       key: 'included',
       icon: 'checkmark-done-outline',
-      label: 'Included Work',
-      stat: `${includedCount} assembl${includedCount === 1 ? 'y' : 'ies'}`,
+      label: advancedMode ? 'Included Work' : 'The Buy List',
+      stat: `${includedCount} ${advancedMode ? (includedCount === 1 ? 'assembly' : 'assemblies') : 'items'}`,
     },
     {
       key: 'not_in_base',
@@ -149,7 +162,7 @@ export function ScopeTab(): React.ReactElement {
     {
       key: 'missing_inputs',
       icon: 'help-circle-outline',
-      label: 'Missing Inputs',
+      label: advancedMode ? 'Missing Inputs' : 'Need to Confirm',
       stat: `${openMissing} open`,
       badge: openMissing > 0 ? String(openMissing) : undefined,
     },
@@ -177,6 +190,20 @@ export function ScopeTab(): React.ReactElement {
             : 'No facts yet',
     },
   ];
+  // Contractor view: filter to 3 chips. Admin view: show all 7.
+  const chips: BottomChip<ScopeCardKey>[] = advancedMode
+    ? allChips
+    : allChips.filter((c) => CONTRACTOR_CHIP_KEYS.includes(c.key));
+
+  // If active card is filtered out (e.g. user was on Truth Distribution then
+  // switched to contractor view), redirect to Story so canvas doesn't blank.
+  React.useEffect(() => {
+    if (!advancedMode && !CONTRACTOR_CHIP_KEYS.includes(ui.activeCard)) {
+      setActiveCard('story');
+    }
+    // setActiveCard is module-stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [advancedMode, ui.activeCard]);
 
   const cards: Record<ScopeCardKey, React.ReactNode> = {
     story: (
