@@ -52,7 +52,11 @@ export function useTakeoffSymbols(
 
   useEffect(() => {
     mountedRef.current = true;
-    if (!projectId || !officeId) {
+    // Wave 18i: officeId guard removed. Server proxy injects office_id from
+    // JWT/cookie regardless of client header. Guarding on officeId here
+    // caused silent failure during auth state hydration (tenantCtx.tenant
+    // is null on first render → officeId='' → hook bailed → user saw blank).
+    if (!projectId) {
       setSymbols([]);
       setEndpointMissing(false);
       return () => {

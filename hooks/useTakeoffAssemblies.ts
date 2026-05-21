@@ -34,7 +34,8 @@ export function useTakeoffAssemblies(projectId: string | null): UseTakeoffAssemb
 
   useEffect(() => {
     mountedRef.current = true;
-    if (!projectId || !officeId) {
+    // Wave 18i: see useTakeoffSymbols — server injects office_id from JWT.
+    if (!projectId) {
       setAssemblies([]);
       setEndpointMissing(false);
       return () => {

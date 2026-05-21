@@ -77,7 +77,8 @@ export function useBlueprintStory(projectId: string | null): UseBlueprintStoryRe
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchAll = useCallback(async (): Promise<void> => {
-    if (!projectId || !officeId) {
+    // Wave 18i: see useTakeoffSymbols — server injects office_id from JWT.
+    if (!projectId) {
       setStory(null);
       setAssemblies([]);
       setMaterials([]);

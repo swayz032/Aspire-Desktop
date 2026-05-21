@@ -40,7 +40,8 @@ export function useTakeoffMaterials(projectId: string | null): UseTakeoffMateria
 
   useEffect(() => {
     mountedRef.current = true;
-    if (!projectId || !officeId) {
+    // Wave 18i: see useTakeoffSymbols — server injects office_id from JWT.
+    if (!projectId) {
       setMaterials([]);
       setEndpointMissing(false);
       return () => {
