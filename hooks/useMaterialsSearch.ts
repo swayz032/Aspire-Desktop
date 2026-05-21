@@ -243,11 +243,11 @@ interface UseMaterialsSearchOptions {
    * Search mode driver.
    *   - 'tool'      — Home Depot retail (default).
    *   - 'supplier'  — Yelp B2B specialty.
-   *   - 'blueprint' — UI-only mode (Wave 14). The search hook treats this as
-   *                   'tool' for network purposes — Blueprint Mode's feed is
-   *                   driven by useTakeoffMaterials, not the search endpoint.
+   *
+   * Wave 18h: Blueprint is no longer a mode — Drew/Adam blueprint findings
+   * auto-prepend in Tool/Supplier modes when a project is loaded.
    */
-  mode?: 'tool' | 'supplier' | 'blueprint';
+  mode?: 'tool' | 'supplier';
 }
 
 export function useMaterialsSearch(

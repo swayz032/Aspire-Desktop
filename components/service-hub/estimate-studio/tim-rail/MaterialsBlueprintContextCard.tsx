@@ -3,8 +3,10 @@
  *
  * Renders ONLY when:
  *   - The active route is /materials, AND
- *   - The Materials mode toggle = 'blueprint', AND
  *   - A blueprint project is active.
+ *
+ * Wave 18h: Blueprint is no longer a toggle mode — the card now renders
+ * in BOTH Tool and Supplier modes whenever a project is loaded.
  *
  * Payload (locked):
  *   1. Discipline coverage bar — % per trade with progress fill
@@ -128,7 +130,6 @@ export function MaterialsBlueprintContextCard(): React.ReactElement | null {
 
   if (!ctx) return null;
   if (!onMaterialsTab) return null;
-  if (ctx.mode !== 'blueprint') return null;
   if (!projectId) return null;
 
   if (materials.length === 0) {

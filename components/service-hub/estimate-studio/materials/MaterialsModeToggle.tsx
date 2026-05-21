@@ -26,7 +26,6 @@ import { useMaterialsSearchContext, type MaterialsMode } from './MaterialsSearch
 const SEGMENTS: { value: MaterialsMode; label: string; testID: string }[] = [
   { value: 'tool', label: 'Tool', testID: 'materials-mode-toggle-tool' },
   { value: 'supplier', label: 'Supplier', testID: 'materials-mode-toggle-supplier' },
-  { value: 'blueprint', label: 'Blueprint', testID: 'materials-mode-toggle-blueprint' },
 ];
 
 export function MaterialsModeToggle() {

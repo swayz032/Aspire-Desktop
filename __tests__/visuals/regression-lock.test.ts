@@ -917,15 +917,16 @@ describe('Visuals Tab — Design Lock v1.0', () => {
     });
   });
 
-  describe('Lock #22: Materials tab "From Blueprint" surface (Wave 5.1a-5)', () => {
-    // Wave 5.1a-5 (2026-05-18): the Materials tab gains a "From Blueprint"
-    // chip that lets the contractor pivot between manual search and Drew's
-    // PROCURE picks. The chip is project-gated (deny-by-default per Law #3 —
-    // when no blueprint_project_id exists, the surface is hidden entirely).
-    // The canvas card renders Drew's picks with Confirm · Override · Skip
-    // actions; Override opens a modal panel that calls the YELLOW override
-    // proxy. Tim Rail Context counters extend to include "materials" so the
-    // contractor sees PROCURE output land in real time.
+  describe('Lock #22: Materials tab "From your blueprint" auto-prepend (Wave 18h)', () => {
+    // Wave 18h (2026-05-21): Blueprint is no longer a third toggle. When a
+    // blueprint project is loaded, Drew's curated materials auto-prepend in
+    // Tool mode and Adam's blueprint-derived supplier matches auto-prepend
+    // in Supplier mode, both under a "From your blueprint" section header.
+    // Project-gated (deny-by-default per Law #3 — when no project_id exists
+    // the surface is hidden entirely). The legacy FromBlueprintCard +
+    // MaterialOverridePanel components remain on disk but are no longer
+    // mounted by MaterialsTab; their internal shape locks still apply so
+    // the YELLOW override flow can be reintroduced cleanly.
     const tabSrc = read(
       'components/service-hub/estimate-studio/materials/MaterialsTab.tsx',
     );
@@ -940,25 +941,32 @@ describe('Visuals Tab — Design Lock v1.0', () => {
     );
     const routesSrc = read('server/routes.ts');
 
-    it('From Blueprint chip is rendered ONLY when a blueprint project exists', () => {
-      // Project-gated: the chip strip JSX must be guarded by
-      // `blueprintProjectId ?` to enforce deny-by-default (Law #3).
-      expect(tabSrc).toMatch(/blueprintProjectId\s*\?/);
-      expect(tabSrc).toMatch(/testID="materials-source-chip-from-blueprint"/);
+    it('blueprint prepend renders ONLY when a blueprint project exists', () => {
+      // Project-gated: the prepend JSX must be guarded by hasBlueprintData
+      // (which requires a non-null projectId) to enforce deny-by-default.
+      expect(tabSrc).toMatch(/showBlueprintPrepend/);
+      expect(tabSrc).toMatch(/hasBlueprintData/);
     });
 
-    it('chip carries a count badge of Drew picks', () => {
-      expect(tabSrc).toMatch(/materials-source-chip-from-blueprint-badge/);
-      expect(tabSrc).toMatch(/fromBlueprintCount\s*>\s*0/);
+    it('Tool mode prepends BlueprintModeFeed above generic results', () => {
+      expect(tabSrc).toMatch(/testID="materials-blueprint-prepend-tool"/);
+      expect(tabSrc).toMatch(/<BlueprintModeFeed\b/);
     });
 
-    it('toggling the From Blueprint chip mounts FromBlueprintCard on the canvas', () => {
-      // The active-chip state controls which canvas surface renders. When
-      // fromBlueprintActive AND a project exists, the FromBlueprintCard
-      // replaces the search canvas; manual-search branches are gated off.
-      expect(tabSrc).toMatch(/<FromBlueprintCard\b/);
-      expect(tabSrc).toMatch(/!fromBlueprintActive && !showEmptyState && mode === 'supplier'/);
-      expect(tabSrc).toMatch(/!fromBlueprintActive && !showEmptyState && mode === 'tool'/);
+    it('Supplier mode prepends a blueprint-derived supplier rail', () => {
+      expect(tabSrc).toMatch(/testID="materials-blueprint-prepend-supplier"/);
+      expect(tabSrc).toMatch(/deriveBlueprintSuppliers/);
+    });
+
+    it('mode toggle is 2-state (Blueprint segment removed)', () => {
+      const toggleSrc = read(
+        'components/service-hub/estimate-studio/materials/MaterialsModeToggle.tsx',
+      );
+      const barSrc = read(
+        'components/service-hub/estimate-studio/materials/MaterialsSearchBar.tsx',
+      );
+      expect(toggleSrc).not.toMatch(/value:\s*'blueprint'/);
+      expect(barSrc).not.toMatch(/value:\s*'blueprint'/);
     });
 
     it('FromBlueprintCard exposes Confirm · Override · Skip actions per row', () => {

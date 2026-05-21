@@ -5,6 +5,10 @@
  *   │ MaterialsSearchBar  (always visible)                       │
  *   │   ↳ closest store chip                                     │
  *   ├───────────────────────────────────────────────────────────┤
+ *   │ FROM YOUR BLUEPRINT  (when projectId present)              │
+ *   │   ↳ Tool mode → BlueprintModeFeed (Drew's curated picks)   │
+ *   │   ↳ Supplier mode → blueprint-derived supplier rail (Adam) │
+ *   ├───────────────────────────────────────────────────────────┤
  *   │ EMPTY STATE  (no query submitted)                          │
  *   │   ↳ Tim-suggested queries                                  │
  *   │ — OR —                                                     │
@@ -17,6 +21,11 @@
  *   │ BundleSummaryBar  (sticky, when bundle has items)          │
  *   └───────────────────────────────────────────────────────────┘
  *
+ * Wave 18h: Blueprint is no longer a toggle mode. When a project is loaded,
+ * Drew's blueprint material picks auto-prepend in Tool mode and Adam's
+ * blueprint-derived supplier matches auto-prepend in Supplier mode, both
+ * under a "From your blueprint" section header. Toggle is 2-state.
+ *
  * Aspire Law compliance:
  *   - Law #7: render layer only — no autonomous decisions.
  *   - Law #6: project address consumed via useProjectAddress (tenant-scoped).
@@ -25,18 +34,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Platform, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { getPredictiveAddons, type Product } from '@/hooks/useMaterialsSearch';
+import { getPredictiveAddons, type Product, type SpecialtySupplier } from '@/hooks/useMaterialsSearch';
 import { useMaterialsSearchContext } from './MaterialsSearchContext';
-// Wave 5.1a-5 — Drew's PROCURE picks land in the "From Blueprint" card-chip
-// surface alongside the manual-search canvas. The chip + canvas live in the
-// same tab so contractors never lose their search; pivoting between sources
-// is one tap.
+// Wave 18h — blueprint-derived data auto-prepends above generic results.
 import { useBlueprintUploadSnapshot } from '@/lib/blueprintUploadStore';
 import { useTakeoffMaterials } from '@/hooks/useTakeoffMaterials';
-import { useMaterialOverride } from '@/hooks/useMaterialOverride';
 import type { TakeoffMaterial } from '@/lib/api/blueprintsApi';
-import { FromBlueprintCard } from './FromBlueprintCard';
-import { MaterialOverridePanel } from './MaterialOverridePanel';
 import { BlueprintModeFeed } from './BlueprintModeFeed';
 import type { BlueprintTileMaterial } from './BlueprintModeTile';
 
@@ -51,104 +54,62 @@ import { MaterialsRouteHero } from './MaterialsRouteHero';
 
 /**
  * Thin chooser: picks the canvas view (results | route) from context.
- * Each branch is a separate component so each owns its own hook list —
- * keeps the React hook count stable across re-renders.
  */
 export function MaterialsTab() {
-  const { canvasView, mode } = useMaterialsSearchContext();
+  const { canvasView } = useMaterialsSearchContext();
   if (canvasView === 'route') return <MaterialsRouteHero />;
-  if (mode === 'blueprint') return <MaterialsTabBlueprint />;
   return <MaterialsTabResults />;
 }
 
 /**
- * Wave 14 — Blueprint mode feed. Renders Drew's curated picks as Tool-mode
- * tiles (shape preserved verbatim, additive Blueprint badges only). The
- * surrounding chrome (search bar, mode toggle, bundle bar) is identical to
- * the other modes — only the FEED swaps.
+ * Section header for the "From your blueprint" prepend. Premium chrome —
+ * matches the locked Visuals tab language (uppercase label, hairline rule,
+ * 200ms cross-fade on mount via Web).
  */
-function MaterialsTabBlueprint() {
-  const { bundle: bundleApi } = useMaterialsSearchContext();
-  const {
-    bundle,
-    addToBundle,
-    clearBundle,
-    bundleSubtotal,
-    bundleSupplierCount,
-    bundleItemCount,
-    pushToEstimate,
-  } = bundleApi;
-
-  const bundleMaterialIds = useMemo(
-    () => new Set(bundle.map((b) => b.product.id)),
-    [bundle],
-  );
-  const hasSupplierLines = useMemo(
-    () => bundle.some((b) => b.kind === 'supplier_line'),
-    [bundle],
-  );
-
-  const handleAdd = useCallback(
-    (m: BlueprintTileMaterial) => {
-      // Project the Drew material into the existing Product shape so it
-      // flows through the existing bundle hook without changing its contract.
-      // Tool-mode tiles add Product; Blueprint tiles use the same surface
-      // for first-class bundle persistence.
-      const product = {
-        id: m.material_id,
-        title: m.line_item,
-        brand: (m.brand ?? m.supplier_name ?? 'Drew pick') as string,
-        imageUrl: m.image_url ?? '',
-        price: typeof m.unit_price === 'number' ? m.unit_price : 0,
-        unit: m.unit,
-        rating: 0,
-        reviewCount: 0,
-        source: 'specialty' as const,
-        fetchedAt: new Date().toISOString(),
-        store: {
-          id: m.supplier_name ?? 'blueprint',
-          name: m.supplier_name ?? 'Drew pick',
-          driveMinutes: 0,
-          inStock: true,
-        },
-      };
-      addToBundle(product, Math.max(1, Math.round(m.quantity || 1)));
-    },
-    [addToBundle],
-  );
-
-  const handlePushToEstimate = useCallback(() => {
-    void pushToEstimate().catch((err) => {
-      if (__DEV__) console.warn('[materials/blueprint] pushToEstimate failed', err);
-    });
-  }, [pushToEstimate]);
-
-  const handleDraftRfq = useCallback(() => {
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.info('[materials/blueprint] draftRfq (stub)');
-    }
-  }, []);
-
+function BlueprintSectionHeader({ count }: { count: number }) {
   return (
-    <View style={styles.tab} testID="materials-tab-blueprint">
-      <View style={styles.blueprintBody}>
-        <BlueprintModeFeed
-          onAddToBundle={handleAdd}
-          bundleMaterialIds={bundleMaterialIds}
-        />
-      </View>
-      <BundleSummaryBar
-        itemCount={bundleItemCount}
-        supplierCount={bundleSupplierCount}
-        subtotal={bundleSubtotal}
-        onPushToEstimate={handlePushToEstimate}
-        onDraftRfq={handleDraftRfq}
-        onClear={clearBundle}
-        hasSupplierLines={hasSupplierLines}
-      />
+    <View style={styles.sectionHeader} testID="materials-blueprint-section-header">
+      <Ionicons name="hammer-outline" size={12} color="#fbbf24" />
+      <Text style={styles.sectionHeaderTitle}>FROM YOUR BLUEPRINT</Text>
+      {count > 0 ? (
+        <Text style={styles.sectionHeaderCount}>
+          {count} pick{count === 1 ? '' : 's'}
+        </Text>
+      ) : null}
+      <View style={styles.sectionHeaderRule} />
     </View>
   );
+}
+
+/**
+ * Aggregate blueprint materials into supplier matches for the Supplier-mode
+ * prepend. Pure projection — no network, no decisions.
+ */
+function deriveBlueprintSuppliers(materials: TakeoffMaterial[]): SpecialtySupplier[] {
+  const by: Map<string, { count: number; total: number; categories: Set<string> }> = new Map();
+  for (const m of materials) {
+    if (!m.supplier_name) continue;
+    const tile = m as TakeoffMaterial & { unit_price?: number | null; discipline?: string | null };
+    const cur = by.get(m.supplier_name) ?? { count: 0, total: 0, categories: new Set<string>() };
+    cur.count += 1;
+    cur.total += (tile.unit_price ?? 0) * (m.quantity || 0);
+    if (tile.discipline) cur.categories.add(tile.discipline.toUpperCase());
+    by.set(m.supplier_name, cur);
+  }
+  return Array.from(by.entries())
+    .sort((a, b) => b[1].total - a[1].total)
+    .slice(0, 6)
+    .map(([name, agg]) => ({
+      id: `bp-${name}`,
+      name,
+      category:
+        agg.categories.size > 0
+          ? Array.from(agg.categories).join(' · ')
+          : `${agg.count} item${agg.count === 1 ? '' : 's'}`,
+      phone: '',
+      distanceMiles: 0,
+      driveMinutes: 0,
+    }));
 }
 
 function MaterialsTabResults() {
@@ -168,7 +129,6 @@ function MaterialsTabResults() {
   const {
     bundle,
     addToBundle,
-    removeFromBundle: _removeFromBundle,
     clearBundle,
     bundleSubtotal,
     bundleSupplierCount,
@@ -177,45 +137,19 @@ function MaterialsTabResults() {
   } = bundleApi;
 
   // Pass D: bundle is Supabase-persisted — do NOT clear on unmount.
-  // The bundle persists across tab navigation and page reloads intentionally.
 
   const [compareProduct, setCompareProduct] = useState<Product | null>(null);
   const [activeFilter, setActiveFilter] = useState<
     { type: 'brand' | 'stock' | 'price'; value: string } | null
   >(null);
 
-  // ───────── Wave 5.1a-5: From Blueprint surface ─────────
-  // Active blueprint project (if any). When null, the From Blueprint chip is
-  // hidden — we never expose a Drew surface for a non-existent project.
+  // ───────── Wave 18h: blueprint prepend ─────────
   const blueprintSnap = useBlueprintUploadSnapshot();
-  // Wave 6.5 introduced `snap.projectId` as the canonical project marker
-  // (set the moment INGEST returns ok). Fall back to the older response
-  // shape in case a session-cached snapshot lacks the new field.
   const blueprintProjectId =
     blueprintSnap.projectId ?? blueprintSnap.response?.project_id ?? null;
   const blueprintMaterials = useTakeoffMaterials(blueprintProjectId);
-  const overrideController = useMaterialOverride(blueprintProjectId);
-  const [fromBlueprintActive, setFromBlueprintActive] = useState(false);
-  const [overrideTarget, setOverrideTarget] = useState<TakeoffMaterial | null>(null);
-  const procureStatus = blueprintSnap.response?.stage_progress?.procure ?? 'pending';
-  const procureDone = procureStatus === 'ok';
-
-  // Auto-deactivate the chip if the active blueprint project goes away
-  // (e.g. user reset the upload). Keep canvas honest.
-  useEffect(() => {
-    if (!blueprintProjectId && fromBlueprintActive) {
-      setFromBlueprintActive(false);
-      setOverrideTarget(null);
-    }
-  }, [blueprintProjectId, fromBlueprintActive]);
-
-  const handleOpenOverride = useCallback((m: TakeoffMaterial) => {
-    setOverrideTarget(m);
-  }, []);
-  const handleCloseOverride = useCallback(() => {
-    setOverrideTarget(null);
-  }, []);
-  const fromBlueprintCount = blueprintMaterials.materials.length;
+  const hasBlueprintData =
+    blueprintProjectId !== null && blueprintMaterials.materials.length > 0;
 
   // Pass D: BundleItem.product.id replaces Pass B BundleItem.productId
   const bundleIds = useMemo(() => new Set(bundle.map((b) => b.product.id)), [bundle]);
@@ -225,6 +159,38 @@ function MaterialsTabResults() {
   const hasSupplierLines = useMemo(
     () => bundle.some((b) => b.kind === 'supplier_line'),
     [bundle],
+  );
+
+  // Wave 18h: bridge Drew tile → bundle via the same Product projection used
+  // by the standalone Blueprint feed previously.
+  const handleBlueprintTileAdd = useCallback(
+    (m: BlueprintTileMaterial) => {
+      const product: Product = {
+        id: m.material_id,
+        title: m.line_item,
+        brand: (m.brand ?? m.supplier_name ?? 'Drew pick') as string,
+        imageUrl: m.image_url ?? '',
+        price: typeof m.unit_price === 'number' ? m.unit_price : 0,
+        unit: m.unit,
+        rating: 0,
+        reviewCount: 0,
+        source: 'specialty',
+        fetchedAt: new Date().toISOString(),
+        store: {
+          id: m.supplier_name ?? 'blueprint',
+          name: m.supplier_name ?? 'Drew pick',
+          driveMinutes: 0,
+          inStock: true,
+        },
+      };
+      addToBundle(product, Math.max(1, Math.round(m.quantity || 1)));
+    },
+    [addToBundle],
+  );
+
+  const blueprintSuppliers = useMemo(
+    () => (hasBlueprintData ? deriveBlueprintSuppliers(blueprintMaterials.materials) : []),
+    [hasBlueprintData, blueprintMaterials.materials],
   );
 
   const handleSuggestionPick = useCallback(
@@ -246,26 +212,17 @@ function MaterialsTabResults() {
     setCompareProduct(p);
   }, []);
 
-  const handleUseAlt = useCallback(
-    (_sellerId: string) => {
-      // Pass F: real swap. Pass B: close drawer.
-      setCompareProduct(null);
-    },
-    [],
-  );
+  const handleUseAlt = useCallback((_sellerId: string) => {
+    setCompareProduct(null);
+  }, []);
 
-  // YELLOW tier — user clicked "Push to Estimate" in BundleSummaryBar.
-  // The hook enforces server-side capability token gating; the confirmation
-  // modal in BundleSummaryBar provides the UX-level Yellow gate.
   const handlePushToEstimate = useCallback(() => {
     void pushToEstimate().catch((err) => {
-      // Error is surfaced via pushError in the hook; no additional handling needed here.
       if (__DEV__) console.warn('[materials] pushToEstimate failed', err);
     });
   }, [pushToEstimate]);
 
   const handleDraftRfq = useCallback(() => {
-    // Pass G: open RFQDraftModal. Pass B: noop.
     if (__DEV__) {
       // eslint-disable-next-line no-console
       console.info('[materials] draftRfq (mock)');
@@ -273,13 +230,9 @@ function MaterialsTabResults() {
   }, []);
 
   // Predictive add-ons keyed off the most recent bundle addition.
-  // Pass D: bundle items carry the full Product snapshot; Pass B called
-  // bundle[last].product which is already the typed Product in Pass D.
-  // getPredictiveAddons() falls back to mock data until Pass H wires Tim voice.
   const predictiveAddons = useMemo(() => {
     if (bundle.length === 0) return [];
     const lastItem = bundle[bundle.length - 1];
-    // Pass D BundleItem.product is typed Product (camelCase)
     const seed: Product = lastItem.product;
     const addonCandidates = getPredictiveAddons(seed);
     return addonCandidates.filter((p) => !bundleIds.has(p.id));
@@ -298,7 +251,7 @@ function MaterialsTabResults() {
       if (activeFilter.type === 'brand') return p.brand === activeFilter.value;
       if (activeFilter.type === 'stock') {
         if (activeFilter.value === 'in_stock') return p.store.inStock;
-        return true; // 'all'
+        return true;
       }
       if (activeFilter.type === 'price') {
         if (activeFilter.value === 'lo') return p.price < priceMid;
@@ -324,15 +277,15 @@ function MaterialsTabResults() {
 
   const hasResults = Array.isArray(filteredResults) && filteredResults.length > 0;
   const hasSpecialty = specialtySuppliers.length > 0;
-  // Pass E: in supplier mode the primary result set is `suppliers`. We treat
-  // a non-null value as a submitted-search marker (same convention as
-  // `results` in tool mode).
   const hasSubmittedSupplier = Array.isArray(suppliers);
-  // Empty state: no search submitted yet. If a search ran and filters hid
-  // everything, fall through to the inline no-results card.
   const hasSubmittedSearch =
     mode === 'supplier' ? hasSubmittedSupplier : Array.isArray(results);
   const showEmptyState = !hasSubmittedSearch && !hasSpecialty && !isLoading;
+
+  // Show blueprint prepend when project loaded — independent of search state.
+  // Tool mode → BlueprintModeFeed. Supplier mode → SupplierMatchesRail bound
+  // to blueprint-derived suppliers.
+  const showBlueprintPrepend = hasBlueprintData;
 
   return (
     <View style={styles.tab} testID="materials-tab">
@@ -350,95 +303,51 @@ function MaterialsTabResults() {
           </View>
         )}
 
-        {/* Wave 5.1a-5: From Blueprint chip — visible only when there's an
-            active blueprint project on this session. */}
-        {blueprintProjectId ? (
-          <View style={styles.sourceChipRow} testID="materials-source-chips">
-            <Pressable
-              onPress={() => setFromBlueprintActive(false)}
-              accessibilityRole="button"
-              accessibilityLabel="View manual search"
-              accessibilityState={{ selected: !fromBlueprintActive }}
-              testID="materials-source-chip-search"
-              style={({ hovered, pressed }: any) => [
-                styles.sourceChip,
-                !fromBlueprintActive && styles.sourceChipActive,
-                hovered && fromBlueprintActive && styles.sourceChipHover,
-                pressed && styles.sourceChipPressed,
-              ]}
-            >
-              <Ionicons
-                name="search-outline"
-                size={12}
-                color={!fromBlueprintActive ? '#fbbf24' : 'rgba(255,255,255,0.70)'}
-              />
-              <Text
-                style={[
-                  styles.sourceChipText,
-                  !fromBlueprintActive && styles.sourceChipTextActive,
-                ]}
-              >
-                Search
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setFromBlueprintActive(true)}
-              accessibilityRole="button"
-              accessibilityLabel={`From Blueprint, ${fromBlueprintCount} picks`}
-              accessibilityState={{ selected: fromBlueprintActive }}
-              testID="materials-source-chip-from-blueprint"
-              style={({ hovered, pressed }: any) => [
-                styles.sourceChip,
-                fromBlueprintActive && styles.sourceChipActive,
-                hovered && !fromBlueprintActive && styles.sourceChipHover,
-                pressed && styles.sourceChipPressed,
-              ]}
-            >
-              <Ionicons
-                name="hammer-outline"
-                size={12}
-                color={fromBlueprintActive ? '#fbbf24' : 'rgba(255,255,255,0.70)'}
-              />
-              <Text
-                style={[
-                  styles.sourceChipText,
-                  fromBlueprintActive && styles.sourceChipTextActive,
-                ]}
-              >
-                From Blueprint
-              </Text>
-              {fromBlueprintCount > 0 ? (
-                <Text
-                  style={[
-                    styles.sourceChipBadge,
-                    fromBlueprintActive && styles.sourceChipBadgeActive,
-                  ]}
-                  testID="materials-source-chip-from-blueprint-badge"
-                >
-                  {fromBlueprintCount}
-                </Text>
-              ) : null}
-            </Pressable>
+        {/* Wave 18h: blueprint findings auto-prepend when a project is loaded. */}
+        {showBlueprintPrepend && mode === 'tool' && (
+          <View
+            style={styles.blueprintPrepend}
+            testID="materials-blueprint-prepend-tool"
+          >
+            <BlueprintSectionHeader count={blueprintMaterials.materials.length} />
+            <BlueprintModeFeed
+              onAddToBundle={handleBlueprintTileAdd}
+              bundleMaterialIds={bundleIds}
+            />
           </View>
-        ) : null}
+        )}
+        {showBlueprintPrepend && mode === 'supplier' && (
+          <View
+            style={styles.blueprintPrepend}
+            testID="materials-blueprint-prepend-supplier"
+          >
+            <BlueprintSectionHeader count={blueprintSuppliers.length} />
+            {blueprintSuppliers.length > 0 ? (
+              <SupplierMatchesRail
+                suppliers={blueprintSuppliers}
+                onDraftRfq={(s) => {
+                  if (__DEV__) {
+                    // eslint-disable-next-line no-console
+                    console.info('[materials/blueprint-supplier] draft RFQ', s.id);
+                  }
+                }}
+              />
+            ) : (
+              <View style={styles.blueprintEmpty} testID="materials-blueprint-supplier-empty">
+                <Ionicons name="leaf-outline" size={14} color="rgba(255,255,255,0.40)" />
+                <Text style={styles.blueprintEmptyText}>
+                  No suppliers tagged on this blueprint yet. Search below or wait for Adam to finish matching.
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
 
-        {fromBlueprintActive && blueprintProjectId ? (
-          <FromBlueprintCard
-            materials={blueprintMaterials.materials}
-            isLoading={blueprintMaterials.isLoading}
-            error={blueprintMaterials.error}
-            endpointMissing={blueprintMaterials.endpointMissing}
-            procureDone={procureDone}
-            controller={overrideController}
-            onOpenOverride={handleOpenOverride}
-          />
-        ) : null}
-
-        {!fromBlueprintActive && showEmptyState && (
+        {showEmptyState && (
           <MaterialsEmptyState suggestions={suggestedQueries} onPick={handleSuggestionPick} />
         )}
 
-        {!fromBlueprintActive && !showEmptyState && mode === 'supplier' && (
+        {!showEmptyState && mode === 'supplier' && (
           <SupplierGrid
             suppliers={suppliers}
             isLoading={isLoading && suppliers === null}
@@ -451,7 +360,7 @@ function MaterialsTabResults() {
           />
         )}
 
-        {!fromBlueprintActive && !showEmptyState && mode === 'tool' && (
+        {!showEmptyState && mode === 'tool' && (
           <>
             {filters.length > 0 && (
               <View style={styles.filtersBar} testID="materials-filters-bar">
@@ -557,19 +466,6 @@ function MaterialsTabResults() {
         onClose={() => setCompareProduct(null)}
         onUseAlt={handleUseAlt}
       />
-
-      {/* Wave 5.1a-5: override panel — YELLOW gate before mutation hits net. */}
-      <MaterialOverridePanel
-        visible={overrideTarget !== null}
-        material={overrideTarget}
-        controller={overrideController}
-        onClose={handleCloseOverride}
-        onOverrideApplied={(materialId) => {
-          // Optimistic: mark as overridden in the cached materials list so
-          // the row re-renders as "Overridden" without an explicit refetch.
-          blueprintMaterials.markInBundle([materialId]);
-        }}
-      />
     </View>
   );
 }
@@ -579,10 +475,6 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
     gap: 12,
-  },
-  blueprintBody: {
-    flex: 1,
-    paddingBottom: 96, // leave room for sticky BundleSummaryBar
   },
   scroll: {
     flex: 1,
@@ -606,6 +498,60 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 11,
     color: 'rgba(251,191,36,0.92)',
+    letterSpacing: -0.05,
+  },
+
+  // Wave 18h: From-your-blueprint prepend section
+  blueprintPrepend: {
+    gap: 12,
+    ...(Platform.OS === 'web'
+      ? ({
+          transition: 'opacity 200ms ease',
+        } as unknown as object)
+      : {}),
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 2,
+  },
+  sectionHeaderTitle: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: 'rgba(255,255,255,0.78)',
+    letterSpacing: 1.4,
+  },
+  sectionHeaderCount: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.45)',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: 0.4,
+  },
+  sectionHeaderRule: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    marginLeft: 4,
+  },
+  blueprintEmpty: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderStyle: 'dashed',
+  },
+  blueprintEmptyText: {
+    flex: 1,
+    fontSize: 11.5,
+    color: 'rgba(255,255,255,0.62)',
+    lineHeight: 16,
     letterSpacing: -0.05,
   },
 
@@ -663,63 +609,6 @@ const styles = StyleSheet.create({
   },
   filterChipCountActive: {
     color: 'rgba(251,191,36,0.85)',
-  },
-
-  // Wave 5.1a-5: From Blueprint source-chip strip
-  sourceChipRow: {
-    flexDirection: 'row',
-    gap: 6,
-    alignItems: 'center',
-    paddingVertical: 2,
-  },
-  sourceChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 7,
-    backgroundColor: 'rgba(255,255,255,0.025)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    ...(Platform.OS === 'web'
-      ? ({ transition: 'background-color 150ms ease, border-color 150ms ease' } as any)
-      : {}),
-  },
-  sourceChipActive: {
-    backgroundColor: 'rgba(251,191,36,0.10)',
-    borderColor: 'rgba(251,191,36,0.55)',
-  },
-  sourceChipHover: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderColor: 'rgba(255,255,255,0.14)',
-  },
-  sourceChipPressed: {
-    opacity: 0.82,
-  },
-  sourceChipText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.78)',
-    letterSpacing: -0.05,
-  },
-  sourceChipTextActive: {
-    color: '#fbbf24',
-    fontWeight: '700',
-  },
-  sourceChipBadge: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.50)',
-    fontVariant: ['tabular-nums'],
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  },
-  sourceChipBadgeActive: {
-    color: '#fbbf24',
-    backgroundColor: 'rgba(251,191,36,0.15)',
   },
 
   // No results inline

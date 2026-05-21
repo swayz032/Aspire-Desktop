@@ -8,7 +8,7 @@
  *   - BlueprintModeTile surfaces FROM badge + discipline pill + truth chip
  *   - Tariff inline chip only appears when tariff_flag !== 'none'
  *   - Filter chips narrow the rendered tile list
- *   - MaterialsBlueprintContextCard renders in Tim Rail when mode === 'blueprint'
+ *   - MaterialsBlueprintContextCard renders in Tim Rail whenever a project is loaded (Wave 18h)
  */
 import React from 'react';
 import { render } from '@testing-library/react-native';
@@ -120,16 +120,16 @@ beforeEach(() => {
   mockEndpointMissing = false;
 });
 
-describe('Materials Blueprint Mode — toggle', () => {
-  it('exposes a Blueprint segment alongside Tool and Supplier', () => {
-    const { getByTestId } = render(
+describe('Materials mode toggle — Wave 18h', () => {
+  it('exposes only Tool and Supplier segments (Blueprint is no longer a mode)', () => {
+    const { getByTestId, queryByTestId } = render(
       <MaterialsSearchProvider>
         <MaterialsModeToggle />
       </MaterialsSearchProvider>,
     );
     expect(getByTestId('materials-mode-toggle-tool')).toBeTruthy();
     expect(getByTestId('materials-mode-toggle-supplier')).toBeTruthy();
-    expect(getByTestId('materials-mode-toggle-blueprint')).toBeTruthy();
+    expect(queryByTestId('materials-mode-toggle-blueprint')).toBeNull();
   });
 });
 

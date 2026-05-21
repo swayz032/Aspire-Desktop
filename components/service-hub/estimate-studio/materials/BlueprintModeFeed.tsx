@@ -1,7 +1,8 @@
 /**
  * BlueprintModeFeed — Wave 14.
  *
- * Top-level surface rendered when MaterialsMode === 'blueprint'. Three states:
+ * Top-level surface rendered as the "From your blueprint" prepend in Tool
+ * mode (Wave 18h). Three states:
  *
  *   1. No active blueprint project →
  *        Empty state CTA → navigate to Plans & Photos.

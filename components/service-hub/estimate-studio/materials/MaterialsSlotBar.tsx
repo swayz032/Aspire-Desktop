@@ -22,17 +22,11 @@ import { useMaterialsSearchContext } from './MaterialsSearchContext';
 
 const TOOL_PLACEHOLDER = 'Search materials — paint, drywall, romex, shingles…';
 const SUPPLIER_PLACEHOLDER = 'Search suppliers — precast, concrete by yard, lumber wholesale…';
-const BLUEPRINT_PLACEHOLDER = 'Filter Drew’s picks — by trade, supplier, sheet…';
 
 export function MaterialsSlotBar() {
   const { search, mode, autoFlipKeyword, clearAutoFlip } = useMaterialsSearchContext();
 
-  const placeholder =
-    mode === 'supplier'
-      ? SUPPLIER_PLACEHOLDER
-      : mode === 'blueprint'
-        ? BLUEPRINT_PLACEHOLDER
-        : TOOL_PLACEHOLDER;
+  const placeholder = mode === 'supplier' ? SUPPLIER_PLACEHOLDER : TOOL_PLACEHOLDER;
 
   return (
     <View style={styles.wrap} testID="materials-slot-bar">
