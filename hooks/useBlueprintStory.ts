@@ -16,7 +16,7 @@
  *   Law #7 — pure data hook: no decisions, no side-effects beyond setState.
  *   Law #9 — fetch errors logged with code only, never request bodies.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { useTenant } from '@/providers';
 import {
@@ -31,9 +31,14 @@ import {
   type BlueprintStory,
   type TruthClass,
 } from '@/lib/api/blueprintsApi';
+// Story Mode v2: chapter-shaped projection over the legacy story.
+import { adaptLegacyStoryToV2, type BlueprintStoryV2 } from '@/lib/api/blueprintsStoryV2';
 
 export interface UseBlueprintStoryResult {
   story: BlueprintStory | null;
+  /** Story Mode v2 projection of `story` via `adaptLegacyStoryToV2`. Null
+   *  iff `story` is null. Sheets are empty until Drew emits chapters[]. */
+  storyV2: BlueprintStoryV2 | null;
   assemblies: BlueprintAssembly[];
   materials: BlueprintMaterial[];
   missingInputs: BlueprintMissingInput[];
@@ -72,6 +77,14 @@ export function useBlueprintStory(projectId: string | null): UseBlueprintStoryRe
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [backendDeployed, setBackendDeployed] = useState<boolean>(true);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
+
+  // Story Mode v2 surface. Sheets are intentionally empty — the hook does not
+  // currently poll sheets, and coverage reads sheets_total: 0 by design until
+  // Drew backend emits real chapters[] (see plan §3.1).
+  const storyV2 = useMemo<BlueprintStoryV2 | null>(
+    () => adaptLegacyStoryToV2(story, []),
+    [story],
+  );
 
   const abortRef = useRef<AbortController | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -202,6 +215,7 @@ export function useBlueprintStory(projectId: string | null): UseBlueprintStoryRe
 
   return {
     story,
+    storyV2,
     assemblies,
     materials,
     missingInputs,
