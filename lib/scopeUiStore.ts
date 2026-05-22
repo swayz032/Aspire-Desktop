@@ -8,6 +8,8 @@
  *   - `activeCard` — which Scope canvas card is showing
  *       ('story' | 'included' | 'not_in_base' | 'missing_inputs'
  *        | 'alternates' | 'tariff' | 'truth')
+ *   - `activeChapterKey` — Story Mode v2's currently-rendered chapter key,
+ *       hydrated from URL `?chapter=` (null when no chapter is active).
  *
  * Why a store, not props:
  *   - The Tim Rail Context payload exposes "Jump to Missing Inputs" / "Jump to
@@ -33,10 +35,12 @@ export type ScopeCardKey =
 
 export interface ScopeUiSnapshot {
   activeCard: ScopeCardKey;
+  activeChapterKey: string | null;
 }
 
 const INITIAL: ScopeUiSnapshot = {
   activeCard: 'story',
+  activeChapterKey: null,
 };
 
 let state: ScopeUiSnapshot = INITIAL;
@@ -48,12 +52,18 @@ function emit(): void {
 
 export function scopeUiActions(): {
   setActiveCard: (k: ScopeCardKey) => void;
+  setActiveChapterKey: (k: string | null) => void;
   reset: () => void;
 } {
   return {
     setActiveCard: (k) => {
       if (state.activeCard === k) return;
       state = { ...state, activeCard: k };
+      emit();
+    },
+    setActiveChapterKey: (k) => {
+      if (state.activeChapterKey === k) return;
+      state = { ...state, activeChapterKey: k };
       emit();
     },
     reset: () => {
