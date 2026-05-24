@@ -4,12 +4,13 @@
  * the active region key and pulses the matching region (and vice
  * versa). Pure UI state, no side effects.
  *
- * Setters are stable across renders (useCallback) so consumers can
- * pass them into memoized children without invalidating memoization.
+ * React guarantees `useState` setters are referentially stable across
+ * renders, so we expose them directly without a useCallback wrapper.
+ * Consumers can still pass these setters into memoized children safely.
  *
  * Law #7: render-layer state only.
  */
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 
 export interface ChapterAnnotationsApi {
   hoverBulletKey: string | null;
@@ -19,9 +20,7 @@ export interface ChapterAnnotationsApi {
 }
 
 export function useChapterAnnotations(): ChapterAnnotationsApi {
-  const [hoverBulletKey, _setHoverBulletKey] = useState<string | null>(null);
-  const [hoverRegionKey, _setHoverRegionKey] = useState<string | null>(null);
-  const setHoverBulletKey = useCallback((k: string | null) => _setHoverBulletKey(k), []);
-  const setHoverRegionKey = useCallback((k: string | null) => _setHoverRegionKey(k), []);
+  const [hoverBulletKey, setHoverBulletKey] = useState<string | null>(null);
+  const [hoverRegionKey, setHoverRegionKey] = useState<string | null>(null);
   return { hoverBulletKey, hoverRegionKey, setHoverBulletKey, setHoverRegionKey };
 }
