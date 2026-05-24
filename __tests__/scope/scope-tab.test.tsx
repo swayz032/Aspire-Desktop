@@ -487,3 +487,68 @@ describe('Scope Tab — Wave 12 store + truth chip', () => {
     expect(getByTestId('truth-distribution-empty')).toBeTruthy();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Story Mode v2 integration (Task 11)
+// ---------------------------------------------------------------------------
+
+import { adaptLegacyStoryToV2 } from '@/lib/api/blueprintsStoryV2';
+import * as useAdvancedModeModule from '@/hooks/useAdvancedMode';
+
+describe('ScopeTab — Story Mode v2 integration', () => {
+  // Scoped mock for useAdvancedMode — the pre-existing suite leaves
+  // useLocalSearchParams unmocked, which is what makes the existing
+  // ScopeTab-rendering tests fail. We spy on useAdvancedMode at the
+  // module boundary so only this describe block sidesteps that.
+  let advancedSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    advancedSpy = jest
+      .spyOn(useAdvancedModeModule, 'useAdvancedMode')
+      .mockReturnValue(false);
+  });
+
+  afterEach(() => {
+    advancedSpy.mockRestore();
+  });
+
+  function buildStoryStateWithV2() {
+    const v2 = adaptLegacyStoryToV2(baseStory, []);
+    // Force at least one chapter (adaptLegacyStoryToV2 lifts phases →
+    // chapters, and baseStory has one phase, so this should be length>=1).
+    expect(v2).not.toBeNull();
+    expect((v2 as { chapters: unknown[] }).chapters.length).toBeGreaterThan(0);
+    return {
+      ...makeStoryState({}),
+      storyV2: v2,
+    };
+  }
+
+  it('mounts StoryPanelV2 when storyV2 has chapters and activeCard is story', () => {
+    mockUploadSnapState = mockUploadSnap;
+    mockStoryState = buildStoryStateWithV2() as typeof mockStoryState;
+    const { getByTestId } = render(<ScopeTab />);
+
+    expect(getByTestId('story-panel-v2')).toBeTruthy();
+  });
+
+  it('does not render BottomChipStrip when activeCard is "story" and storyV2 has chapters', () => {
+    mockUploadSnapState = mockUploadSnap;
+    mockStoryState = buildStoryStateWithV2() as typeof mockStoryState;
+    const { queryByTestId } = render(<ScopeTab />);
+
+    expect(queryByTestId('scope-chip-strip')).toBeNull();
+  });
+
+  it('renders BottomChipStrip when activeCard is not "story"', () => {
+    mockUploadSnapState = mockUploadSnap;
+    mockStoryState = buildStoryStateWithV2() as typeof mockStoryState;
+    // Pre-select a non-story card BEFORE render so the chip strip mounts.
+    act(() => {
+      scopeUiActions().setActiveCard('missing_inputs');
+    });
+    const { getByTestId } = render(<ScopeTab />);
+
+    expect(getByTestId('scope-chip-strip')).toBeTruthy();
+  });
+});
