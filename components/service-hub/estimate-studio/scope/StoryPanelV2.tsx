@@ -30,9 +30,36 @@ interface Props {
 }
 
 export function StoryPanelV2({ story, activeChapterKey, onSelectChapter }: Props): React.ReactElement {
+  // All hooks must be called unconditionally before any early return —
+  // hence we compute `active` (with a fallback shim when empty) up front,
+  // even though the empty branch below doesn't use it.
   const annotations = useChapterAnnotations();
 
-  if (story.chapters.length === 0) {
+  const active =
+    story.chapters.find((c) => c.key === activeChapterKey) ?? story.chapters[0] ?? null;
+  const activeKey = active?.key ?? null;
+
+  // Reset hover wiring when the active chapter changes so a stale bullet/region
+  // key from the previous chapter doesn't accidentally match (or stick).
+  // Setters are stable (useCallback in useChapterAnnotations) so depending on
+  // them is safe and doesn't refire the effect.
+  const { setHoverBulletKey, setHoverRegionKey } = annotations;
+  useEffect(() => {
+    setHoverBulletKey(null);
+    setHoverRegionKey(null);
+  }, [activeKey, setHoverBulletKey, setHoverRegionKey]);
+
+  // Stable identity so ChapterBlueprintPane (and any downstream React.memo)
+  // doesn't re-render on every parent render.
+  const regions = useMemo(
+    () =>
+      (active?.zones.open_questions ?? [])
+        .map((q) => q.blueprint_region)
+        .filter((r): r is NonNullable<typeof r> => r != null),
+    [active],
+  );
+
+  if (story.chapters.length === 0 || !active) {
     return (
       <View style={styles.empty} testID="story-panel-v2-empty">
         <View style={styles.emptyIconCircle}>
@@ -45,27 +72,6 @@ export function StoryPanelV2({ story, activeChapterKey, onSelectChapter }: Props
       </View>
     );
   }
-
-  const active =
-    story.chapters.find((c) => c.key === activeChapterKey) ?? story.chapters[0];
-
-  // Reset hover wiring when the active chapter changes so a stale bullet/region
-  // key from the previous chapter doesn't accidentally match (or stick).
-  // Setters are stable (useCallback in useChapterAnnotations) so depending on
-  // them is safe and doesn't refire the effect.
-  useEffect(() => {
-    annotations.setHoverBulletKey(null);
-    annotations.setHoverRegionKey(null);
-  }, [active.key, annotations.setHoverBulletKey, annotations.setHoverRegionKey]);
-
-  // Stable identity so ChapterBlueprintPane (and any downstream React.memo)
-  // doesn't re-render on every parent render.
-  const regions = useMemo(
-    () => active.zones.open_questions
-      .map((q) => q.blueprint_region)
-      .filter((r): r is NonNullable<typeof r> => r != null),
-    [active],
-  );
 
   return (
     <View style={styles.host} testID="story-panel-v2">
