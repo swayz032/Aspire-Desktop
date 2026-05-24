@@ -79,13 +79,24 @@ export function ChapterStrip({ chapters, activeKey, onSelect }: Props): React.Re
 }
 
 const styles = StyleSheet.create({
+  // HOTFIX 2026-05-23 — `flexGrow: 0` keeps the strip from inflating to fill
+  // its flex parent (StoryPanelV2's card column). Without it, the ScrollView
+  // would stretch vertically and pull the cards with it.
   strip: {
+    flexGrow: 0,
+    flexShrink: 0,
     borderTopWidth: 1,
     borderTopColor: 'rgba(251,191,36,0.10)',
   },
-  stripContent: { gap: 6, padding: 10 },
+  // HOTFIX 2026-05-23 — `alignItems: 'flex-start'` overrides React Native's
+  // default `stretch`, which was making every chapter card inflate to the
+  // strip's cross-axis height (~400px tall instead of ~108px). Combined with
+  // the explicit `card.height` below, this is belt-and-suspenders against
+  // any future parent-flex changes.
+  stripContent: { gap: 6, padding: 10, alignItems: 'flex-start' },
   card: {
     width: 118,
+    height: 108,
     borderRadius: 7,
     backgroundColor: 'rgba(255,255,255,0.02)',
     borderWidth: 1,
