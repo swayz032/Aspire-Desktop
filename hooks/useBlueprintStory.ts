@@ -24,7 +24,7 @@
  *   Law #7 — pure data hook: no decisions, no side-effects beyond setState.
  *   Law #9 — fetch errors logged with code only, never request bodies.
  */
-import { useCallback, useMemo, useSyncExternalStore } from 'react';
+import { useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { useTenant } from '@/providers';
 import {
@@ -274,12 +274,23 @@ export function useBlueprintStory(projectId: string | null): UseBlueprintStoryRe
   const officeId = tenantCtx.tenant?.officeId ?? '';
   const key = keyFor(officeId, projectId);
 
+  // HOTFIX 2026-05-23 — `authenticatedFetch` is recreated whenever the
+  // Supabase session refreshes (its useCallback deps include session/suiteId).
+  // If we include it in the subscribe dep array, useSyncExternalStore tears
+  // down + re-subscribes on every session tick → fetch → emit → re-render →
+  // React error #300 (too many re-renders). Hold it in a ref so the subscribe
+  // callback stays referentially stable; subscribeToKey writes the latest
+  // function into the registry entry, so live fetches always use the freshest
+  // auth-fetch impl.
+  const authenticatedFetchRef = useRef(authenticatedFetch);
+  authenticatedFetchRef.current = authenticatedFetch;
+
   const subscribe = useCallback(
     (listener: () => void) => {
       if (!key || !projectId) return () => {};
-      return subscribeToKey(key, projectId, officeId, authenticatedFetch, listener);
+      return subscribeToKey(key, projectId, officeId, authenticatedFetchRef.current, listener);
     },
-    [key, projectId, officeId, authenticatedFetch],
+    [key, projectId, officeId],
   );
 
   const getSnapshot = useCallback(
