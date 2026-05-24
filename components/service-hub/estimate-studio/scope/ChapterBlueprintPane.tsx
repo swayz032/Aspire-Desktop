@@ -12,11 +12,30 @@
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+
+// 2026-05-23 — Belt-and-suspenders for invisible scrollbar on web inside
+// the sheet tab bar's horizontal ScrollView (RN-Web's
+// `showsHorizontalScrollIndicator={false}` doesn't always bind to the
+// underlying browser scrollbar).
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  const STYLE_ID = 'chapter-blueprint-pane-tabbar-scrollbar-hide';
+  if (!document.getElementById(STYLE_ID)) {
+    const styleEl = document.createElement('style');
+    styleEl.id = STYLE_ID;
+    styleEl.textContent = `
+      [data-chapter-blueprint-tabbar="1"] { scrollbar-width: none; -ms-overflow-style: none; }
+      [data-chapter-blueprint-tabbar="1"]::-webkit-scrollbar { width: 0; height: 0; display: none; }
+    `;
+    document.head.appendChild(styleEl);
+  }
+}
 import type {
   BlueprintChapter,
   BlueprintRegion,
@@ -118,7 +137,13 @@ interface SheetTabBarProps {
 
 function SheetTabBar({ sheets, activeSheetCode, onSelect }: SheetTabBarProps): React.ReactElement {
   return (
-    <View style={styles.tabBar}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.tabBarScroll}
+      contentContainerStyle={styles.tabBar}
+      dataSet={Platform.OS === 'web' ? ({ chapterBlueprintTabbar: '1' } as Record<string, unknown>) : undefined}
+    >
       {sheets.map((s) => {
         const isActive = s.sheet_code === activeSheetCode;
         return (
@@ -140,7 +165,7 @@ function SheetTabBar({ sheets, activeSheetCode, onSelect }: SheetTabBarProps): R
           </Pressable>
         );
       })}
-    </View>
+    </ScrollView>
   );
 }
 
@@ -188,16 +213,20 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(251,191,36,0.10)',
     overflow: 'hidden',
   },
-  // ─── Tab bar ───
+  // ─── Tab bar (single horizontal row, scrolls with invisible scrollbar) ───
+  tabBarScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(251,191,36,0.10)',
+  },
   tabBar: {
     flexDirection: 'row',
     gap: 6,
     paddingHorizontal: 10,
     paddingTop: 10,
     paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(251,191,36,0.10)',
-    flexWrap: 'wrap',
+    alignItems: 'flex-start',
   },
   tab: {
     paddingVertical: 6,
@@ -205,6 +234,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     minWidth: 96,
+    flexShrink: 0,
   },
   tabIdle: {
     backgroundColor: 'rgba(20,22,28,0.85)',

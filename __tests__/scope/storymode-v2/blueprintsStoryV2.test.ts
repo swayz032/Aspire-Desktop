@@ -155,15 +155,37 @@ describe('blueprintsStoryV2 adapter — sheet-grouping fallback (REASON not done
     expect(plumbing!.thumbnail_url).toBe('https://x/p1.png');
   });
 
-  it('handles unknown disciplines via the "Other" bucket', () => {
+  it('folds unknown disciplines into General — no separate "Other Sheets" card', () => {
     const sheetsWithUnknown = [
       ...sheetsAcrossDisciplines,
       { id: 'x1', sheet_number: '7', sheet_code: 'X-1', sheet_title: 'Weird Sheet', discipline: 'XYZ', scale: null, revision: 0, supersedes_id: null, thumbnail_url: 'https://x/x1.png', seal_detected: false, created_at: '' },
     ];
     const v2 = adaptLegacyStoryToV2(emptyPhasesLegacy, sheetsWithUnknown);
-    const other = v2!.chapters.find((c) => c.title === 'Other Sheets');
-    expect(other).toBeDefined();
-    expect(other!.source_sheets[0].sheet_code).toBe('X-1');
+    expect(v2!.chapters.find((c) => c.title === 'Other Sheets')).toBeUndefined();
+    const general = v2!.chapters.find((c) => c.title.includes('Getting Built'));
+    expect(general).toBeDefined();
+    // The unknown sheet lands in General alongside the G-sheet.
+    const generalSheetCodes = general!.source_sheets.map((s) => s.sheet_code);
+    expect(generalSheetCodes).toContain('X-1');
+    expect(generalSheetCodes).toContain('G-001');
+  });
+
+  it('populates per-discipline TASKS so the left pane is never empty', () => {
+    const v2 = adaptLegacyStoryToV2(emptyPhasesLegacy, sheetsAcrossDisciplines);
+    const plumbing = v2!.chapters.find((c) => c.title.includes('Water'));
+    expect(plumbing!.zones.tasks.length).toBeGreaterThan(0);
+    expect(plumbing!.zones.tasks[0].discipline).toBe('plumb');
+    expect(plumbing!.zones.tasks[0].evidence_sheets).toEqual(expect.arrayContaining(['P-001', 'P-101']));
+    const electrical = v2!.chapters.find((c) => c.title.includes('Power'));
+    expect(electrical!.zones.tasks[0].discipline).toBe('elec');
+  });
+
+  it('paraphrases in_scope items from sheet titles (no raw "**A-101** — Floor Plan" dump)', () => {
+    const v2 = adaptLegacyStoryToV2(emptyPhasesLegacy, sheetsAcrossDisciplines);
+    const plumbing = v2!.chapters.find((c) => c.title.includes('Water'));
+    // Leads with the title content (capitalized), references the sheet via "per **CODE**".
+    expect(plumbing!.zones.in_scope[0].text_md).toMatch(/^Plumbing Notes\s+—\s+per \*\*P-001\*\*/);
+    expect(plumbing!.zones.in_scope[1].text_md).toMatch(/^Waste\/Vent Plan\s+—\s+per \*\*P-101\*\*/);
   });
 
   it('does NOT fall back to grouping when any phase has real narrative', () => {

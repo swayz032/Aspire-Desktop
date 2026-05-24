@@ -51,44 +51,49 @@ describe('ChapterLeftPane', () => {
     expect(getByTestId('zone-open-questions')).toBeTruthy();
   });
 
-  it('hides empty what-this-is zone', () => {
+  it('renders empty-state copy in the what-this-is zone when content is empty', () => {
     const ch = { ...baseChapter, zones: { ...baseChapter.zones, what_this_is: '' } };
-    const { queryByTestId } = render(
+    const { queryByTestId, getByText } = render(
       <ChapterLeftPane chapter={ch} hoverBulletKey={null} onHoverBullet={() => {}} />
     );
-    expect(queryByTestId('zone-what-this-is')).toBeNull();
+    expect(queryByTestId('zone-what-this-is')).toBeTruthy();
+    expect(getByText(/Drew has not summarized this chapter yet/)).toBeTruthy();
   });
 
-  it('hides empty buy-list zone', () => {
+  it('renders empty-state copy in the buy-list zone when buy_list is empty', () => {
     const ch = { ...baseChapter, zones: { ...baseChapter.zones, buy_list: [] } };
-    const { queryByTestId } = render(
+    const { queryByTestId, getByText } = render(
       <ChapterLeftPane chapter={ch} hoverBulletKey={null} onHoverBullet={() => {}} />
     );
-    expect(queryByTestId('zone-buy-list')).toBeNull();
+    expect(queryByTestId('zone-buy-list')).toBeTruthy();
+    expect(getByText(/Materials for this chapter appear here/)).toBeTruthy();
   });
 
-  it('hides empty open-questions zone', () => {
+  it('renders empty-state copy in the open-questions zone when open_questions is empty', () => {
     const ch = { ...baseChapter, zones: { ...baseChapter.zones, open_questions: [] } };
-    const { queryByTestId } = render(
+    const { queryByTestId, getByText } = render(
       <ChapterLeftPane chapter={ch} hoverBulletKey={null} onHoverBullet={() => {}} />
     );
-    expect(queryByTestId('zone-open-questions')).toBeNull();
+    expect(queryByTestId('zone-open-questions')).toBeTruthy();
+    expect(getByText(/0 open questions/)).toBeTruthy();
   });
 
-  it('hides in-scope zone when both in_scope and not_in_scope are empty', () => {
+  it('renders empty-state copy in the in-scope zone when both scope arrays empty', () => {
     const ch = { ...baseChapter, zones: { ...baseChapter.zones, in_scope: [], not_in_scope: [] } };
-    const { queryByTestId } = render(
+    const { queryByTestId, getByText } = render(
       <ChapterLeftPane chapter={ch} hoverBulletKey={null} onHoverBullet={() => {}} />
     );
-    expect(queryByTestId('zone-in-scope')).toBeNull();
+    expect(queryByTestId('zone-in-scope')).toBeTruthy();
+    expect(getByText(/Scope items appear here/)).toBeTruthy();
   });
 
-  it('hides tasks zone when tasks empty', () => {
+  it('renders empty-state copy in the tasks zone when tasks empty', () => {
     const ch = { ...baseChapter, zones: { ...baseChapter.zones, tasks: [] } };
-    const { queryByTestId } = render(
+    const { queryByTestId, getByText } = render(
       <ChapterLeftPane chapter={ch} hoverBulletKey={null} onHoverBullet={() => {}} />
     );
-    expect(queryByTestId('zone-tasks')).toBeNull();
+    expect(queryByTestId('zone-tasks')).toBeTruthy();
+    expect(getByText(/Drew is still pulling tasks/)).toBeTruthy();
   });
 
   it('renders one source chip per source sheet', () => {
