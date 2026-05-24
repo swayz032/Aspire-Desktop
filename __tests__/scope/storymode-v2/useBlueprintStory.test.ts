@@ -45,6 +45,28 @@ jest.mock('@/providers', () => {
   };
 });
 
+// useBlueprintProjectPoll — minimal pass-through. Real hook is exercised
+// elsewhere; here we only need a stable empty sheets array so the adapter
+// has something to receive without doing actual polling.
+jest.mock('@/hooks/useBlueprintProjectPoll', () => {
+  const stableSheets: never[] = [];
+  return {
+    useBlueprintProjectPoll: () => ({
+      project: null,
+      sheets: stableSheets,
+      statusResp: null,
+      error: null,
+      isLoading: false,
+      isPolling: false,
+      isFirstLoad: false,
+      stageCompletedAt: {
+        ingest: null, classify: null, see: null, reason: null, procure: null,
+      },
+      refresh: jest.fn(),
+    }),
+  };
+});
+
 describe('useBlueprintStory — storyV2 surface', () => {
   it('exposes storyV2 derived from legacy story via the adapter', async () => {
     const { result } = renderHook(() => useBlueprintStory('p1'));

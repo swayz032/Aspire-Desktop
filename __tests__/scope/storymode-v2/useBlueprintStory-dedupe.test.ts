@@ -42,6 +42,20 @@ jest.mock('@/providers', () => {
   };
 });
 
+// useBlueprintProjectPoll — stable empty sheets so the adapter has a
+// referentially-stable second argument.
+jest.mock('@/hooks/useBlueprintProjectPoll', () => {
+  const stableSheets: never[] = [];
+  return {
+    useBlueprintProjectPoll: () => ({
+      project: null, sheets: stableSheets, statusResp: null, error: null,
+      isLoading: false, isPolling: false, isFirstLoad: false,
+      stageCompletedAt: { ingest: null, classify: null, see: null, reason: null, procure: null },
+      refresh: jest.fn(),
+    }),
+  };
+});
+
 describe('useBlueprintStory dedupe', () => {
   beforeEach(() => {
     _resetBlueprintStoryRegistryForTests();

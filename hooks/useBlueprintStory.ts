@@ -27,6 +27,7 @@
 import { useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { useTenant } from '@/providers';
+import { useBlueprintProjectPoll } from '@/hooks/useBlueprintProjectPoll';
 import {
   BlueprintsApiError,
   getAssemblies,
@@ -304,12 +305,16 @@ export function useBlueprintStory(projectId: string | null): UseBlueprintStoryRe
     if (key && projectId) await fetchAllForKey(key, projectId, officeId);
   }, [key, projectId, officeId]);
 
-  // Story Mode v2 surface. Sheets are intentionally empty — the hook does not
-  // currently poll sheets, and coverage reads sheets_total: 0 by design until
-  // Drew backend emits real chapters[] (see plan §3.1).
+  // Story Mode v2 surface. Pulls the project's actual sheets so the adapter
+  // can distribute them across the placeholder chapters — that's what gives
+  // each chapter card a real blueprint thumbnail and lets the right pane show
+  // working sheet tabs. Until Drew emits real chapters[] this is round-robin;
+  // once Drew ships v2 chapters with first-class source_sheets, the adapter
+  // becomes a passthrough and the sheet distribution code is dead.
+  const sheetPoll = useBlueprintProjectPoll(projectId);
   const storyV2 = useMemo<BlueprintStoryV2 | null>(
-    () => adaptLegacyStoryToV2(slice.story, []),
-    [slice.story],
+    () => adaptLegacyStoryToV2(slice.story, sheetPoll.sheets),
+    [slice.story, sheetPoll.sheets],
   );
 
   const isPolling = slice.story?.status === 'in_progress';
