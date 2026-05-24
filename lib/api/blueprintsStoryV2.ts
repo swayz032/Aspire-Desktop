@@ -112,7 +112,15 @@ export function _assertBlueprintStoryV2(value: unknown): asserts value is Bluepr
 
 /**
  * Lift legacy phases[] into a v2-shaped story with placeholder chapters.
- * Returns null if input is null. Sheets array is used to compute coverage.
+ *
+ * Sheets are distributed across the placeholder chapters round-robin (each
+ * chapter gets a contiguous slice) so the UI can show real blueprint
+ * thumbnails + sheet-tab switching even while Drew is still emitting only
+ * legacy phases. Mapping is semantically arbitrary for legacy data — once
+ * Drew emits real chapters[] with first-class `source_sheets`, the adapter
+ * becomes a passthrough and this distribution code becomes dead.
+ *
+ * Returns null if input is null.
  */
 export function adaptLegacyStoryToV2(
   legacy: BlueprintStory | null,
@@ -120,33 +128,47 @@ export function adaptLegacyStoryToV2(
 ): BlueprintStoryV2 | null {
   if (!legacy) return null;
   const phases = legacy.phases ?? [];
+  const sheetCount = sheets.length;
+  const phaseCount = Math.max(1, phases.length);
+  const perChapter = sheetCount > 0 ? Math.max(1, Math.ceil(sheetCount / phaseCount)) : 0;
+
   return {
     project_id: legacy.project_id,
     mean_confidence: legacy.mean_confidence ?? 0,
     truth_distribution: legacy.truth_distribution,
     updated_at: legacy.updated_at ?? null,
-    chapters: phases.map((p, idx) => ({
-      key: p.key ?? `chapter-${idx + 1}`,
-      ordinal: idx + 1,
-      title: p.title ?? `Chapter ${idx + 1}`,
-      confidence: legacy.mean_confidence ?? 0,
-      source_pages: [],
-      source_sheets: [],
-      thumbnail_url: null,
-      zones: {
-        what_this_is: p.body_md ?? '',
-        in_scope: [],
-        not_in_scope: [],
-        tasks: [],
-        buy_list: [],
-        open_questions: [],
-      },
-    })),
+    chapters: phases.map((p, idx) => {
+      const start = idx * perChapter;
+      const slice = sheets.slice(start, start + perChapter);
+      const sources: ChapterSource[] = slice.map((s, i) => ({
+        sheet_code: s.sheet_code ?? s.sheet_number ?? `Sheet ${start + i + 1}`,
+        sheet_title: s.sheet_title ?? s.discipline ?? '',
+        page_number: start + i + 1,
+        render_url: s.thumbnail_url,
+      }));
+      return {
+        key: p.key ?? `chapter-${idx + 1}`,
+        ordinal: idx + 1,
+        title: p.title ?? `Chapter ${idx + 1}`,
+        confidence: legacy.mean_confidence ?? 0,
+        source_pages: slice.map((_, i) => start + i + 1),
+        source_sheets: sources,
+        thumbnail_url: slice[0]?.thumbnail_url ?? null,
+        zones: {
+          what_this_is: p.body_md ?? '',
+          in_scope: [],
+          not_in_scope: [],
+          tasks: [],
+          buy_list: [],
+          open_questions: [],
+        },
+      };
+    }),
     coverage: {
-      sheets_total: sheets.length,
-      sheets_read: 0,
-      pages_total: sheets.length,
-      pages_read: 0,
+      sheets_total: sheetCount,
+      sheets_read: sheetCount,
+      pages_total: sheetCount,
+      pages_read: sheetCount,
     },
   };
 }
