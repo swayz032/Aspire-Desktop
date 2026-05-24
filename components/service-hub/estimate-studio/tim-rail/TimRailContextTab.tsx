@@ -16,6 +16,9 @@ import { MaterialsRouteContextCard } from './MaterialsRouteContextCard';
 import { MaterialsBlueprintContextCard } from './MaterialsBlueprintContextCard';
 import { PlansPhotosContextPayload } from './PlansPhotosContextPayload';
 import { ScopeContextPayload } from './ScopeContextPayload';
+import { ScopeStoryContextCard } from './ScopeStoryContextCard';
+import { useBlueprintStory } from '@/hooks/useBlueprintStory';
+import { scopeUiActions } from '@/lib/scopeUiStore';
 import { TakeoffContextPayload } from './TakeoffContextPayload';
 import { EstimateContextPayload } from './EstimateContextPayload';
 import { ServiceBriefCard } from '@/components/service-hub/ServiceBriefCard';
@@ -82,6 +85,17 @@ export function TimRailContextTab({ data, loading, error, onRetry }: Props) {
   const suppressPropertySummary =
     isMaterialsTab || (isPlansPhotosTab && blueprintActive);
 
+  // Story Mode v2 — surface confidence + truth + chapters in the rail
+  // when we're on Scope and Drew has produced chapters.
+  const projectIdForStory =
+    blueprintSnapshot.response?.ingest?.project_id ??
+    blueprintSnapshot.response?.project_id ??
+    blueprintSnapshot.projectId ??
+    null;
+  const storyHook = useBlueprintStory(projectIdForStory);
+  const showStoryContext =
+    isScopeTab && (storyHook.storyV2?.chapters.length ?? 0) > 0;
+
   return (
     <ScrollView
       style={styles.container}
@@ -131,6 +145,16 @@ export function TimRailContextTab({ data, loading, error, onRetry }: Props) {
       {/* Plans & Photos payload: pipeline status + discipline counts + last
           upload. Renders null off-route. Property facts carry over below. */}
       {isPlansPhotosTab && <PlansPhotosContextPayload />}
+
+      {/* Story Mode v2: confidence gauge, truth donut, chapter coverage.
+          Renders ABOVE the scope payload so the high-attention top of the
+          Context tab leads with truth + chapter navigation. */}
+      {showStoryContext && storyHook.storyV2 ? (
+        <ScopeStoryContextCard
+          story={storyHook.storyV2}
+          onJumpToChapter={(key) => scopeUiActions().setActiveChapterKey(key)}
+        />
+      ) : null}
 
       {/* Scope payload (Wave 7): pipeline + confidence + truth distribution
           + missing inputs + linked destinations + tariff summary. Property
