@@ -1,0 +1,126 @@
+/**
+ * StoryPanelV2 — chapter-based Story Mode canvas (Wave 19+).
+ *
+ * Composes the three Story Mode v2 pieces:
+ *   - Left  (440px): ChapterLeftPane — 5 plain-English zones over the active chapter
+ *   - Right (flex):  ChapterBlueprintPane — real blueprint sheet render with pan/zoom + annotations
+ *   - Bottom:        ChapterStrip — horizontal blueprint-thumbnail chapter cards
+ *
+ * Drop-in replacement for the legacy StoryPanel; consumed by ScopeTab when
+ * activeCard === 'story' and storyV2.chapters has content. State (hover wiring,
+ * active chapter selection) lives in useChapterAnnotations + scopeUiStore so
+ * the canvas is a pure render layer (Law #7).
+ *
+ * Empty state: shown when Drew hasn't produced any chapters yet. The chapter
+ * strip is also hidden — there's nothing to scroll.
+ */
+import React, { useEffect, useMemo } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import type { BlueprintStoryV2 } from '@/lib/api/blueprintsApi';
+import { ChapterLeftPane } from './ChapterLeftPane';
+import { ChapterBlueprintPane } from './ChapterBlueprintPane';
+import { ChapterStrip } from './ChapterStrip';
+import { useChapterAnnotations } from './useChapterAnnotations';
+
+interface Props {
+  story: BlueprintStoryV2;
+  activeChapterKey: string | null;
+  onSelectChapter: (key: string) => void;
+}
+
+export function StoryPanelV2({ story, activeChapterKey, onSelectChapter }: Props): React.ReactElement {
+  const annotations = useChapterAnnotations();
+
+  if (story.chapters.length === 0) {
+    return (
+      <View style={styles.empty} testID="story-panel-v2-empty">
+        <View style={styles.emptyIconCircle}>
+          <Ionicons name="book-outline" size={28} color="rgba(255,255,255,0.55)" />
+        </View>
+        <Text style={styles.emptyTitle}>Drew is reading your blueprint</Text>
+        <Text style={styles.emptyBody}>
+          Chapters appear as they complete. Typically 30–90 seconds for a 30-sheet plan set.
+        </Text>
+      </View>
+    );
+  }
+
+  const active =
+    story.chapters.find((c) => c.key === activeChapterKey) ?? story.chapters[0];
+
+  // Reset hover wiring when the active chapter changes so a stale bullet/region
+  // key from the previous chapter doesn't accidentally match (or stick).
+  // Setters are stable (useCallback in useChapterAnnotations) so depending on
+  // them is safe and doesn't refire the effect.
+  useEffect(() => {
+    annotations.setHoverBulletKey(null);
+    annotations.setHoverRegionKey(null);
+  }, [active.key, annotations.setHoverBulletKey, annotations.setHoverRegionKey]);
+
+  // Stable identity so ChapterBlueprintPane (and any downstream React.memo)
+  // doesn't re-render on every parent render.
+  const regions = useMemo(
+    () => active.zones.open_questions
+      .map((q) => q.blueprint_region)
+      .filter((r): r is NonNullable<typeof r> => r != null),
+    [active],
+  );
+
+  return (
+    <View style={styles.host} testID="story-panel-v2">
+      <View style={styles.card}>
+        <View style={styles.split}>
+          <View style={styles.leftSlot}>
+            <ChapterLeftPane
+              chapter={active}
+              hoverBulletKey={annotations.hoverBulletKey}
+              onHoverBullet={annotations.setHoverBulletKey}
+            />
+          </View>
+          <View style={styles.rightSlot}>
+            <ChapterBlueprintPane
+              chapter={active}
+              regions={regions}
+              hoverRegionKey={annotations.hoverRegionKey}
+              onHoverRegion={annotations.setHoverRegionKey}
+            />
+          </View>
+        </View>
+        <ChapterStrip
+          chapters={story.chapters}
+          activeKey={active.key}
+          onSelect={onSelectChapter}
+        />
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  host: { flex: 1, minHeight: 320 },
+  card: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(251,191,36,0.10)',
+  },
+  split: { flexDirection: 'row', flex: 1, minHeight: 0 },
+  leftSlot: { width: 440, minHeight: 0 },
+  rightSlot: { flex: 1, minHeight: 0 },
+  empty: {
+    flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 28,
+  },
+  emptyIconCircle: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+  },
+  emptyTitle: { fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.88)', letterSpacing: -0.2 },
+  emptyBody: {
+    fontSize: 12, color: 'rgba(255,255,255,0.55)', textAlign: 'center', maxWidth: 380, lineHeight: 17,
+  },
+});
