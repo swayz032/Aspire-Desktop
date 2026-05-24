@@ -136,35 +136,99 @@ interface DisciplineMeta {
   taskTemplates: string[];
 }
 
+// Discipline metadata — universal taxonomy that works for any AIA-style
+// drawing set. Order is the same order the chapters render in the strip.
 const META_GENERAL: DisciplineMeta = { key: 'general', title: "What's Getting Built", blurb: 'Cover sheet, sheet index, codes, and the project-wide rules everyone on site has to follow.', order: 1, discipline: 'other', taskTemplates: ['Review project codes and amendments before any field work', 'Walk the site with the cover sheet to confirm scope boundaries'] };
-const META_ARCHITECTURAL: DisciplineMeta = { key: 'architectural', title: 'Floor Plans & Architecture', blurb: 'Where every room lives, how the partitions divide the space, and what finishes the architect specified.', order: 2, discipline: 'frame', taskTemplates: ['Frame partitions per the floor plan layout', 'Coordinate ceiling heights with the reflected ceiling plan', 'Install doors and frames per the door schedule', 'Apply wall + floor finishes per the finish schedule'] };
-const META_STRUCTURAL: DisciplineMeta = { key: 'structural', title: 'How It Stands Up', blurb: 'Beams, columns, slabs, and load paths — the frame that holds the whole building together.', order: 3, discipline: 'frame', taskTemplates: ['Confirm slab + footing dimensions before pour', 'Coordinate steel/beam erection with the structural plans', 'Verify load paths with the engineer of record'] };
-const META_PLUMBING: DisciplineMeta = { key: 'plumbing', title: 'Water & Drains', blurb: 'Where the water comes in, where the waste goes out, and every fixture in between.', order: 4, discipline: 'plumb', taskTemplates: ['Rough-in supply lines per the domestic supply plan', 'Run waste + vent per the waste/vent plan', 'Set fixtures per the plumbing fixture schedule', 'Install isolation valves where code requires'] };
-const META_MECHANICAL: DisciplineMeta = { key: 'mechanical', title: 'Heating, Cooling & Air', blurb: 'How the building stays comfortable — heat pumps, AHUs, ductwork, exhaust, and fresh-air units.', order: 5, discipline: 'mech', taskTemplates: ['Set equipment per the mechanical plan (AHU, HP, ERV)', 'Run ductwork and supports per the mechanical layout', 'Cut and frame the louvers + exhaust penetrations', 'Coordinate refrigerant + condensate routing with structure'] };
-const META_ELECTRICAL: DisciplineMeta = { key: 'electrical', title: 'Power, Lights & Cameras', blurb: 'Every outlet, every fixture, every panel — plus low-voltage cameras and access control.', order: 6, discipline: 'elec', taskTemplates: ['Pull conductors per the panel + breaker feeder schedules', 'Mount light fixtures per the lighting plan', 'Land devices + cover plates per the power plan', 'Coordinate low-voltage camera + access raceways'] };
-const META_FIRE: DisciplineMeta = { key: 'fire', title: 'Fire Safety', blurb: 'Sprinkler heads, alarm devices, exit paths — everything the fire code calls out.', order: 7, discipline: 'fp', taskTemplates: ['Lay out sprinkler heads per the fire protection plan', 'Coordinate sprinkler drops with the ceiling grid', 'Confirm alarm device placement with the life-safety plan'] };
-const META_CIVIL: DisciplineMeta = { key: 'civil', title: 'Outside the Building', blurb: 'Site work, grading, paving, and the utilities that meet the building at the property line.', order: 8, discipline: 'other', taskTemplates: ['Stake the site per the civil plan before excavation', 'Coordinate utility tie-ins at the property line', 'Confirm grading + drainage with the engineer'] };
+const META_DEMOLITION: DisciplineMeta = { key: 'demolition', title: "What We're Tearing Out", blurb: 'Existing conditions surveys and demolition scope — what comes down before any new work goes up.', order: 2, discipline: 'demo', taskTemplates: ['Protect adjacent construction before any demo cuts', 'Patch + repair surfaces the demo plan calls out', 'Stage debris removal so site access stays open', 'Confirm utility cutoffs with the existing conditions surveys'] };
+const META_ARCHITECTURAL: DisciplineMeta = { key: 'architectural', title: 'Floor Plans & Architecture', blurb: 'Where every room lives, how the partitions divide the space, and what finishes the architect specified.', order: 3, discipline: 'frame', taskTemplates: ['Frame partitions per the floor plan layout', 'Coordinate ceiling heights with the reflected ceiling plan', 'Install doors and frames per the door schedule', 'Apply wall + floor finishes per the finish schedule'] };
+const META_STRUCTURAL: DisciplineMeta = { key: 'structural', title: 'How It Stands Up', blurb: 'Beams, columns, slabs, and load paths — the frame that holds the whole building together.', order: 4, discipline: 'frame', taskTemplates: ['Confirm slab + footing dimensions before pour', 'Coordinate steel/beam erection with the structural plans', 'Verify load paths with the engineer of record'] };
+const META_PLUMBING: DisciplineMeta = { key: 'plumbing', title: 'Water & Drains', blurb: 'Where the water comes in, where the waste goes out, and every fixture in between.', order: 5, discipline: 'plumb', taskTemplates: ['Rough-in supply lines per the domestic supply plan', 'Run waste + vent per the waste/vent plan', 'Set fixtures per the plumbing fixture schedule', 'Install isolation valves where code requires'] };
+const META_MECHANICAL: DisciplineMeta = { key: 'mechanical', title: 'Heating, Cooling & Air', blurb: 'How the building stays comfortable — heat pumps, AHUs, ductwork, exhaust, and fresh-air units.', order: 6, discipline: 'mech', taskTemplates: ['Set equipment per the mechanical plan (AHU, HP, ERV)', 'Run ductwork and supports per the mechanical layout', 'Cut and frame the louvers + exhaust penetrations', 'Coordinate refrigerant + condensate routing with structure'] };
+const META_ELECTRICAL: DisciplineMeta = { key: 'electrical', title: 'Power, Lights & Cameras', blurb: 'Every outlet, every fixture, every panel — plus low-voltage cameras and access control.', order: 7, discipline: 'elec', taskTemplates: ['Pull conductors per the panel + breaker feeder schedules', 'Mount light fixtures per the lighting plan', 'Land devices + cover plates per the power plan', 'Coordinate low-voltage camera + access raceways'] };
+const META_FIRE: DisciplineMeta = { key: 'fire', title: 'Fire Safety', blurb: 'Sprinkler heads, alarm devices, exit paths — everything the fire code calls out.', order: 8, discipline: 'fp', taskTemplates: ['Lay out sprinkler heads per the fire protection plan', 'Coordinate sprinkler drops with the ceiling grid', 'Confirm alarm device placement with the life-safety plan'] };
+const META_CIVIL: DisciplineMeta = { key: 'civil', title: 'Outside the Building', blurb: 'Site work, grading, paving, landscape, and the utilities that meet the building at the property line.', order: 9, discipline: 'other', taskTemplates: ['Stake the site per the civil plan before excavation', 'Coordinate utility tie-ins at the property line', 'Confirm grading + drainage with the engineer'] };
 
+// Discipline-field lookup: backend-tagged discipline string → DisciplineMeta.
+// Accepts both single-letter codes ("A", "P", "M") and full names
+// ("architectural", "plumbing", "mechanical"). Folds adjacent disciplines
+// into the closest match (telecom → electrical, landscape → civil) so
+// every sheet lands in an in-order chapter — no "Other Sheets" catch-all.
 const DISCIPLINE_MAP: Record<string, DisciplineMeta> = {
-  a: META_ARCHITECTURAL, arch: META_ARCHITECTURAL, architectural: META_ARCHITECTURAL,
-  s: META_STRUCTURAL, struct: META_STRUCTURAL, structural: META_STRUCTURAL,
-  p: META_PLUMBING, plumb: META_PLUMBING, plumbing: META_PLUMBING,
-  m: META_MECHANICAL, mech: META_MECHANICAL, mechanical: META_MECHANICAL, hvac: META_MECHANICAL,
-  e: META_ELECTRICAL, elec: META_ELECTRICAL, electrical: META_ELECTRICAL,
-  fp: META_FIRE, fire: META_FIRE,
-  c: META_CIVIL, civ: META_CIVIL, civil: META_CIVIL,
+  // General / cover / lifesafety
   g: META_GENERAL, gen: META_GENERAL, general: META_GENERAL,
+  cover: META_GENERAL, ls: META_GENERAL, lifesafety: META_GENERAL,
+  // Demolition / existing conditions
+  ad: META_DEMOLITION, d: META_DEMOLITION, demo: META_DEMOLITION, demolition: META_DEMOLITION,
+  ex: META_DEMOLITION, exist: META_DEMOLITION, existing: META_DEMOLITION,
+  // Architectural (incl. interiors, architectural site)
+  a: META_ARCHITECTURAL, ai: META_ARCHITECTURAL, as: META_ARCHITECTURAL,
+  arch: META_ARCHITECTURAL, architectural: META_ARCHITECTURAL,
+  interior: META_ARCHITECTURAL, interiors: META_ARCHITECTURAL,
+  // Structural
+  s: META_STRUCTURAL, struct: META_STRUCTURAL, structural: META_STRUCTURAL,
+  // Plumbing
+  p: META_PLUMBING, pl: META_PLUMBING, plumb: META_PLUMBING, plumbing: META_PLUMBING,
+  // Mechanical / HVAC (h often used for HVAC)
+  m: META_MECHANICAL, h: META_MECHANICAL,
+  mech: META_MECHANICAL, mechanical: META_MECHANICAL, hvac: META_MECHANICAL,
+  // Electrical + adjacent low-voltage (telecom, data, security folded in)
+  e: META_ELECTRICAL, ed: META_ELECTRICAL, el: META_ELECTRICAL,
+  t: META_ELECTRICAL, tel: META_ELECTRICAL, telecom: META_ELECTRICAL,
+  lv: META_ELECTRICAL, data: META_ELECTRICAL, sec: META_ELECTRICAL, security: META_ELECTRICAL,
+  elec: META_ELECTRICAL, electrical: META_ELECTRICAL,
+  // Fire protection / fire alarm
+  fp: META_FIRE, f: META_FIRE, fa: META_FIRE,
+  fire: META_FIRE, sprinkler: META_FIRE,
+  // Civil + landscape + survey (folded in)
+  c: META_CIVIL, ci: META_CIVIL, civ: META_CIVIL, civil: META_CIVIL,
+  l: META_CIVIL, land: META_CIVIL, landscape: META_CIVIL,
+  su: META_CIVIL, sur: META_CIVIL, survey: META_CIVIL,
 };
 
 /**
- * Map a sheet's raw discipline string to a known DisciplineMeta. Sheets the
- * classifier couldn't place go into General — there is intentionally no
- * "Other Sheets" bucket; every sheet needs to land in an in-order chapter.
+ * Pull the discipline prefix out of a sheet code. Handles the typical AIA
+ * formats:
+ *   "A-101"  → "A"        "FP-101" → "FP"      "AD-101" → "AD"
+ *   "EX01"   → "EX"       "P-001"  → "P"       "S-1.1"  → "S"
+ *   "A101"   → "A"        "M201"   → "M"       "C-100"  → "C"
+ * Returns null if no recognizable prefix exists (e.g. a pure-numeric code
+ * like "3" or "12" — Drew sometimes emits those when the title block OCR
+ * can only see the page-position number).
  */
-function disciplineMetaFor(raw: string | null | undefined): DisciplineMeta {
-  if (!raw) return META_GENERAL;
-  const lower = raw.trim().toLowerCase();
-  return DISCIPLINE_MAP[lower] ?? DISCIPLINE_MAP[lower.split(/[-_\s]/)[0]] ?? META_GENERAL;
+function disciplinePrefixFromCode(code: string | null | undefined): string | null {
+  if (!code) return null;
+  const m = /^([A-Z]{1,3})(?:[-_\s]*\d|\d)/.exec(code.toUpperCase().trim());
+  return m ? m[1] : null;
+}
+
+/**
+ * Universal sheet → DisciplineMeta resolver. Tries three signals in order:
+ *
+ *   1. The backend-tagged `discipline` field if present and recognized.
+ *   2. The sheet code prefix (covers the case where the classifier didn't
+ *      tag the sheet but the title block extraction worked).
+ *   3. Falls back to General. Never returns null.
+ *
+ * This is the keystone of universality — any AIA-conformant drawing set
+ * lands every sheet in an in-order rookie chapter without backend changes.
+ */
+function disciplineMetaFor(sheet: BlueprintSheetRead): DisciplineMeta {
+  // (1) explicit backend discipline tag
+  const rawDiscipline = sheet.discipline?.trim().toLowerCase();
+  if (rawDiscipline) {
+    const exact = DISCIPLINE_MAP[rawDiscipline];
+    if (exact) return exact;
+    const firstSeg = DISCIPLINE_MAP[rawDiscipline.split(/[-_\s]/)[0]];
+    if (firstSeg) return firstSeg;
+  }
+  // (2) sheet code prefix
+  const prefix = disciplinePrefixFromCode(sheet.sheet_code ?? sheet.sheet_number);
+  if (prefix) {
+    const fromPrefix = DISCIPLINE_MAP[prefix.toLowerCase()];
+    if (fromPrefix) return fromPrefix;
+  }
+  // (3) fall back to General — every sheet gets a real chapter, no catch-all
+  return META_GENERAL;
 }
 
 /** True if any phase carries Drew-narrative content (real title or body_md). */
@@ -202,7 +266,7 @@ function chaptersFromSheetGrouping(
   // chapter sort happens after the grouping pass.
   const groups = new Map<string, { meta: DisciplineMeta; entries: { sheet: BlueprintSheetRead; pageNumber: number }[] }>();
   sheets.forEach((s, idx) => {
-    const meta = disciplineMetaFor(s.discipline);
+    const meta = disciplineMetaFor(s);
     const slot = groups.get(meta.key) ?? { meta, entries: [] };
     slot.entries.push({ sheet: s, pageNumber: idx + 1 });
     groups.set(meta.key, slot);
