@@ -1,5 +1,5 @@
 /**
- * useBlueprintStory — Wave 7.
+ * useBlueprintStory — Wave 7 + Followup B.
  *
  * Fetches the four REASON/PROCURE read endpoints in parallel for the Scope tab:
  *   - GET /api/v1/blueprints/projects/:id/story
@@ -11,12 +11,20 @@
  * On 404 (Wave 2.7 backend not yet deployed), degrades to an empty state with
  * `backendDeployed=false` — UI surfaces the deferred-backend banner.
  *
+ * Followup B (dedupe): ScopeTab + ScopeContextPayload + TimRailContextTab all
+ * mount this hook for the SAME projectId on the Scope route. To avoid
+ * 3× redundant fetch fan-out + 3× poll loops, this module owns a singleton
+ * registry keyed by `${officeId}:${projectId}`. All mounts subscribe via
+ * `useSyncExternalStore` and share a single fetch + a single poll timer.
+ * The first subscriber kicks off the fetch; the last unsubscriber aborts +
+ * clears the poll timer (but the slice stays cached for fast remount).
+ *
  * Law compliance:
  *   Law #6 — `officeId` derives from the tenant context; never a user input.
  *   Law #7 — pure data hook: no decisions, no side-effects beyond setState.
  *   Law #9 — fetch errors logged with code only, never request bodies.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { useTenant } from '@/providers';
 import {
@@ -31,9 +39,14 @@ import {
   type BlueprintStory,
   type TruthClass,
 } from '@/lib/api/blueprintsApi';
+// Story Mode v2: chapter-shaped projection over the legacy story.
+import { adaptLegacyStoryToV2, type BlueprintStoryV2 } from '@/lib/api/blueprintsStoryV2';
 
 export interface UseBlueprintStoryResult {
   story: BlueprintStory | null;
+  /** Story Mode v2 projection of `story` via `adaptLegacyStoryToV2`. Null
+   *  iff `story` is null. Sheets are empty until Drew emits chapters[]. */
+  storyV2: BlueprintStoryV2 | null;
   assemblies: BlueprintAssembly[];
   materials: BlueprintMaterial[];
   missingInputs: BlueprintMissingInput[];
@@ -59,156 +72,247 @@ export const EMPTY_TRUTH_DIST: Record<TruthClass, number> = {
   permit_confirmed: 0,
 };
 
+// ---------------------------------------------------------------------------
+// Module-level singleton registry — one fetch loop + one poll timer per
+// (officeId, projectId) key, shared across all hook mounts.
+// ---------------------------------------------------------------------------
+
+interface StorySlice {
+  story: BlueprintStory | null;
+  assemblies: BlueprintAssembly[];
+  materials: BlueprintMaterial[];
+  missingInputs: BlueprintMissingInput[];
+  isLoading: boolean;
+  backendDeployed: boolean;
+  error: { code: string; message: string } | null;
+}
+
+type AuthFetch = ReturnType<typeof useAuthFetch>['authenticatedFetch'];
+
+interface RegistryEntry {
+  slice: StorySlice;
+  listeners: Set<() => void>;
+  abortController: AbortController | null;
+  pollTimer: ReturnType<typeof setTimeout> | null;
+  authenticatedFetch: AuthFetch | null;
+}
+
+const registry = new Map<string, RegistryEntry>();
+
+const EMPTY_SLICE: StorySlice = {
+  story: null,
+  assemblies: [],
+  materials: [],
+  missingInputs: [],
+  isLoading: false,
+  backendDeployed: true,
+  error: null,
+};
+
+function keyFor(officeId: string, projectId: string | null): string | null {
+  return projectId ? `${officeId}:${projectId}` : null;
+}
+
+function getOrCreateEntry(key: string): RegistryEntry {
+  let e = registry.get(key);
+  if (!e) {
+    e = {
+      slice: { ...EMPTY_SLICE },
+      listeners: new Set(),
+      abortController: null,
+      pollTimer: null,
+      authenticatedFetch: null,
+    };
+    registry.set(key, e);
+  }
+  return e;
+}
+
+function emit(key: string): void {
+  const e = registry.get(key);
+  if (e) {
+    for (const l of e.listeners) l();
+  }
+}
+
+function updateSlice(key: string, patch: Partial<StorySlice>): void {
+  const e = registry.get(key);
+  if (!e) return;
+  e.slice = { ...e.slice, ...patch };
+  emit(key);
+}
+
+async function fetchAllForKey(
+  key: string,
+  projectId: string,
+  officeId: string,
+): Promise<void> {
+  const e = registry.get(key);
+  if (!e || !e.authenticatedFetch) return;
+  e.abortController?.abort();
+  const controller = new AbortController();
+  e.abortController = controller;
+  updateSlice(key, { isLoading: true, error: null });
+  try {
+    const [storyR, asmR, matR, missR] = await Promise.allSettled([
+      getStory(e.authenticatedFetch, projectId, officeId, controller.signal),
+      getAssemblies(e.authenticatedFetch, projectId, officeId, {}, controller.signal),
+      getMaterials(e.authenticatedFetch, projectId, officeId, {}, controller.signal),
+      getMissingInputs(e.authenticatedFetch, projectId, officeId, {}, controller.signal),
+    ]);
+    const all404 = [storyR, asmR, matR, missR].every(
+      (r) =>
+        r.status === 'rejected' &&
+        r.reason instanceof BlueprintsApiError &&
+        r.reason.status === 404,
+    );
+    if (all404) {
+      updateSlice(key, {
+        backendDeployed: false,
+        story: null,
+        assemblies: [],
+        materials: [],
+        missingInputs: [],
+      });
+      return;
+    }
+    const patch: Partial<StorySlice> = { backendDeployed: true };
+    if (storyR.status === 'fulfilled') {
+      patch.story = storyR.value;
+    } else if (
+      storyR.reason instanceof BlueprintsApiError &&
+      storyR.reason.status === 404
+    ) {
+      patch.story = null;
+    } else if (storyR.reason instanceof Error) {
+      patch.error = {
+        code:
+          storyR.reason instanceof BlueprintsApiError
+            ? storyR.reason.code
+            : 'STORY_FETCH_FAILED',
+        message: storyR.reason.message,
+      };
+    }
+    patch.assemblies = asmR.status === 'fulfilled' ? asmR.value : [];
+    patch.materials = matR.status === 'fulfilled' ? matR.value : [];
+    patch.missingInputs = missR.status === 'fulfilled' ? missR.value : [];
+    updateSlice(key, patch);
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') return;
+    updateSlice(key, {
+      error: {
+        code: err instanceof BlueprintsApiError ? err.code : 'UNKNOWN_ERROR',
+        message: err instanceof Error ? err.message : 'Unknown fetch error',
+      },
+    });
+  } finally {
+    updateSlice(key, { isLoading: false });
+    // If REASON is still in_progress, schedule the next poll. Only poll while
+    // someone is still subscribed — otherwise the unsubscribe path would have
+    // had to chase down a stale timer.
+    const cur = registry.get(key);
+    if (cur && cur.slice.story?.status === 'in_progress' && cur.listeners.size > 0) {
+      if (cur.pollTimer) clearTimeout(cur.pollTimer);
+      cur.pollTimer = setTimeout(() => {
+        void fetchAllForKey(key, projectId, officeId);
+      }, POLL_MS);
+    }
+  }
+}
+
+function subscribeToKey(
+  key: string,
+  projectId: string,
+  officeId: string,
+  authenticatedFetch: AuthFetch,
+  listener: () => void,
+): () => void {
+  const e = getOrCreateEntry(key);
+  // Latest authenticatedFetch wins (tenant refresh case).
+  e.authenticatedFetch = authenticatedFetch;
+  const wasEmpty = e.listeners.size === 0;
+  e.listeners.add(listener);
+  if (wasEmpty) {
+    void fetchAllForKey(key, projectId, officeId);
+  }
+  return () => {
+    e.listeners.delete(listener);
+    if (e.listeners.size === 0) {
+      e.abortController?.abort();
+      e.abortController = null;
+      if (e.pollTimer) {
+        clearTimeout(e.pollTimer);
+        e.pollTimer = null;
+      }
+      // Keep the slice cached in the registry — a fast remount within
+      // the same session reuses the data and triggers a refresh fetch
+      // only if needed. Do NOT delete the key from the map.
+    }
+  };
+}
+
+/**
+ * Test helper — wipe the registry so tests don't leak state across
+ * `describe` blocks. The underscore prefix signals "not for production use".
+ */
+export function _resetBlueprintStoryRegistryForTests(): void {
+  for (const e of registry.values()) {
+    e.abortController?.abort();
+    if (e.pollTimer) clearTimeout(e.pollTimer);
+  }
+  registry.clear();
+}
+
+// ---------------------------------------------------------------------------
+// React surface — useSyncExternalStore subscription over the shared registry.
+// ---------------------------------------------------------------------------
+
 export function useBlueprintStory(projectId: string | null): UseBlueprintStoryResult {
   const { authenticatedFetch } = useAuthFetch();
   // Wave 18f fix: useTenant() returns {tenant, isLoading, error, refresh}.
   const tenantCtx = useTenant();
   const officeId = tenantCtx.tenant?.officeId ?? '';
+  const key = keyFor(officeId, projectId);
 
-  const [story, setStory] = useState<BlueprintStory | null>(null);
-  const [assemblies, setAssemblies] = useState<BlueprintAssembly[]>([]);
-  const [materials, setMaterials] = useState<BlueprintMaterial[]>([]);
-  const [missingInputs, setMissingInputs] = useState<BlueprintMissingInput[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [backendDeployed, setBackendDeployed] = useState<boolean>(true);
-  const [error, setError] = useState<{ code: string; message: string } | null>(null);
+  const subscribe = useCallback(
+    (listener: () => void) => {
+      if (!key || !projectId) return () => {};
+      return subscribeToKey(key, projectId, officeId, authenticatedFetch, listener);
+    },
+    [key, projectId, officeId, authenticatedFetch],
+  );
 
-  const abortRef = useRef<AbortController | null>(null);
-  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const getSnapshot = useCallback(
+    (): StorySlice => (key ? (registry.get(key)?.slice ?? EMPTY_SLICE) : EMPTY_SLICE),
+    [key],
+  );
 
-  const fetchAll = useCallback(async (): Promise<void> => {
-    // Wave 18i: see useTakeoffSymbols — server injects office_id from JWT.
-    if (!projectId) {
-      setStory(null);
-      setAssemblies([]);
-      setMaterials([]);
-      setMissingInputs([]);
-      setError(null);
-      return;
-    }
+  const slice = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+  const refetch = useCallback(async (): Promise<void> => {
+    if (key && projectId) await fetchAllForKey(key, projectId, officeId);
+  }, [key, projectId, officeId]);
 
-    setIsLoading(true);
-    setError(null);
+  // Story Mode v2 surface. Sheets are intentionally empty — the hook does not
+  // currently poll sheets, and coverage reads sheets_total: 0 by design until
+  // Drew backend emits real chapters[] (see plan §3.1).
+  const storyV2 = useMemo<BlueprintStoryV2 | null>(
+    () => adaptLegacyStoryToV2(slice.story, []),
+    [slice.story],
+  );
 
-    try {
-      const [storyResult, assembliesResult, materialsResult, missingResult] =
-        await Promise.allSettled([
-          getStory(authenticatedFetch, projectId, officeId, controller.signal),
-          getAssemblies(authenticatedFetch, projectId, officeId, {}, controller.signal),
-          getMaterials(authenticatedFetch, projectId, officeId, {}, controller.signal),
-          getMissingInputs(authenticatedFetch, projectId, officeId, {}, controller.signal),
-        ]);
-
-      // 404 across-the-board means Wave 2.7 backend hasn't shipped yet.
-      const all404 = [storyResult, assembliesResult, materialsResult, missingResult].every(
-        (r) =>
-          r.status === 'rejected' &&
-          r.reason instanceof BlueprintsApiError &&
-          r.reason.status === 404,
-      );
-
-      if (all404) {
-        setBackendDeployed(false);
-        setStory(null);
-        setAssemblies([]);
-        setMaterials([]);
-        setMissingInputs([]);
-        return;
-      }
-
-      setBackendDeployed(true);
-
-      if (storyResult.status === 'fulfilled') {
-        setStory(storyResult.value);
-      } else if (
-        storyResult.reason instanceof BlueprintsApiError &&
-        storyResult.reason.status === 404
-      ) {
-        setStory(null);
-      } else if (storyResult.reason instanceof Error) {
-        setError({
-          code:
-            storyResult.reason instanceof BlueprintsApiError
-              ? storyResult.reason.code
-              : 'STORY_FETCH_FAILED',
-          message: storyResult.reason.message,
-        });
-      }
-
-      if (assembliesResult.status === 'fulfilled') {
-        setAssemblies(assembliesResult.value);
-      } else {
-        setAssemblies([]);
-      }
-
-      if (materialsResult.status === 'fulfilled') {
-        setMaterials(materialsResult.value);
-      } else {
-        setMaterials([]);
-      }
-
-      if (missingResult.status === 'fulfilled') {
-        setMissingInputs(missingResult.value);
-      } else {
-        setMissingInputs([]);
-      }
-    } catch (e) {
-      if ((e as Error).name === 'AbortError') return;
-      setError({
-        code: e instanceof BlueprintsApiError ? e.code : 'UNKNOWN_ERROR',
-        message: e instanceof Error ? e.message : 'Unknown fetch error',
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [authenticatedFetch, officeId, projectId]);
-
-  // Initial fetch + project_id change handler.
-  useEffect(() => {
-    void fetchAll();
-    return () => {
-      abortRef.current?.abort();
-      if (pollTimerRef.current) {
-        clearTimeout(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
-    };
-  }, [fetchAll]);
-
-  // 2s poll while REASON is in_progress.
-  const isPolling = story?.status === 'in_progress';
-  useEffect(() => {
-    if (!isPolling) {
-      if (pollTimerRef.current) {
-        clearTimeout(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
-      return;
-    }
-    pollTimerRef.current = setTimeout(() => {
-      void fetchAll();
-    }, POLL_MS);
-    return () => {
-      if (pollTimerRef.current) {
-        clearTimeout(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
-    };
-  }, [isPolling, fetchAll]);
+  const isPolling = slice.story?.status === 'in_progress';
 
   return {
-    story,
-    assemblies,
-    materials,
-    missingInputs,
-    isLoading,
+    story: slice.story,
+    storyV2,
+    assemblies: slice.assemblies,
+    materials: slice.materials,
+    missingInputs: slice.missingInputs,
+    isLoading: slice.isLoading,
     isPolling,
-    backendDeployed,
-    error,
-    refetch: fetchAll,
+    backendDeployed: slice.backendDeployed,
+    error: slice.error,
+    refetch,
   };
 }

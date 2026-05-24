@@ -1192,4 +1192,52 @@ describe('Visuals Tab — Design Lock v1.0', () => {
       expect(fn).toMatch(/lastFileRef\.current = null/);
     });
   });
+
+  describe('Lock #31: StoryPanelV2 split layout — leftSlot width = 440 (2026-05-22)', () => {
+    // Story Mode v2 splits the canvas into a fixed-width left narrative pane
+    // (440px) and a flex right blueprint pane. If anyone reduces or removes
+    // the 440 width, the 5-zone left pane reflows + the blueprint pane no
+    // longer dominates the visual hierarchy. Lock prevents accidental drift.
+    const src = read(
+      'components/service-hub/estimate-studio/scope/StoryPanelV2.tsx',
+    );
+
+    it('declares leftSlot width = 440', () => {
+      expect(src).toMatch(/leftSlot:\s*\{\s*width:\s*440/);
+    });
+
+    it('declares rightSlot as flex: 1', () => {
+      expect(src).toMatch(/rightSlot:\s*\{\s*flex:\s*1/);
+    });
+
+    it('renders the chapter strip below the split, not inside it', () => {
+      // The split View must close BEFORE the <ChapterStrip> mount.
+      const splitClose = src.indexOf('</View>\n        <ChapterStrip');
+      expect(splitClose).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  describe('Lock #32: ChapterLeftPane invisible scrollbar (premium aesthetic, 2026-05-22)', () => {
+    // The narrative left pane scrolls vertically but MUST NOT show a browser
+    // scrollbar — the Estimate Studio aesthetic requires no scrollbar chrome
+    // visible inside the canvas. If this lock fails, someone removed the
+    // web-only invisible-scrollbar style.
+    const src = read(
+      'components/service-hub/estimate-studio/scope/ChapterLeftPane.tsx',
+    );
+
+    it('applies scrollbarWidth: none (Firefox + modern Chromium)', () => {
+      expect(src).toMatch(/scrollbarWidth:\s*['"]none['"]/);
+    });
+
+    it('applies msOverflowStyle: none (IE/legacy Edge)', () => {
+      expect(src).toMatch(/msOverflowStyle:\s*['"]none['"]/);
+    });
+
+    it('platform-guards the invisible-scrollbar style for web only', () => {
+      // The style must be gated behind Platform.OS === 'web' so native
+      // doesn't try to apply a CSS-only property.
+      expect(src).toMatch(/Platform\.OS\s*===\s*['"]web['"]/);
+    });
+  });
 });

@@ -1379,3 +1379,25 @@ export async function pushToMaterialsBundle(
     correlation_id: data.correlation_id,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Story Mode v2 — chapter-based shape (see ./blueprintsStoryV2.ts)
+// ---------------------------------------------------------------------------
+//
+// Re-exported here so all blueprint API types remain importable from a
+// single module while the new types live in their own file.
+
+export type {
+  BlueprintStoryV2,
+  BlueprintChapter,
+  ChapterSource,
+  ChapterZones,
+  ScopeItem,
+  ChapterTask,
+  ChapterMaterial,
+  ChapterDiscipline,
+  OpenQuestion,
+  BlueprintRegion,
+  ChapterCoverage,
+} from './blueprintsStoryV2';
+export { adaptLegacyStoryToV2, _assertBlueprintStoryV2 } from './blueprintsStoryV2';

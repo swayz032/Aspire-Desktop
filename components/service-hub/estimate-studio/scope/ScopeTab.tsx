@@ -36,6 +36,7 @@ import { scopeUiActions, useScopeUi, type ScopeCardKey } from '@/lib/scopeUiStor
 import { CanvasCardSwitcher } from '../shell/CanvasCardSwitcher';
 import { BottomChipStrip, type BottomChip } from '../shell/BottomChipStrip';
 import { StoryPanel } from './StoryPanel';
+import { StoryPanelV2 } from './StoryPanelV2';
 import { IncludedWorkCard } from './IncludedWorkCard';
 import { NotInBaseCard } from './NotInBaseCard';
 import { MissingInputsList } from './MissingInputsList';
@@ -71,7 +72,7 @@ export function ScopeTab(): React.ReactElement {
   const story = useBlueprintStory(projectId);
   const actions = useBlueprintActions();
   const ui = useScopeUi();
-  const { setActiveCard } = scopeUiActions();
+  const { setActiveCard, setActiveChapterKey } = scopeUiActions();
 
   // Wave 18l: defensive — backend may return null/undefined arrays during
   // hydration or schema drift. Coalesce before reading .length / .filter.
@@ -218,8 +219,17 @@ export function ScopeTab(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [advancedMode, ui.activeCard]);
 
+  const storyV2Chapters = story.storyV2?.chapters ?? [];
+  const shouldUseV2 = storyV2Chapters.length > 0;
+
   const cards: Record<ScopeCardKey, React.ReactNode> = {
-    story: (
+    story: shouldUseV2 && story.storyV2 ? (
+      <StoryPanelV2
+        story={story.storyV2}
+        activeChapterKey={ui.activeChapterKey ?? storyV2Chapters[0]?.key ?? null}
+        onSelectChapter={(key) => setActiveChapterKey(key)}
+      />
+    ) : (
       <StoryPanel
         story={story.story}
         isPolling={story.isPolling}
@@ -301,12 +311,14 @@ export function ScopeTab(): React.ReactElement {
         />
       </View>
 
-      <BottomChipStrip
-        chips={chips}
-        activeKey={ui.activeCard}
-        onChange={setActiveCard}
-        testID="scope-chip-strip"
-      />
+      {ui.activeCard !== 'story' || !shouldUseV2 ? (
+        <BottomChipStrip
+          chips={chips}
+          activeKey={ui.activeCard}
+          onChange={setActiveCard}
+          testID="scope-chip-strip"
+        />
+      ) : null}
     </View>
   );
 }
