@@ -58,6 +58,26 @@ const INVISIBLE_SCROLLBAR_WEB: ViewStyle =
     ? (({ scrollbarWidth: 'none', msOverflowStyle: 'none' } as unknown) as ViewStyle)
     : {};
 
+// 2026-05-23 — Belt-and-suspenders for the invisible scrollbar on web.
+// `scrollbarWidth: 'none'` in the inline style sometimes doesn't bind to
+// RN-Web's underlying scroll element (the inline style is hoisted onto the
+// content container, not the overflow:auto wrapper). This stylesheet
+// targets the data-attribute we hang on the ScrollView so the underlying
+// browser scrollbar disappears for both webkit and firefox. Same pattern
+// the Tim Rail Context tab uses.
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  const STYLE_ID = 'chapter-left-pane-scrollbar-hide';
+  if (!document.getElementById(STYLE_ID)) {
+    const styleEl = document.createElement('style');
+    styleEl.id = STYLE_ID;
+    styleEl.textContent = `
+      [data-chapter-left-pane="1"] { scrollbar-width: none; -ms-overflow-style: none; }
+      [data-chapter-left-pane="1"]::-webkit-scrollbar { width: 0; height: 0; display: none; }
+    `;
+    document.head.appendChild(styleEl);
+  }
+}
+
 const DISCIPLINE_STYLE: Record<ChapterDiscipline, { bg: string; fg: string; label: string }> = {
   demo:   { bg: 'rgba(239,68,68,0.12)',  fg: '#ef4444', label: 'DEMO' },
   frame:  { bg: 'rgba(255,255,255,0.06)', fg: 'rgba(255,255,255,0.78)', label: 'FRAME' },
@@ -98,17 +118,22 @@ export function ChapterLeftPane({ chapter, hoverBulletKey, onHoverBullet }: Prop
   const ordinalStr = String(chapter.ordinal).padStart(2, '0');
   const confidencePct = Math.round(chapter.confidence * 100);
 
-  const showWhatThisIs = zones.what_this_is.trim() !== '';
-  const showInScope = zones.in_scope.length > 0 || zones.not_in_scope.length > 0;
-  const showTasks = zones.tasks.length > 0;
-  const showBuyList = zones.buy_list.length > 0;
-  const showOpenQuestions = zones.open_questions.length > 0;
+  // 2026-05-23 — Always render all 5 zones (with empty-state copy inside
+  // each) so the contractor sees the full design intent on every chapter,
+  // even when Drew has only partial output. Empty zones explain what will
+  // appear there as the pipeline progresses.
+  const hasWhatThisIs = zones.what_this_is.trim() !== '';
+  const hasInScope = zones.in_scope.length > 0 || zones.not_in_scope.length > 0;
+  const hasTasks = zones.tasks.length > 0;
+  const hasBuyList = zones.buy_list.length > 0;
+  const hasOpenQuestions = zones.open_questions.length > 0;
 
   return (
     <ScrollView
       style={[styles.root, INVISIBLE_SCROLLBAR_WEB]}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
+      dataSet={Platform.OS === 'web' ? ({ chapterLeftPane: '1' } as Record<string, unknown>) : undefined}
     >
       {/* Header row */}
       <View style={styles.headerRow}>
@@ -124,45 +149,51 @@ export function ChapterLeftPane({ chapter, hoverBulletKey, onHoverBullet }: Prop
       {/* Headline */}
       <Text style={styles.headline}>{chapter.title}</Text>
 
-      {/* Zone 1 — WHAT THIS IS */}
-      {showWhatThisIs ? (
-        <ZoneFrame testID="zone-what-this-is" icon="?" title="WHAT THIS IS" accent={WHITE_60}>
+      {/* Zone 1 — WHAT THIS IS (always renders) */}
+      <ZoneFrame testID="zone-what-this-is" icon="?" title="WHAT THIS IS" accent={WHITE_60}>
+        {hasWhatThisIs ? (
           <Text style={styles.bodyText}>{zones.what_this_is}</Text>
-        </ZoneFrame>
-      ) : null}
+        ) : (
+          <Text style={styles.emptyHint}>Drew has not summarized this chapter yet — a plain-English overview will appear here once classification completes.</Text>
+        )}
+      </ZoneFrame>
 
-      {/* Zone 2 — WHAT'S IN SCOPE */}
-      {showInScope ? (
-        <ZoneFrame testID="zone-in-scope" icon="●" title="WHAT'S IN SCOPE" accent={AMBER}>
-          {zones.in_scope.map((item: ScopeItem, i: number) => (
-            <View key={`in-${i}`} style={styles.inScopeRow}>
-              <Text style={styles.amberDot}>·</Text>
-              <Text style={styles.bodyText}>{item.text_md}</Text>
-            </View>
-          ))}
-          {zones.not_in_scope.length > 0 ? (
-            <View style={styles.notInScopeBlock}>
-              {zones.not_in_scope.map((item: ScopeItem, i: number) => (
-                <View key={`out-${i}`} style={styles.notInScopeRow}>
-                  <Text style={styles.redX}>✗</Text>
-                  <Text style={styles.mutedBody}>{item.text_md}</Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
-        </ZoneFrame>
-      ) : null}
+      {/* Zone 2 — WHAT'S IN SCOPE (always renders) */}
+      <ZoneFrame testID="zone-in-scope" icon="●" title="WHAT'S IN SCOPE" accent={AMBER}>
+        {hasInScope ? (
+          <>
+            {zones.in_scope.map((item: ScopeItem, i: number) => (
+              <View key={`in-${i}`} style={styles.inScopeRow}>
+                <Text style={styles.amberDot}>·</Text>
+                <Text style={styles.bodyText}>{item.text_md}</Text>
+              </View>
+            ))}
+            {zones.not_in_scope.length > 0 ? (
+              <View style={styles.notInScopeBlock}>
+                {zones.not_in_scope.map((item: ScopeItem, i: number) => (
+                  <View key={`out-${i}`} style={styles.notInScopeRow}>
+                    <Text style={styles.redX}>✗</Text>
+                    <Text style={styles.mutedBody}>{item.text_md}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </>
+        ) : (
+          <Text style={styles.emptyHint}>Scope items appear here as Drew identifies them — typically one bullet per fixture group, partition, or major assembly.</Text>
+        )}
+      </ZoneFrame>
 
-      {/* Zone 3 — WHAT YOU HAVE TO DO */}
-      {showTasks ? (
-        <ZoneFrame
-          testID="zone-tasks"
-          icon="✓"
-          title="WHAT YOU HAVE TO DO"
-          accent={AMBER}
-          count={zones.tasks.length}
-        >
-          {zones.tasks.map((task: ChapterTask, i: number) => {
+      {/* Zone 3 — WHAT YOU HAVE TO DO (always renders) */}
+      <ZoneFrame
+        testID="zone-tasks"
+        icon="✓"
+        title="WHAT YOU HAVE TO DO"
+        accent={AMBER}
+        count={hasTasks ? zones.tasks.length : undefined}
+      >
+        {hasTasks ? (
+          zones.tasks.map((task: ChapterTask, i: number) => {
             const key = `task-${i}`;
             const hovered = hoverBulletKey === key;
             const tag = DISCIPLINE_STYLE[task.discipline] ?? DISCIPLINE_STYLE.other;
@@ -185,39 +216,43 @@ export function ChapterLeftPane({ chapter, hoverBulletKey, onHoverBullet }: Prop
                 </View>
               </Pressable>
             );
-          })}
-        </ZoneFrame>
-      ) : null}
+          })
+        ) : (
+          <Text style={styles.emptyHint}>Drew is still pulling tasks from the discipline plans. Check back as the pipeline progresses.</Text>
+        )}
+      </ZoneFrame>
 
-      {/* Zone 4 — WHAT YOU NEED TO BUY */}
-      {showBuyList ? (
-        <ZoneFrame
-          testID="zone-buy-list"
-          icon="$"
-          title="WHAT YOU NEED TO BUY"
-          accent={AMBER}
-          count={zones.buy_list.length}
-        >
-          {zones.buy_list.map((mat: ChapterMaterial, i: number) => (
+      {/* Zone 4 — WHAT YOU NEED TO BUY (always renders) */}
+      <ZoneFrame
+        testID="zone-buy-list"
+        icon="$"
+        title="WHAT YOU NEED TO BUY"
+        accent={AMBER}
+        count={hasBuyList ? zones.buy_list.length : undefined}
+      >
+        {hasBuyList ? (
+          zones.buy_list.map((mat: ChapterMaterial, i: number) => (
             <View key={`buy-${i}`} style={styles.buyRow}>
               <Text style={styles.buyQty}>{mat.quantity_display}</Text>
               <Text style={[styles.bodyText, styles.buyName]}>{mat.name}</Text>
               <Text style={styles.takeoffHint}>Takeoff</Text>
             </View>
-          ))}
-        </ZoneFrame>
-      ) : null}
+          ))
+        ) : (
+          <Text style={styles.emptyHint}>Materials for this chapter appear here as Drew identifies them. The master list across all chapters lives in Takeoff → Materials.</Text>
+        )}
+      </ZoneFrame>
 
-      {/* Zone 5 — WHAT'S STILL UNCLEAR */}
-      {showOpenQuestions ? (
-        <ZoneFrame
-          testID="zone-open-questions"
-          icon="?"
-          title="WHAT'S STILL UNCLEAR"
-          accent={RED}
-          count={zones.open_questions.length}
-        >
-          {zones.open_questions.map((q: OpenQuestion) => (
+      {/* Zone 5 — WHAT'S STILL UNCLEAR (always renders) */}
+      <ZoneFrame
+        testID="zone-open-questions"
+        icon="?"
+        title="WHAT'S STILL UNCLEAR"
+        accent={RED}
+        count={hasOpenQuestions ? zones.open_questions.length : undefined}
+      >
+        {hasOpenQuestions ? (
+          zones.open_questions.map((q: OpenQuestion) => (
             <View key={q.question_id} style={styles.questionCallout}>
               <Text style={styles.questionWarn}>⚠</Text>
               <View style={styles.questionTextWrap}>
@@ -225,9 +260,11 @@ export function ChapterLeftPane({ chapter, hoverBulletKey, onHoverBullet }: Prop
                 <Text style={styles.questionBody}>{q.body_md}</Text>
               </View>
             </View>
-          ))}
-        </ZoneFrame>
-      ) : null}
+          ))
+        ) : (
+          <Text style={styles.emptyHint}>0 open questions — Drew flags ambiguities here as it reads. None spotted yet.</Text>
+        )}
+      </ZoneFrame>
 
       {/* Sources strip — hidden when no source sheets (matches empty-zone hiding rule). */}
       {chapter.source_sheets.length > 0 ? (
@@ -349,6 +386,13 @@ const styles = StyleSheet.create({
   buyQty: { color: AMBER, fontSize: 13, fontWeight: '700', fontVariant: ['tabular-nums'], minWidth: 28 },
   buyName: { flex: 1 },
   takeoffHint: { color: WHITE_45, fontSize: 11, letterSpacing: 0.4 },
+  // Empty-state copy inside a zone — italic, dim, slightly smaller than body.
+  emptyHint: {
+    color: WHITE_60,
+    fontSize: 12,
+    lineHeight: 17,
+    fontStyle: 'italic',
+  },
 
   questionCallout: {
     flexDirection: 'row',

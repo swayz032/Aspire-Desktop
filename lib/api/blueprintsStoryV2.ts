@@ -129,55 +129,42 @@ interface DisciplineMeta {
   blurb: string;
   /** Display order on the chapter strip. Lower comes first. */
   order: number;
+  /** Discipline tag used for task rendering. */
+  discipline: ChapterDiscipline;
+  /** Generic per-discipline task templates. `{sheets}` interpolates the
+   *  comma-joined sheet code list. Renders into the WHAT YOU HAVE TO DO zone. */
+  taskTemplates: string[];
 }
 
+const META_GENERAL: DisciplineMeta = { key: 'general', title: "What's Getting Built", blurb: 'Cover sheet, sheet index, codes, and the project-wide rules everyone on site has to follow.', order: 1, discipline: 'other', taskTemplates: ['Review project codes and amendments before any field work', 'Walk the site with the cover sheet to confirm scope boundaries'] };
+const META_ARCHITECTURAL: DisciplineMeta = { key: 'architectural', title: 'Floor Plans & Architecture', blurb: 'Where every room lives, how the partitions divide the space, and what finishes the architect specified.', order: 2, discipline: 'frame', taskTemplates: ['Frame partitions per the floor plan layout', 'Coordinate ceiling heights with the reflected ceiling plan', 'Install doors and frames per the door schedule', 'Apply wall + floor finishes per the finish schedule'] };
+const META_STRUCTURAL: DisciplineMeta = { key: 'structural', title: 'How It Stands Up', blurb: 'Beams, columns, slabs, and load paths — the frame that holds the whole building together.', order: 3, discipline: 'frame', taskTemplates: ['Confirm slab + footing dimensions before pour', 'Coordinate steel/beam erection with the structural plans', 'Verify load paths with the engineer of record'] };
+const META_PLUMBING: DisciplineMeta = { key: 'plumbing', title: 'Water & Drains', blurb: 'Where the water comes in, where the waste goes out, and every fixture in between.', order: 4, discipline: 'plumb', taskTemplates: ['Rough-in supply lines per the domestic supply plan', 'Run waste + vent per the waste/vent plan', 'Set fixtures per the plumbing fixture schedule', 'Install isolation valves where code requires'] };
+const META_MECHANICAL: DisciplineMeta = { key: 'mechanical', title: 'Heating, Cooling & Air', blurb: 'How the building stays comfortable — heat pumps, AHUs, ductwork, exhaust, and fresh-air units.', order: 5, discipline: 'mech', taskTemplates: ['Set equipment per the mechanical plan (AHU, HP, ERV)', 'Run ductwork and supports per the mechanical layout', 'Cut and frame the louvers + exhaust penetrations', 'Coordinate refrigerant + condensate routing with structure'] };
+const META_ELECTRICAL: DisciplineMeta = { key: 'electrical', title: 'Power, Lights & Cameras', blurb: 'Every outlet, every fixture, every panel — plus low-voltage cameras and access control.', order: 6, discipline: 'elec', taskTemplates: ['Pull conductors per the panel + breaker feeder schedules', 'Mount light fixtures per the lighting plan', 'Land devices + cover plates per the power plan', 'Coordinate low-voltage camera + access raceways'] };
+const META_FIRE: DisciplineMeta = { key: 'fire', title: 'Fire Safety', blurb: 'Sprinkler heads, alarm devices, exit paths — everything the fire code calls out.', order: 7, discipline: 'fp', taskTemplates: ['Lay out sprinkler heads per the fire protection plan', 'Coordinate sprinkler drops with the ceiling grid', 'Confirm alarm device placement with the life-safety plan'] };
+const META_CIVIL: DisciplineMeta = { key: 'civil', title: 'Outside the Building', blurb: 'Site work, grading, paving, and the utilities that meet the building at the property line.', order: 8, discipline: 'other', taskTemplates: ['Stake the site per the civil plan before excavation', 'Coordinate utility tie-ins at the property line', 'Confirm grading + drainage with the engineer'] };
+
 const DISCIPLINE_MAP: Record<string, DisciplineMeta> = {
-  // Architectural — floor plans, partitions, finishes
-  a: { key: 'architectural', title: 'Floor Plans & Architecture', blurb: 'Where every room lives, how the partitions divide the space, and what finishes the architect specified.', order: 2 },
-  arch: { key: 'architectural', title: 'Floor Plans & Architecture', blurb: 'Where every room lives, how the partitions divide the space, and what finishes the architect specified.', order: 2 },
-  architectural: { key: 'architectural', title: 'Floor Plans & Architecture', blurb: 'Where every room lives, how the partitions divide the space, and what finishes the architect specified.', order: 2 },
-  // Structural — frame, load paths
-  s: { key: 'structural', title: 'How It Stands Up', blurb: 'Beams, columns, slabs, and load paths — the frame that holds the whole building together.', order: 3 },
-  struct: { key: 'structural', title: 'How It Stands Up', blurb: 'Beams, columns, slabs, and load paths — the frame that holds the whole building together.', order: 3 },
-  structural: { key: 'structural', title: 'How It Stands Up', blurb: 'Beams, columns, slabs, and load paths — the frame that holds the whole building together.', order: 3 },
-  // Plumbing — water + drains
-  p: { key: 'plumbing', title: 'Water & Drains', blurb: 'Where the water comes in, where the waste goes out, and every fixture in between.', order: 4 },
-  plumb: { key: 'plumbing', title: 'Water & Drains', blurb: 'Where the water comes in, where the waste goes out, and every fixture in between.', order: 4 },
-  plumbing: { key: 'plumbing', title: 'Water & Drains', blurb: 'Where the water comes in, where the waste goes out, and every fixture in between.', order: 4 },
-  // Mechanical / HVAC
-  m: { key: 'mechanical', title: 'Heating, Cooling & Air', blurb: 'How the building stays comfortable — heat pumps, AHUs, ductwork, exhaust, and fresh-air units.', order: 5 },
-  mech: { key: 'mechanical', title: 'Heating, Cooling & Air', blurb: 'How the building stays comfortable — heat pumps, AHUs, ductwork, exhaust, and fresh-air units.', order: 5 },
-  mechanical: { key: 'mechanical', title: 'Heating, Cooling & Air', blurb: 'How the building stays comfortable — heat pumps, AHUs, ductwork, exhaust, and fresh-air units.', order: 5 },
-  hvac: { key: 'mechanical', title: 'Heating, Cooling & Air', blurb: 'How the building stays comfortable — heat pumps, AHUs, ductwork, exhaust, and fresh-air units.', order: 5 },
-  // Electrical
-  e: { key: 'electrical', title: 'Power, Lights & Cameras', blurb: 'Every outlet, every fixture, every panel — plus low-voltage cameras and access control.', order: 6 },
-  elec: { key: 'electrical', title: 'Power, Lights & Cameras', blurb: 'Every outlet, every fixture, every panel — plus low-voltage cameras and access control.', order: 6 },
-  electrical: { key: 'electrical', title: 'Power, Lights & Cameras', blurb: 'Every outlet, every fixture, every panel — plus low-voltage cameras and access control.', order: 6 },
-  // Fire protection
-  fp: { key: 'fire', title: 'Fire Safety', blurb: 'Sprinkler heads, alarm devices, exit paths — everything the fire code calls out.', order: 7 },
-  fire: { key: 'fire', title: 'Fire Safety', blurb: 'Sprinkler heads, alarm devices, exit paths — everything the fire code calls out.', order: 7 },
-  // Civil / site
-  c: { key: 'civil', title: 'Outside the Building', blurb: 'Site work, grading, paving, and the utilities that meet the building at the property line.', order: 8 },
-  civ: { key: 'civil', title: 'Outside the Building', blurb: 'Site work, grading, paving, and the utilities that meet the building at the property line.', order: 8 },
-  civil: { key: 'civil', title: 'Outside the Building', blurb: 'Site work, grading, paving, and the utilities that meet the building at the property line.', order: 8 },
-  // General / cover sheets
-  g: { key: 'general', title: "What's Getting Built", blurb: 'Cover sheet, sheet index, codes, and the project-wide rules everyone on site has to follow.', order: 1 },
-  gen: { key: 'general', title: "What's Getting Built", blurb: 'Cover sheet, sheet index, codes, and the project-wide rules everyone on site has to follow.', order: 1 },
-  general: { key: 'general', title: "What's Getting Built", blurb: 'Cover sheet, sheet index, codes, and the project-wide rules everyone on site has to follow.', order: 1 },
+  a: META_ARCHITECTURAL, arch: META_ARCHITECTURAL, architectural: META_ARCHITECTURAL,
+  s: META_STRUCTURAL, struct: META_STRUCTURAL, structural: META_STRUCTURAL,
+  p: META_PLUMBING, plumb: META_PLUMBING, plumbing: META_PLUMBING,
+  m: META_MECHANICAL, mech: META_MECHANICAL, mechanical: META_MECHANICAL, hvac: META_MECHANICAL,
+  e: META_ELECTRICAL, elec: META_ELECTRICAL, electrical: META_ELECTRICAL,
+  fp: META_FIRE, fire: META_FIRE,
+  c: META_CIVIL, civ: META_CIVIL, civil: META_CIVIL,
+  g: META_GENERAL, gen: META_GENERAL, general: META_GENERAL,
 };
 
-const OTHER_META: DisciplineMeta = {
-  key: 'other',
-  title: 'Other Sheets',
-  blurb: 'Sheets the classifier did not place into a known discipline yet.',
-  order: 99,
-};
-
+/**
+ * Map a sheet's raw discipline string to a known DisciplineMeta. Sheets the
+ * classifier couldn't place go into General — there is intentionally no
+ * "Other Sheets" bucket; every sheet needs to land in an in-order chapter.
+ */
 function disciplineMetaFor(raw: string | null | undefined): DisciplineMeta {
-  if (!raw) return OTHER_META;
+  if (!raw) return META_GENERAL;
   const lower = raw.trim().toLowerCase();
-  // Try the exact value, then the first segment up to a separator (e.g. "P-PLUMB" → "p").
-  return DISCIPLINE_MAP[lower] ?? DISCIPLINE_MAP[lower.split(/[-_\s]/)[0]] ?? OTHER_META;
+  return DISCIPLINE_MAP[lower] ?? DISCIPLINE_MAP[lower.split(/[-_\s]/)[0]] ?? META_GENERAL;
 }
 
 /** True if any phase carries Drew-narrative content (real title or body_md). */
@@ -226,12 +213,27 @@ function chaptersFromSheetGrouping(
 
   return ordered.map((group, idx) => {
     const sources = group.entries.map((e) => sheetSource(e.sheet, e.pageNumber));
-    const inScope: ScopeItem[] = sources.map((src) => ({
-      text_md: src.sheet_title
-        ? `**${src.sheet_code}** — ${src.sheet_title}`
-        : `**${src.sheet_code}**`,
-      evidence_sheet: src.sheet_code,
+
+    // Paraphrase sheet titles as scope-style bullets (drop the raw code,
+    // lead with the title content). When the title is missing, fall back
+    // to a friendly version of the sheet code.
+    const inScope: ScopeItem[] = sources.map((src) => {
+      const trimmedTitle = src.sheet_title.trim();
+      const body = trimmedTitle.length > 0
+        ? `${capitalizeFirst(trimmedTitle)} — per **${src.sheet_code}**`
+        : `Per **${src.sheet_code}**`;
+      return { text_md: body, evidence_sheet: src.sheet_code };
+    });
+
+    // Generic per-discipline tasks. Once Drew's REASON stage emits real
+    // tasks, the narrative path takes over and these are unused.
+    const evidenceSheetCodes = sources.map((s) => s.sheet_code);
+    const tasks: ChapterTask[] = group.meta.taskTemplates.map((tpl) => ({
+      text_md: tpl,
+      discipline: group.meta.discipline,
+      evidence_sheets: evidenceSheetCodes,
     }));
+
     const sheetSummary = sources.length === 1
       ? `1 sheet (${sources[0].sheet_code})`
       : `${sources.length} sheets covering ${sources[0].sheet_code}–${sources[sources.length - 1].sheet_code}`;
@@ -249,12 +251,16 @@ function chaptersFromSheetGrouping(
         what_this_is: whatThisIs,
         in_scope: inScope,
         not_in_scope: [],
-        tasks: [],
+        tasks,
         buy_list: [],
         open_questions: [],
       },
     };
   });
+}
+
+function capitalizeFirst(s: string): string {
+  return s.length === 0 ? s : s[0].toUpperCase() + s.slice(1);
 }
 
 /**

@@ -90,13 +90,19 @@ const styles = StyleSheet.create({
   },
   // HOTFIX 2026-05-23 — `alignItems: 'flex-start'` overrides React Native's
   // default `stretch`, which was making every chapter card inflate to the
-  // strip's cross-axis height (~400px tall instead of ~108px). Combined with
-  // the explicit `card.height` below, this is belt-and-suspenders against
-  // any future parent-flex changes.
-  stripContent: { gap: 6, padding: 10, alignItems: 'flex-start' },
+  // strip's cross-axis height (~400px tall instead of ~108px). The explicit
+  // `card.height` below is belt-and-suspenders against future parent-flex
+  // changes. `flexGrow: 1` on the content container lets the cards spread
+  // across the available width when there are few chapters (instead of
+  // leaving a big right gap), but the strip still scrolls horizontally
+  // when the projected card width would drop below min.
+  stripContent: { gap: 8, padding: 10, alignItems: 'flex-start', flexGrow: 1 },
   card: {
-    width: 118,
-    height: 108,
+    flex: 1,
+    flexBasis: 140,
+    minWidth: 140,
+    maxWidth: 240,
+    height: 112,
     borderRadius: 7,
     backgroundColor: 'rgba(255,255,255,0.02)',
     borderWidth: 1,
