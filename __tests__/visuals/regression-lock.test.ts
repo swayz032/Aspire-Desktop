@@ -293,9 +293,11 @@ describe('Visuals Tab — Design Lock v1.0', () => {
     const tabSrc = read(
       'components/service-hub/estimate-studio/scope/ScopeTab.tsx',
     );
-    const storySrc = read(
-      'components/service-hub/estimate-studio/scope/StoryPanel.tsx',
-    );
+    // 2026-05-25 — Legacy StoryPanel removed; StoryPanelV2 owns the
+    // story surface end-to-end. The TruthBadge assertion that lived
+    // here was scoped to the deleted file and has been retired with
+    // the legacy component. Lock #31 (StoryPanelV2 layout) replaces
+    // it for the V2 surface.
     const pageSrc = read('app/service-hub/estimate-studio/scope.tsx');
 
     it('uses <CanvasCardSwitcher /> for the main canvas region', () => {
@@ -306,11 +308,6 @@ describe('Visuals Tab — Design Lock v1.0', () => {
     it('uses <BottomChipStrip /> for card selection', () => {
       expect(tabSrc).toMatch(/BottomChipStrip/);
       expect(tabSrc).toMatch(/<BottomChipStrip\b/);
-    });
-
-    it('StoryPanel renders inline <TruthBadge /> components', () => {
-      expect(storySrc).toMatch(/TruthBadge/);
-      expect(storySrc).toMatch(/<TruthBadge\b/);
     });
 
     it('empty state copy contains the literal "Drop a plan set in Plans & Photos"', () => {

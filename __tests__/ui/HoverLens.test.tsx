@@ -16,8 +16,8 @@ import { HoverLens } from '@/components/ui/HoverLens';
 describe('HoverLens', () => {
   it('renders children unchanged on native', () => {
     const original = Platform.OS;
-    // @ts-expect-error — Platform.OS read-only in types but writable at runtime for tests
-    Platform.OS = 'ios';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Platform as { OS: string }).OS = 'ios';
     try {
       const { getByText } = render(
         <HoverLens src="https://example.com/x.png" testID="lens-native">
@@ -26,8 +26,8 @@ describe('HoverLens', () => {
       );
       expect(getByText('native-child')).toBeTruthy();
     } finally {
-      // @ts-expect-error
-      Platform.OS = original;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (Platform as { OS: string }).OS = original;
     }
   });
 
@@ -51,8 +51,8 @@ describe('HoverLens', () => {
 
   it('does not crash when given a valid src on web', () => {
     const original = Platform.OS;
-    // @ts-expect-error
-    Platform.OS = 'web';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Platform as { OS: string }).OS = 'web';
     try {
       const { getByText } = render(
         <HoverLens src="https://example.com/x.png" testID="lens-web">
@@ -62,15 +62,15 @@ describe('HoverLens', () => {
       // Children render — the wrapper doesn't swallow them.
       expect(getByText('web-child')).toBeTruthy();
     } finally {
-      // @ts-expect-error
-      Platform.OS = original;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (Platform as { OS: string }).OS = original;
     }
   });
 
   it('accepts zoom + size + showIcon props without throwing', () => {
     const original = Platform.OS;
-    // @ts-expect-error
-    Platform.OS = 'web';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Platform as { OS: string }).OS = 'web';
     try {
       const { getByText } = render(
         <HoverLens
@@ -85,8 +85,8 @@ describe('HoverLens', () => {
       );
       expect(getByText('config-child')).toBeTruthy();
     } finally {
-      // @ts-expect-error
-      Platform.OS = original;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (Platform as { OS: string }).OS = original;
     }
   });
 });

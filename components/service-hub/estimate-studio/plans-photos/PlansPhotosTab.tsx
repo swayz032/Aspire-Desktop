@@ -60,7 +60,9 @@ export function PlansPhotosTab(): React.ReactElement {
   const liveSheetCount = poll.status?.sheet_count ?? poll.sheets.length;
 
   // Auto-jump to Sheets when an upload finishes (premium UX: don't make
-  // the user click).
+  // the user click). Effect catches up the store; the render below uses
+  // an effective-card synchronously computed value so there's no
+  // one-frame flicker to UploadDropZone after a project loads.
   React.useEffect(() => {
     if (hasProject && ui.activeCard === 'upload') {
       setActiveCard('sheets');
@@ -69,7 +71,14 @@ export function PlansPhotosTab(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasProject, ui.activeCard]);
 
-  const activeCard: PlansPhotosCardKey = ui.activeCard;
+  // 2026-05-25 — Effective card override: if a project is active, never
+  // render 'upload' even if the store hasn't been corrected yet by the
+  // effect above. This kills the loader → UploadDropZone → loader flash
+  // the user reported when navigating into Plans & Photos with a live
+  // project. The store still updates asynchronously via the effect, but
+  // the render path is now flicker-free.
+  const activeCard: PlansPhotosCardKey =
+    hasProject && ui.activeCard === 'upload' ? 'sheets' : ui.activeCard;
 
   // Failure short-circuit: when Drew has reported a stage failure, the
   // canvas swaps in the failure card REGARDLESS of which view chip is
