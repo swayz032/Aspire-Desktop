@@ -113,7 +113,50 @@ export function PlansPhotosTab(): React.ReactElement {
     upload.reset,
   ]);
 
+  // 2026-05-25 — Unconditional loader bridge.
+  // Computed at the TOP of `card` (above the activeCard switch) so the
+  // ripple loader owns the entire upload-click -> blueprints-rendered
+  // window. The previous architecture had the loader living inside the
+  // 'sheets' case, which created flicker windows when:
+  //   (a) upload.phase entered a pipeline state but hasProject hadn't
+  //       flipped true yet (response in-flight) -> 'upload' case rendered
+  //       UploadDropZone, then transitioned to 'sheets' case
+  //   (b) hasProject toggled false momentarily mid-upload due to
+  //       response/snapshot timing -> 'upload' case re-rendered briefly
+  // This loader gate fires whenever the user is in ANY post-idle upload
+  // phase OR has a project but no sheets yet. UploadDropZone now only
+  // renders in the truly-idle and error states, eliminating all
+  // intermediate flashes.
+  const uploadInFlight =
+    upload.phase === 'reading' ||
+    upload.phase === 'init' ||
+    upload.phase === 'uploading' ||
+    upload.phase === 'completing' ||
+    upload.phase === 'ingesting' ||
+    upload.phase === 'classifying' ||
+    upload.phase === 'success';
+  const ingestStatus = poll.stageProgress?.ingest ?? 'pending';
+  const ingestHardFailed = ingestStatus === 'error';
+  const awaitingFirstSheets =
+    hasProject && poll.sheets.length === 0 && !ingestHardFailed;
+  const showBridgingLoader = uploadInFlight || awaitingFirstSheets;
+
   const card = useMemo<React.ReactNode>(() => {
+    // Unconditional loader bridge — wins over the activeCard switch.
+    if (showBridgingLoader) {
+      return (
+        <View style={styles.loaderHost} testID="plans-photos-bridging-loader">
+          <PremiumBlueprintLoader size={240} />
+          <Text style={styles.loaderTitle}>
+            {uploadInFlight ? 'Processing your blueprint…' : 'Loading blueprints…'}
+          </Text>
+          <Text style={styles.loaderBody}>
+            Drew is preparing the canvas. This usually takes a few seconds.
+          </Text>
+        </View>
+      );
+    }
+
     switch (activeCard) {
       case 'upload':
         return (
@@ -128,52 +171,6 @@ export function PlansPhotosTab(): React.ReactElement {
           />
         );
       case 'sheets': {
-        // Wave 11o: replaced the 5-col SheetThumbnailGrid with a canvas-on-
-        // stage layout (big active sheet + bottom chip strip + pan/zoom).
-        // SheetThumbnailGrid stays exported for the revisions/disciplines
-        // detail cards that still want the grid format.
-        //
-        // Wave 18m: bridge the upload→first-poll gap with PremiumBlueprintLoader
-        // so the canvas never flashes "No sheets yet" between upload completion
-        // and the first sheet arrival. The flicker happened because hasProject
-        // flipped true (via upload.response or snapshot) BEFORE the first poll
-        // had returned, leaving SheetCanvasView's internal empty state to
-        // render for one frame. Gate that empty state on first-poll + upload
-        // settled so the loader owns the in-between moment.
-        const uploadInFlight =
-          upload.phase === 'reading' ||
-          upload.phase === 'init' ||
-          upload.phase === 'uploading' ||
-          upload.phase === 'completing' ||
-          upload.phase === 'ingesting' ||
-          upload.phase === 'classifying';
-        // 2026-05-25 — Hold the loader until sheets actually arrive OR
-        // ingest hard-fails. Previous gating used `poll.isFirstLoad` which
-        // flipped false after the FIRST poll response — even when that
-        // response had 0 sheets and ingest was still running. That caused
-        // a 1-frame flicker to SheetCanvasView's internal empty state
-        // ("No sheets yet") between polls. New gating: keep the loader
-        // up while hasProject + 0 sheets, regardless of how many polls
-        // have completed, as long as ingest isn't `error`. The empty
-        // state only takes over when ingest fails (handled by the
-        // BlueprintFailureCard branch above).
-        const ingestStatus = poll.stageProgress?.ingest ?? 'pending';
-        const ingestHardFailed = ingestStatus === 'error';
-        const awaitingFirstSheets =
-          hasProject && poll.sheets.length === 0 && !ingestHardFailed;
-        if (uploadInFlight || awaitingFirstSheets) {
-          return (
-            <View style={styles.loaderHost} testID="plans-photos-bridging-loader">
-              <PremiumBlueprintLoader size={240} />
-              <Text style={styles.loaderTitle}>
-                {uploadInFlight ? 'Processing your blueprint…' : 'Loading blueprints…'}
-              </Text>
-              <Text style={styles.loaderBody}>
-                Drew is preparing the canvas. This usually takes a few seconds.
-              </Text>
-            </View>
-          );
-        }
         return hasProject ? (
           <SheetCanvasView
             sheets={poll.sheets}
@@ -229,6 +226,8 @@ export function PlansPhotosTab(): React.ReactElement {
     poll.isFirstLoad,
     poll.stageProgress,
     liveSheetCount,
+    showBridgingLoader,
+    uploadInFlight,
   ]);
 
   // Canvas is intentionally bare: ONE focused element, edge-to-edge, no
