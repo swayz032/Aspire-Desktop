@@ -9,9 +9,40 @@
  */
 import React from 'react';
 import {
-  Image, Pressable, ScrollView, StyleSheet, Text, View,
+  Image, Platform, Pressable, ScrollView, StyleSheet, Text, View,
 } from 'react-native';
 import type { BlueprintChapter } from '@/lib/api/blueprintsApi';
+
+// 2026-05-24 — Desktop-visible (premium amber), touch-invisible horizontal
+// scrollbar on the chapter strip. Same mouse-detection pattern as
+// ChapterBlueprintPane's tab bar.
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  const STYLE_ID = 'chapter-strip-scrollbar';
+  if (!document.getElementById(STYLE_ID)) {
+    const styleEl = document.createElement('style');
+    styleEl.id = STYLE_ID;
+    styleEl.textContent = `
+      [data-chapter-strip="1"] { scrollbar-width: none; -ms-overflow-style: none; }
+      [data-chapter-strip="1"]::-webkit-scrollbar { width: 0; height: 0; display: none; }
+      @media (hover: hover) and (pointer: fine) {
+        [data-chapter-strip="1"] {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(251,191,36,0.45) transparent;
+        }
+        [data-chapter-strip="1"]::-webkit-scrollbar { height: 8px; display: block; }
+        [data-chapter-strip="1"]::-webkit-scrollbar-track { background: transparent; }
+        [data-chapter-strip="1"]::-webkit-scrollbar-thumb {
+          background: rgba(251,191,36,0.35);
+          border-radius: 4px;
+        }
+        [data-chapter-strip="1"]::-webkit-scrollbar-thumb:hover {
+          background: rgba(251,191,36,0.65);
+        }
+      }
+    `;
+    document.head.appendChild(styleEl);
+  }
+}
 
 interface Props {
   chapters: BlueprintChapter[];
@@ -23,10 +54,11 @@ export function ChapterStrip({ chapters, activeKey, onSelect }: Props): React.Re
   return (
     <ScrollView
       horizontal
-      showsHorizontalScrollIndicator
+      showsHorizontalScrollIndicator={false}
       style={styles.strip}
       contentContainerStyle={styles.stripContent}
       testID="chapter-strip"
+      dataSet={Platform.OS === 'web' ? ({ chapterStrip: '1' } as Record<string, unknown>) : undefined}
     >
       {chapters.map((ch) => {
         const isActive = ch.key === activeKey;
