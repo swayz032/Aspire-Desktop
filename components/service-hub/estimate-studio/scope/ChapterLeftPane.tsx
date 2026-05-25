@@ -16,7 +16,7 @@
  * up via `onHoverBullet`; no decisions, no orchestrator calls, no
  * autonomous behavior. Discipline tag styling is a pure visual mapping.
  */
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -95,20 +95,41 @@ interface ZoneFrameProps {
   title: string;
   accent: string;
   count?: number;
+  defaultExpanded?: boolean;
   children: React.ReactNode;
 }
 
-function ZoneFrame({ testID, icon, title, accent, count, children }: ZoneFrameProps) {
+/**
+ * ZoneFrame — collapsible chapter zone. Header is a Pressable that toggles
+ * the body. Caret indicator on the right shows current state. `defaultExpanded`
+ * sets the initial state; callers pass true for the first 2 zones so a rookie
+ * sees what they need immediately, then can drill into the rest on demand.
+ */
+function ZoneFrame({ testID, icon, title, accent, count, defaultExpanded = false, children }: ZoneFrameProps) {
+  const [expanded, setExpanded] = useState<boolean>(defaultExpanded);
   return (
     <View testID={testID} style={styles.zone}>
-      <View style={styles.zoneHeader}>
+      <Pressable
+        onPress={() => setExpanded((v) => !v)}
+        accessibilityRole="button"
+        accessibilityLabel={`${title}, ${expanded ? 'collapse' : 'expand'}`}
+        accessibilityState={{ expanded }}
+        style={({ hovered }: { hovered?: boolean }) => [
+          styles.zoneHeader,
+          hovered && styles.zoneHeaderHover,
+        ]}
+        testID={`${testID}-toggle`}
+      >
         <Text style={[styles.zoneIcon, { color: accent }]}>{icon}</Text>
         <Text style={[styles.zoneTitle, { color: accent }]}>{title}</Text>
         {typeof count === 'number' ? (
           <Text style={[styles.zoneCount, { color: accent }]}>{count}</Text>
         ) : null}
-      </View>
-      <View style={styles.zoneBody}>{children}</View>
+        <Text style={[styles.zoneCaret, { color: accent }]}>
+          {expanded ? '▾' : '▸'}
+        </Text>
+      </Pressable>
+      {expanded ? <View style={styles.zoneBody}>{children}</View> : null}
     </View>
   );
 }
@@ -150,7 +171,7 @@ export function ChapterLeftPane({ chapter, hoverBulletKey, onHoverBullet }: Prop
       <Text style={styles.headline}>{chapter.title}</Text>
 
       {/* Zone 1 — WHAT THIS IS (always renders) */}
-      <ZoneFrame testID="zone-what-this-is" icon="?" title="WHAT THIS IS" accent={WHITE_60}>
+      <ZoneFrame testID="zone-what-this-is" icon="?" title="WHAT THIS IS" accent={WHITE_60} defaultExpanded>
         {hasWhatThisIs ? (
           <Text style={styles.bodyText}>{zones.what_this_is}</Text>
         ) : (
@@ -159,7 +180,7 @@ export function ChapterLeftPane({ chapter, hoverBulletKey, onHoverBullet }: Prop
       </ZoneFrame>
 
       {/* Zone 2 — WHAT'S IN SCOPE (always renders) */}
-      <ZoneFrame testID="zone-in-scope" icon="●" title="WHAT'S IN SCOPE" accent={AMBER}>
+      <ZoneFrame testID="zone-in-scope" icon="●" title="WHAT'S IN SCOPE" accent={AMBER} defaultExpanded>
         {hasInScope ? (
           <>
             {zones.in_scope.map((item: ScopeItem, i: number) => (
@@ -316,7 +337,23 @@ const styles = StyleSheet.create({
   },
 
   zone: { marginTop: 18 },
-  zoneHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  zoneHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+    marginHorizontal: -4,
+    borderRadius: 4,
+  },
+  zoneHeaderHover: {
+    backgroundColor: 'rgba(251,191,36,0.04)',
+  },
+  zoneCaret: {
+    fontSize: 10,
+    marginLeft: 8,
+    fontWeight: '700',
+  },
   zoneIcon: { fontSize: 11, marginRight: 6, fontWeight: '700' },
   zoneTitle: {
     fontSize: 10,
