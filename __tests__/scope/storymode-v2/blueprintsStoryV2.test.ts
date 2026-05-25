@@ -139,14 +139,22 @@ describe('blueprintsStoryV2 adapter — sheet-grouping fallback (REASON not done
     }
   });
 
-  it('populates in_scope with one ScopeItem per source sheet', () => {
+  it('populates in_scope with per-discipline scope items (NOT per-sheet enumeration)', () => {
+    // 2026-05-24 — IN SCOPE no longer dumps one bullet per sheet. It now
+    // pulls real per-discipline scope content from
+    // `lib/scope/discipline-content.ts`. Sheet codes live in DREW READ.
     const v2 = adaptLegacyStoryToV2(emptyPhasesLegacy, sheetsAcrossDisciplines);
     const plumbing = v2!.chapters.find((c) => c.title.includes('Water'));
     expect(plumbing).toBeDefined();
-    expect(plumbing!.zones.in_scope).toHaveLength(2);
-    expect(plumbing!.zones.in_scope[0].text_md).toContain('P-001');
-    expect(plumbing!.zones.in_scope[0].text_md).toContain('Plumbing Notes');
-    expect(plumbing!.zones.in_scope[1].text_md).toContain('P-101');
+    expect(plumbing!.zones.in_scope.length).toBeGreaterThanOrEqual(3);
+    // Old "P — per **P-001**" pattern must never appear again.
+    for (const item of plumbing!.zones.in_scope) {
+      expect(item.text_md).not.toMatch(/^\*\*P-/);
+      expect(item.text_md).not.toMatch(/^per \*\*/);
+    }
+    // Concrete plumbing scope content shows up.
+    const joined = plumbing!.zones.in_scope.map((s) => s.text_md).join(' ');
+    expect(joined.toLowerCase()).toMatch(/supply|waste|vent|fixture/);
   });
 
   it('uses the first sheet of the discipline group as the chapter thumbnail', () => {
@@ -180,12 +188,16 @@ describe('blueprintsStoryV2 adapter — sheet-grouping fallback (REASON not done
     expect(electrical!.zones.tasks[0].discipline).toBe('elec');
   });
 
-  it('paraphrases in_scope items from sheet titles (no raw "**A-101** — Floor Plan" dump)', () => {
+  it('emits common_mistakes + order_of_ops + tldr on every grouped chapter', () => {
     const v2 = adaptLegacyStoryToV2(emptyPhasesLegacy, sheetsAcrossDisciplines);
-    const plumbing = v2!.chapters.find((c) => c.title.includes('Water'));
-    // Leads with the title content (capitalized), references the sheet via "per **CODE**".
-    expect(plumbing!.zones.in_scope[0].text_md).toMatch(/^Plumbing Notes\s+—\s+per \*\*P-001\*\*/);
-    expect(plumbing!.zones.in_scope[1].text_md).toMatch(/^Waste\/Vent Plan\s+—\s+per \*\*P-101\*\*/);
+    for (const c of v2!.chapters) {
+      expect(c.zones.common_mistakes).toBeDefined();
+      expect(c.zones.common_mistakes!.length).toBeGreaterThan(0);
+      expect(c.zones.order_of_ops).toBeDefined();
+      expect(c.zones.order_of_ops!.length).toBeGreaterThan(0);
+      expect(c.zones.tldr).toBeDefined();
+      expect(c.zones.tldr!.length).toBeGreaterThan(0);
+    }
   });
 
   it('does NOT fall back to grouping when any phase has real narrative', () => {
