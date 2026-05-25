@@ -129,13 +129,17 @@ const styles = StyleSheet.create({
   // leaving a big right gap), but the strip still scrolls horizontally
   // when the projected card width would drop below min.
   stripContent: { gap: 8, padding: 10, alignItems: 'flex-start', flexGrow: 1 },
+  // 2026-05-24 — Card height bumped 112 → 156 to match the Visuals tab's
+  // PhotoLane cards (height: 140). Thumbnail proportionally grows 60 → 92
+  // so the preview is readable, leaving 64px for meta (ordinal + title).
+  // This is the canonical premium-tall card geometry across Estimate Studio.
   card: {
     flex: 1,
-    flexBasis: 140,
-    minWidth: 140,
+    flexBasis: 156,
+    minWidth: 156,
     maxWidth: 240,
-    height: 112,
-    borderRadius: 7,
+    height: 156,
+    borderRadius: 10,
     backgroundColor: 'rgba(255,255,255,0.02)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
@@ -145,7 +149,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(251,191,36,0.10)',
     borderColor: '#fbbf24',
   },
-  thumb: { height: 60, backgroundColor: '#fff', overflow: 'hidden' },
+  thumb: { height: 92, backgroundColor: '#fff', overflow: 'hidden' },
   thumbImg: { width: '100%', height: '100%' },
   thumbPlaceholder: {
     flex: 1,
