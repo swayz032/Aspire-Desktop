@@ -70,6 +70,32 @@ export function StoryPanelV2({ story, activeChapterKey, onSelectChapter }: Props
     );
   }, []);
 
+  // 2026-05-24 — View mode toggle (chapter overview vs per-sheet story).
+  // Default 'chapter' on every chapter switch; auto-flips to 'sheet' when
+  // the user clicks a sheet tab in the right pane or a SmartText jump chip.
+  const [viewMode, setViewMode] = useState<'chapter' | 'sheet'>('chapter');
+  useEffect(() => {
+    setViewMode('chapter');
+  }, [activeKey]);
+
+  // Resolve the active sheet object for the active chapter — either the
+  // user-selected sheet from sheetByChapter, or the first source sheet as
+  // the default.
+  const activeSheetCode = active ? sheetByChapter[active.key] : null;
+  const activeSheetObj = useMemo(() => {
+    if (!active || active.source_sheets.length === 0) return null;
+    const found = active.source_sheets.find((s) => s.sheet_code === activeSheetCode);
+    return found ?? active.source_sheets[0];
+  }, [active, activeSheetCode]);
+
+  // When the user picks a sheet (either via tab click in the right pane or
+  // via a SmartText jump chip in the left), flip the view mode to 'sheet'
+  // so the left pane shows that sheet's story right away.
+  const handleSheetJump = useCallback((chapterKey: string, sheetCode: string) => {
+    setSheetForChapter(chapterKey, sheetCode);
+    setViewMode('sheet');
+  }, [setSheetForChapter]);
+
   if (story.chapters.length === 0 || !active) {
     return (
       <View style={styles.empty} testID="story-panel-v2-empty">
@@ -93,7 +119,11 @@ export function StoryPanelV2({ story, activeChapterKey, onSelectChapter }: Props
               chapter={active}
               hoverBulletKey={annotations.hoverBulletKey}
               onHoverBullet={annotations.setHoverBulletKey}
-              onSheetJump={(code) => setSheetForChapter(active.key, code)}
+              onSheetJump={(code) => handleSheetJump(active.key, code)}
+              totalChapters={story.chapters.length}
+              viewMode={viewMode}
+              activeSheet={activeSheetObj ? { sheet_code: activeSheetObj.sheet_code, sheet_title: activeSheetObj.sheet_title } : null}
+              onViewModeChange={setViewMode}
             />
           </View>
           <View style={styles.rightSlot}>
@@ -102,8 +132,8 @@ export function StoryPanelV2({ story, activeChapterKey, onSelectChapter }: Props
               regions={regions}
               hoverRegionKey={annotations.hoverRegionKey}
               onHoverRegion={annotations.setHoverRegionKey}
-              activeSheetCode={sheetByChapter[active.key] ?? null}
-              onActiveSheetCodeChange={(code) => setSheetForChapter(active.key, code)}
+              activeSheetCode={activeSheetObj?.sheet_code ?? null}
+              onActiveSheetCodeChange={(code) => handleSheetJump(active.key, code)}
             />
           </View>
         </View>

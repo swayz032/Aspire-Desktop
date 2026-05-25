@@ -35,6 +35,8 @@ import type {
   ScopeItem,
 } from '@/lib/api/blueprintsApi';
 import { SmartText } from './SmartText';
+import { archetypeFor } from '@/lib/scope/archetype';
+import { storyForSheet, type PerSheetStory } from '@/lib/scope/per-sheet-content';
 
 interface Props {
   chapter: BlueprintChapter;
@@ -44,6 +46,19 @@ interface Props {
    *  zone body (e.g. "see A-101"). Wires through SmartText. Parent (StoryPanelV2)
    *  routes this to its activeSheetCode setter. No-op if omitted. */
   onSheetJump?: (sheetCode: string) => void;
+  /** Total chapter count in the story — used to render "CHAPTER N of M" in
+   *  the header. When omitted, falls back to "CHAPTER N of —". */
+  totalChapters?: number;
+  /** View mode: 'chapter' shows the chapter-level zones; 'sheet' shows
+   *  per-sheet story content for the active sheet. Default 'chapter'. */
+  viewMode?: 'chapter' | 'sheet';
+  /** Required when viewMode='sheet'. The sheet whose story the left pane
+   *  should render. When viewMode='chapter' this is ignored. */
+  activeSheet?: { sheet_code: string; sheet_title: string } | null;
+  /** Fired when the user toggles the chapter/sheet view via the header
+   *  switch. Lifted to StoryPanelV2 so external state (sheet tab clicks)
+   *  can stay in sync. No-op if omitted. */
+  onViewModeChange?: (mode: 'chapter' | 'sheet') => void;
 }
 
 const AMBER = '#fbbf24';
@@ -139,7 +154,77 @@ function ZoneFrame({ testID, icon, title, accent, count, defaultExpanded = false
   );
 }
 
-export function ChapterLeftPane({ chapter, hoverBulletKey, onHoverBullet, onSheetJump }: Props) {
+/**
+ * SheetView — per-sheet story renderer used when the left pane is in
+ * sheet mode. Derives content from the sheet's archetype (Plan / Schedule /
+ * Detail / etc.) + the chapter's discipline + the sheet's title.
+ *
+ * Renders three zones at most (WHAT THIS SHEET SHOWS / WHAT'S ON IT /
+ * WHEN TO USE IT / WATCH OUT FOR), all using the SmartText decorator so
+ * sheet-code references and glossary terms stay interactive.
+ */
+function SheetView({
+  sheet,
+  chapterKey,
+  onSheetJump,
+}: {
+  sheet: { sheet_code: string; sheet_title: string };
+  chapterKey: string;
+  onSheetJump?: (sheetCode: string) => void;
+}): React.ReactElement {
+  const arch = archetypeFor(sheet.sheet_code, sheet.sheet_title);
+  const story: PerSheetStory = storyForSheet(arch.archetype, chapterKey, sheet.sheet_code, sheet.sheet_title);
+
+  return (
+    <View testID="sheet-view">
+      {/* Archetype chip pinned at top of sheet view */}
+      <View style={styles.sheetArchetypeRow}>
+        <Text style={styles.sheetArchetypeChip}>{arch.label.toUpperCase()}</Text>
+      </View>
+
+      {/* WHAT THIS SHEET SHOWS */}
+      <ZoneFrame testID="zone-sheet-shows" icon="?" title="WHAT THIS SHEET SHOWS" accent={WHITE_60} defaultExpanded>
+        <SmartText style={styles.bodyText} onSheetJump={onSheetJump}>{story.whatThisSheetShows}</SmartText>
+      </ZoneFrame>
+
+      {/* WHAT'S ON IT */}
+      <ZoneFrame testID="zone-sheet-whats-on-it" icon="●" title="WHAT'S ON IT" accent={AMBER} defaultExpanded count={story.whatsOnIt.length}>
+        {story.whatsOnIt.map((item, i) => (
+          <View key={`on-${i}`} style={styles.inScopeRow}>
+            <Text style={styles.amberDot}>·</Text>
+            <SmartText style={styles.bodyText} onSheetJump={onSheetJump}>{item}</SmartText>
+          </View>
+        ))}
+      </ZoneFrame>
+
+      {/* WHEN TO USE IT */}
+      <ZoneFrame testID="zone-sheet-when" icon="⏱" title="WHEN TO USE THIS SHEET" accent={AMBER}>
+        <SmartText style={styles.bodyText} onSheetJump={onSheetJump}>{story.whenToUseIt}</SmartText>
+      </ZoneFrame>
+
+      {/* WATCH OUT FOR (this sheet) */}
+      <ZoneFrame testID="zone-sheet-watchouts" icon="⚠" title="WATCH OUT FOR (this sheet)" accent={RED} count={story.watchOutFor.length}>
+        {story.watchOutFor.map((m, i) => (
+          <View key={`watch-${i}`} style={styles.mistakeRow}>
+            <Text style={styles.mistakeIcon}>⚠</Text>
+            <SmartText style={styles.bodyText} onSheetJump={onSheetJump}>{m}</SmartText>
+          </View>
+        ))}
+      </ZoneFrame>
+    </View>
+  );
+}
+
+export function ChapterLeftPane({
+  chapter,
+  hoverBulletKey,
+  onHoverBullet,
+  onSheetJump,
+  totalChapters,
+  viewMode = 'chapter',
+  activeSheet,
+  onViewModeChange,
+}: Props) {
   const { zones } = chapter;
   const ordinalStr = String(chapter.ordinal).padStart(2, '0');
   const confidencePct = Math.round(chapter.confidence * 100);
@@ -161,10 +246,10 @@ export function ChapterLeftPane({ chapter, hoverBulletKey, onHoverBullet, onShee
       showsVerticalScrollIndicator={false}
       dataSet={Platform.OS === 'web' ? ({ chapterLeftPane: '1' } as Record<string, unknown>) : undefined}
     >
-      {/* Header row */}
+      {/* Header row — ordinal + "of N" + confidence */}
       <View style={styles.headerRow}>
         <Text testID="chapter-left-ordinal" style={styles.ordinal}>
-          {`CHAPTER ${ordinalStr} of —`}
+          {`CHAPTER ${ordinalStr} of ${typeof totalChapters === 'number' && totalChapters > 0 ? totalChapters : '—'}`}
         </Text>
         <View style={styles.spacer} />
         <Text testID="chapter-left-confidence" style={styles.confidence}>
@@ -172,9 +257,61 @@ export function ChapterLeftPane({ chapter, hoverBulletKey, onHoverBullet, onShee
         </Text>
       </View>
 
-      {/* Headline */}
-      <Text style={styles.headline}>{chapter.title}</Text>
+      {/* View-mode toggle — [📖 Chapter] [📄 Sheet]. Sheet mode only
+          available when an activeSheet is provided. */}
+      {activeSheet ? (
+        <View style={styles.viewToggle} testID="chapter-left-view-toggle">
+          <Pressable
+            onPress={() => onViewModeChange?.('chapter')}
+            accessibilityRole="tab"
+            accessibilityLabel="Show chapter overview"
+            accessibilityState={{ selected: viewMode === 'chapter' }}
+            style={[styles.viewToggleBtn, viewMode === 'chapter' && styles.viewToggleBtnActive]}
+            testID="view-toggle-chapter"
+          >
+            <Text style={[styles.viewToggleText, viewMode === 'chapter' && styles.viewToggleTextActive]}>
+              📖 Chapter
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => onViewModeChange?.('sheet')}
+            accessibilityRole="tab"
+            accessibilityLabel={`Show story for sheet ${activeSheet.sheet_code}`}
+            accessibilityState={{ selected: viewMode === 'sheet' }}
+            style={[styles.viewToggleBtn, viewMode === 'sheet' && styles.viewToggleBtnActive]}
+            testID="view-toggle-sheet"
+          >
+            <Text style={[styles.viewToggleText, viewMode === 'sheet' && styles.viewToggleTextActive]}>
+              {`📄 ${activeSheet.sheet_code}`}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
 
+      {/* Headline — chapter title in chapter mode; sheet code + title in sheet mode */}
+      {viewMode === 'sheet' && activeSheet ? (
+        <>
+          <Text style={styles.headline}>{activeSheet.sheet_code}</Text>
+          {activeSheet.sheet_title ? (
+            <Text style={styles.subHeadline}>{activeSheet.sheet_title}</Text>
+          ) : null}
+        </>
+      ) : (
+        <Text style={styles.headline}>{chapter.title}</Text>
+      )}
+
+      {/* ─── SHEET VIEW — renders per-sheet story when toggle is in sheet mode ─── */}
+      {viewMode === 'sheet' && activeSheet ? (
+        <SheetView
+          sheet={activeSheet}
+          chapterKey={chapter.key}
+          onSheetJump={onSheetJump}
+        />
+      ) : null}
+
+      {/* ─── CHAPTER VIEW — all the existing chapter zones below ─── */}
+      {viewMode !== 'chapter' ? null : (
+        <>
       {/* TL;DR — 3-bullet skim pinned right under the headline. Renders only
           when the adapter supplied tldr content. Not collapsible — the
           rookie should always see the skim first. */}
@@ -364,6 +501,8 @@ export function ChapterLeftPane({ chapter, hoverBulletKey, onHoverBullet, onShee
           </View>
         </View>
       ) : null}
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -483,6 +622,58 @@ const styles = StyleSheet.create({
   buyQty: { color: AMBER, fontSize: 13, fontWeight: '700', fontVariant: ['tabular-nums'], minWidth: 28 },
   buyName: { flex: 1 },
   takeoffHint: { color: WHITE_45, fontSize: 11, letterSpacing: 0.4 },
+  // ─── View toggle (Chapter / Sheet) ─────────────────────────────────
+  viewToggle: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  viewToggleBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: BORDER_SUBTLE,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+  },
+  viewToggleBtnActive: {
+    backgroundColor: 'rgba(251,191,36,0.12)',
+    borderColor: BORDER_AMBER,
+  },
+  viewToggleText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: WHITE_60,
+    letterSpacing: 0.3,
+  },
+  viewToggleTextActive: { color: AMBER },
+  subHeadline: {
+    color: WHITE_78,
+    fontSize: 14,
+    fontWeight: '500',
+    fontFamily: SERIF_FAMILY,
+    marginTop: 2,
+    marginBottom: 4,
+  },
+  // ─── Sheet view archetype chip ─────────────────────────────────────
+  sheetArchetypeRow: {
+    flexDirection: 'row',
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  sheetArchetypeChip: {
+    backgroundColor: 'rgba(251,191,36,0.08)',
+    borderWidth: 1,
+    borderColor: BORDER_AMBER,
+    color: AMBER,
+    fontSize: 9,
+    letterSpacing: 1.5,
+    fontWeight: '800',
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 3,
+  },
   // ─── TL;DR header (pinned skim) ────────────────────────────────────
   tldrBlock: {
     backgroundColor: 'rgba(251,191,36,0.05)',

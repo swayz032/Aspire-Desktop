@@ -162,4 +162,71 @@ describe('ChapterLeftPane', () => {
     expandZone('zone-buy-list-toggle', screen);
     expect(screen.getByText('Floor-mount toilet')).toBeTruthy();
   });
+
+  it('renders "CHAPTER N of M" when totalChapters is provided (fixes the dash bug)', () => {
+    const { getByTestId } = render(
+      <ChapterLeftPane chapter={baseChapter} hoverBulletKey={null} onHoverBullet={() => {}} totalChapters={7} />
+    );
+    expect(getByTestId('chapter-left-ordinal').props.children).toMatch(/CHAPTER 06 of 7/);
+  });
+
+  it('renders "CHAPTER N of —" placeholder when totalChapters is omitted', () => {
+    const { getByTestId } = render(
+      <ChapterLeftPane chapter={baseChapter} hoverBulletKey={null} onHoverBullet={() => {}} />
+    );
+    expect(getByTestId('chapter-left-ordinal').props.children).toMatch(/CHAPTER 06 of —/);
+  });
+
+  it('shows the chapter/sheet view toggle when an activeSheet is provided', () => {
+    const { getByTestId } = render(
+      <ChapterLeftPane
+        chapter={baseChapter}
+        hoverBulletKey={null}
+        onHoverBullet={() => {}}
+        activeSheet={{ sheet_code: 'A-403', sheet_title: 'Restroom Plan' }}
+        viewMode="chapter"
+        onViewModeChange={() => {}}
+      />
+    );
+    expect(getByTestId('chapter-left-view-toggle')).toBeTruthy();
+    expect(getByTestId('view-toggle-chapter')).toBeTruthy();
+    expect(getByTestId('view-toggle-sheet')).toBeTruthy();
+  });
+
+  it('renders the per-sheet story when viewMode="sheet"', () => {
+    const { getByTestId, queryByTestId } = render(
+      <ChapterLeftPane
+        chapter={baseChapter}
+        hoverBulletKey={null}
+        onHoverBullet={() => {}}
+        activeSheet={{ sheet_code: 'A-403', sheet_title: 'Restroom Plan' }}
+        viewMode="sheet"
+        onViewModeChange={() => {}}
+      />
+    );
+    // Per-sheet zones render
+    expect(getByTestId('sheet-view')).toBeTruthy();
+    expect(getByTestId('zone-sheet-shows')).toBeTruthy();
+    expect(getByTestId('zone-sheet-whats-on-it')).toBeTruthy();
+    expect(getByTestId('zone-sheet-when')).toBeTruthy();
+    expect(getByTestId('zone-sheet-watchouts')).toBeTruthy();
+    // Chapter zones do NOT render in sheet view
+    expect(queryByTestId('zone-what-this-is')).toBeNull();
+  });
+
+  it('toggling from chapter to sheet calls onViewModeChange with the new mode', () => {
+    const onChange = jest.fn();
+    const { getByTestId } = render(
+      <ChapterLeftPane
+        chapter={baseChapter}
+        hoverBulletKey={null}
+        onHoverBullet={() => {}}
+        activeSheet={{ sheet_code: 'A-403', sheet_title: 'Restroom Plan' }}
+        viewMode="chapter"
+        onViewModeChange={onChange}
+      />
+    );
+    fireEvent.press(getByTestId('view-toggle-sheet'));
+    expect(onChange).toHaveBeenCalledWith('sheet');
+  });
 });
