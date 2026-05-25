@@ -23,6 +23,10 @@ export interface PerSheetStory {
   whatsOnIt: string[];
   whenToUseIt: string;
   watchOutFor: string[];
+  /** 2026-05-25 — Per-sheet buy-list. Empty array for archetypes that
+   *  don't drive procurement (cover, index, legend, notes-only). Always
+   *  present so the SheetView can render the zone with empty-state copy. */
+  whatToBuy: string[];
 }
 
 /**
@@ -119,6 +123,7 @@ export function storyForSheet(
           'Addendum notes near the title block often change scope mid-project — easy to miss on a quick scan',
           'Local code amendments override the base code — confirm the AHJ accepted edition',
         ],
+        whatToBuy: [],
       };
     case 'index':
       return {
@@ -133,6 +138,7 @@ export function storyForSheet(
           'Missing sheet numbers in the index — they may have been pulled in a revision; chase before bidding',
           'Bid the index, not just the sheets you remember — easy to forget a small schedule sheet',
         ],
+        whatToBuy: [],
       };
     case 'notes':
       return {
@@ -147,6 +153,12 @@ export function storyForSheet(
         watchOutFor: [
           'Hex notes referenced from plan sheets often live ONLY on the notes sheet — keep this one open while reading plans',
           `Project-specific overrides on this sheet beat the typical standard — read every line, don't skim`,
+        ],
+        // Notes sheets don't drive procurement on their own — they list
+        // the SPECS the items must meet. Direct the rookie to the schedule.
+        whatToBuy: [
+          `Approved-manufacturer ${n.domain} materials per the spec list on this sheet`,
+          'Cross-reference the schedule sheet in this chapter — that\'s where the line-item buy list lives',
         ],
       };
     case 'schedule':
@@ -163,6 +175,14 @@ export function storyForSheet(
           'O.F.C.I. items (Owner Furnished, Contractor Installed) — don\'t buy these by mistake',
           'Long-lead items (specialty equipment) — flag for early order or you\'ll delay the schedule',
         ],
+        // Schedules ARE the buy list — buyToBuy mirrors the schedule's
+        // common categories so the rookie knows what columns to pull.
+        whatToBuy: [
+          `Every ${n.fixtures.split(',')[0]} on this schedule — by manufacturer + model number listed`,
+          'Specified accessories: trims, escutcheons, connectors, mounting hardware',
+          'Substitutes only with architect approval — get it in writing before ordering',
+          'Long-lead items first — flag anything with a lead time > 4 weeks for early-order',
+        ],
       };
     case 'plan':
       return {
@@ -178,6 +198,9 @@ export function storyForSheet(
           `Dimensions on plan sheets are often to centerline of fixture — confirm before laying out`,
           'Callouts to other sheets are not optional — chase every "see X-XXX" reference before committing',
         ],
+        // Per-discipline rough-in materials. The fixtures noun set already
+        // names the major items — expand with the supporting hardware.
+        whatToBuy: roughInBuyListFor(n),
       };
     case 'rcp':
       return {
@@ -192,6 +215,13 @@ export function storyForSheet(
         watchOutFor: [
           'Ceiling heights here override the floor plan — don\'t frame partitions to the wrong elevation',
           'Light + diffuser positions must coordinate with the grid — easy to set one off by a tile',
+        ],
+        whatToBuy: [
+          'Ceiling grid (main tees, cross tees, wall angles) sized for the bay layout',
+          'Ceiling tiles per spec — confirm fire rating + acoustic NRC value before ordering',
+          'Light fixture trims + lay-in housings matching the grid module',
+          'Diffuser frames + flexible duct connections per HVAC schedule',
+          'Wire hangers, anchors, and seismic clips per code',
         ],
       };
     case 'detail':
@@ -208,6 +238,12 @@ export function storyForSheet(
           'Details sometimes contradict the typical note on the notes sheet — the detail wins for that location',
           'Scale changes per detail (3" = 1\'-0", 1-1/2" = 1\'-0", etc.) — read the scale bar each time',
         ],
+        whatToBuy: [
+          'Specified fasteners (screw type, length, gauge) per detail callout',
+          'Sealants, gaskets, and weatherstripping at every transition shown',
+          'Backer rod + closure pieces at expansion joints',
+          'Connection hardware (clips, brackets, angles) per the connection detail',
+        ],
       };
     case 'section':
       return {
@@ -222,6 +258,12 @@ export function storyForSheet(
         watchOutFor: [
           'Section cut location matters — confirm WHICH wall you\'re looking at before measuring',
           'Heights from finish floor vs. top of slab vary — read the dimension reference points',
+        ],
+        whatToBuy: [
+          'Studs and track sized for the full wall height shown in the section',
+          'Sheathing and finish layers per the wall-assembly callout',
+          'Sound or fire batt insulation matching the section assembly',
+          'Header materials at every opening shown',
         ],
       };
     case 'elevation':
@@ -238,6 +280,12 @@ export function storyForSheet(
           'Mirrored elevations: A vs B is not always obvious — confirm which face you\'re looking at',
           'Finish material schedules live on a separate sheet — cross-reference before painting',
         ],
+        whatToBuy: [
+          'Wall finish materials (paint, wallcovering, tile, panels) per the elevation tags',
+          'Base, chair rail, and crown per linear footage shown',
+          'Window and door trim — confirm profile and material against the elevation',
+          'Signage and graphics callouts — coordinate with the signage vendor',
+        ],
       };
     case 'demo':
       return {
@@ -252,6 +300,13 @@ export function storyForSheet(
         watchOutFor: [
           'Hidden utilities behind walls — confirm cutoffs with the building engineer BEFORE cutting',
           'Items marked "salvage" or "relocate" require special handling — don\'t throw them in the dumpster',
+        ],
+        whatToBuy: [
+          'Dumpster + disposal service sized for the scope shown',
+          'Plastic sheeting + zip walls for dust containment around protected areas',
+          'PPE (respirators, eye protection, gloves) for the crew + asbestos test kit if pre-1980',
+          'Floor protection (Ram Board, hardboard) for surfaces marked to stay',
+          'Salvage crates / pallets for items marked to relocate or owner-return',
         ],
       };
     case 'lifesafety':
@@ -268,6 +323,12 @@ export function storyForSheet(
           'Rated walls can\'t be penetrated without sleeve + sealant — coordinate with MEP',
           'Door swing direction matters for egress — wrong-direction swings fail the inspection',
         ],
+        whatToBuy: [
+          'Listed exit signs + emergency lighting per the egress plan',
+          'Fire-rated wall assemblies (sheetrock, framing, batt) per UL listings shown',
+          'Rated door + frame assemblies with proper hardware (closer, panic bar, smoke seal)',
+          'Firestop sleeves + intumescent sealant for any rated-wall penetration',
+        ],
       };
     case 'riser':
       return {
@@ -283,6 +344,7 @@ export function storyForSheet(
           'Riser doesn\'t show horizontal routing — pair with the plan sheet for actual location',
           'Pipe / conduit sizes change at each branch — read the entire riser, not just one floor',
         ],
+        whatToBuy: riserBuyListFor(n),
       };
     case 'legend':
       return {
@@ -298,6 +360,7 @@ export function storyForSheet(
           'Different disciplines reuse the same circle/square geometry for different things — always check the discipline\'s own legend',
           'Custom symbols vary per architect — don\'t assume the symbol means what it meant on the last project',
         ],
+        whatToBuy: [],
       };
     case 'sheet':
     default:
@@ -312,6 +375,127 @@ export function storyForSheet(
         watchOutFor: [
           'Drew is still extracting per-sheet structure — content here is generic until classification completes',
         ],
+        whatToBuy: [],
       };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Discipline-aware buy-list helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Rough-in materials per discipline for plan-type sheets. The fixtures
+ * noun set already names the major items; we expand here with supporting
+ * hardware and rough-in materials a contractor would stage before closing
+ * the wall or ceiling.
+ */
+function roughInBuyListFor(n: DisciplineNouns): string[] {
+  switch (n.domain) {
+    case 'plumbing':
+      return [
+        'Pipe (copper, PEX, or PVC) sized per the riser + plan',
+        'Fittings, valves, and shutoffs at every branch + fixture stub-out',
+        'Pipe hangers, clamps, and isolation pads',
+        'Fixture rough-in kits matching the fixture schedule',
+        'Test caps + temporary closures for pressure testing',
+      ];
+    case 'electrical':
+      return [
+        'Conduit (EMT or PVC) sized per the panel schedule + plan',
+        'Wire (THHN/THWN copper) sized per circuit ampacity',
+        'Junction boxes, device boxes, and weatherproof boxes outside',
+        'Breakers, panel directories, and grounding/bonding hardware',
+        'Wire connectors, clamps, and bushings',
+      ];
+    case 'mechanical (HVAC)':
+      return [
+        'Ductwork (sheet metal or flex) sized per the equipment schedule',
+        'Diffusers, grilles, and registers per RCP positions',
+        'Equipment supports, vibration isolators, and seismic anchors',
+        'Insulation wrap + duct sealant',
+        'Filters, dampers, and access doors per the spec',
+      ];
+    case 'fire-protection':
+      return [
+        'Sprinkler pipe + heads matching the listed coverage spec',
+        'Pipe hangers + sway bracing per NFPA 13',
+        'Inspector\'s test connection + main drain assembly',
+        'Sleeves + escutcheons at every wall/ceiling penetration',
+        'Alarm devices (horns, strobes, pull stations) per the FA panel schedule',
+      ];
+    case 'architectural':
+      return [
+        'Studs + track sized for the partition heights',
+        'Drywall (sheetrock) per the partition fire/sound rating',
+        'Acoustic + fire batt insulation per the partition type',
+        'Door + frame assemblies matching the door schedule',
+        'Hardware (hinges, closers, levers) per the hardware schedule',
+      ];
+    case 'demolition':
+      return [
+        'Dumpster service + disposal manifests for the demo scope',
+        'Floor + finish protection (Ram Board, poly, signage)',
+        'PPE for the crew + dust-suppression equipment',
+      ];
+    case 'structural':
+      return [
+        'Beams, columns, and connectors per the shop drawings',
+        'Anchor bolts + base plates matching the foundation plan',
+        'Welding rod / bolts per the connection spec',
+        'Bearing pads + grout under base plates',
+      ];
+    case 'civil / site':
+      return [
+        'Pipe + fittings for utility tie-ins per the site plan',
+        'Aggregate (base, fill) per the grading + paving sections',
+        'Erosion control (silt fence, inlet protection) per local permit',
+      ];
+    default:
+      return [
+        `Materials sized to the ${n.fixtures} layout shown on this plan`,
+        'Cross-reference the schedule sheet for exact model/spec numbers',
+      ];
+  }
+}
+
+/**
+ * Vertical-system buy list per discipline for riser diagrams. Focuses on
+ * the materials that vary with stack height + branching.
+ */
+function riserBuyListFor(n: DisciplineNouns): string[] {
+  switch (n.domain) {
+    case 'plumbing':
+      return [
+        'Vertical pipe (cast iron, copper, or PVC) at the sizes shown each floor',
+        'Cleanouts at every floor + base of stack',
+        'Pipe sleeves + firestop at every floor penetration',
+        'Riser clamps + supports per the floor framing',
+      ];
+    case 'electrical':
+      return [
+        'Vertical conduit at the sizes shown each floor',
+        'Pull boxes at every floor for wire pulls',
+        'Firestop putty + pillows at every floor penetration',
+        'Cable supports + bushings per code',
+      ];
+    case 'mechanical (HVAC)':
+      return [
+        'Vertical duct + insulation per the equipment schedule',
+        'Fire dampers + access doors at every rated-wall penetration',
+        'Duct supports + seismic bracing per floor',
+      ];
+    case 'fire-protection':
+      return [
+        'Vertical riser pipe (Schedule 40 or 10) per the head count',
+        'Standpipe valves + hose connections at each floor (if standpipe)',
+        'Inspector\'s test + main drain at the base',
+        'Sway bracing + hangers per NFPA 13',
+      ];
+    default:
+      return [
+        `Vertical ${n.fixtures.split(',')[0]} sized per the riser callouts`,
+        'Supports + firestop at every floor penetration',
+      ];
   }
 }
