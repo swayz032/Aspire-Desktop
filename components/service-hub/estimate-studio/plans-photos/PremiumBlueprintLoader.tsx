@@ -1,146 +1,207 @@
 /**
- * PremiumBlueprintLoader — Wave 11k loading state, hotfix v2.
+ * PremiumBlueprintLoader — Wave 11k → 2026-05-25 redesign.
  *
- * The canvas-based particle ribbon (v1) used `React.createElement('canvas', ...)`
- * which can crash inside react-native-web's reconciler under some bundler
- * configs, corrupting the parent UploadDropZone state (user-reported: pipeline
- * "broken" with "No sheets yet" empty card after upload). This v2 ships pure
- * React Native Animated primitives — runs identically on web and native, no
- * DOM dependencies, no crash surface.
+ * Ripple-style breathing loader in Estimate Studio amber-gold over dark.
+ * Replaces the previous expanding-rings design with the concentric-stack
+ * pattern from the Lightswind RippleLoader spec, ported to React Native
+ * primitives so it runs identically on web + native and has zero DOM
+ * dependencies (no framer-motion, no canvas).
  *
- * Visual: four concentric amber-gold rings pulsing outward, staggered by 350ms,
- * with a glowing center dot + soft halo. Looks distinctly more premium than a
- * thin spinner, while being bulletproof across platforms.
+ * Visual:
+ *   - 5 concentric circles, each one inset 10% deeper than the last,
+ *     stacked z-9..z-5 so the outermost is on top.
+ *   - All 5 are visible simultaneously and "breathe" (scale 1.0 → 1.08
+ *     → 1.0) on a 2s loop, staggered by 200ms so the ripple cascades
+ *     outward continuously.
+ *   - Subtle amber gradient fill + amber rim per ring (intensity fades
+ *     with depth).
+ *   - Center: amber blueprint-grid icon that pulses between gold and
+ *     near-white in sync with the rings.
+ *
+ * Law #7: render layer only. Pure animation, no state writes, no I/O.
  */
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
-
-interface Props {
-  size?: number;
-  /** Hue is locked to Aspire amber-gold (#fbbf24). Prop kept for forward-compat. */
-  hueRange?: [number, number];
-  particleCount?: number; // ignored in v2 — kept for API stability
-  speed?: number;         // ignored in v2 — kept for API stability
-  testID?: string;
-}
+import { Ionicons } from '@expo/vector-icons';
 
 const GOLD = '#fbbf24';
 
-function PulseRing({
+interface Props {
+  /** Outer diameter in px. Default 240 — sized for canvas hero usage. */
+  size?: number;
+  /** Total animation period in ms. Default 2000 (2s). */
+  duration?: number;
+  /** Ionicons icon name for the center glyph. Default 'grid-outline'
+   *  (reads as "blueprint grid" to a contractor). */
+  iconName?: keyof typeof Ionicons.glyphMap;
+  testID?: string;
+}
+
+// Per-ring config: inset percentage from the outer container, z-stack
+// order (outermost on top), animation delay (staggered cascade),
+// fill+border opacity (fades with depth).
+const RING_CONFIG = [
+  { inset: 0,  z: 9, delay: 0,   borderOpacity: 1.0,  fillOpacity: 0.10 },
+  { inset: 10, z: 8, delay: 200, borderOpacity: 0.78, fillOpacity: 0.10 },
+  { inset: 20, z: 7, delay: 400, borderOpacity: 0.55, fillOpacity: 0.10 },
+  { inset: 30, z: 6, delay: 600, borderOpacity: 0.35, fillOpacity: 0.10 },
+  { inset: 40, z: 5, delay: 800, borderOpacity: 0.20, fillOpacity: 0.10 },
+] as const;
+
+function BreatheRing({
   size,
+  insetPct,
+  borderOpacity,
+  fillOpacity,
   delay,
-  color,
   duration,
+  zIndex,
 }: {
   size: number;
+  insetPct: number;
+  borderOpacity: number;
+  fillOpacity: number;
   delay: number;
-  color: string;
   duration: number;
+  zIndex: number;
 }): React.ReactElement {
   const v = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
+        Animated.delay(delay),
         Animated.timing(v, {
           toValue: 1,
-          duration,
-          easing: Easing.out(Easing.cubic),
+          duration: duration / 2,
+          easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
-          delay,
         }),
-        // instant reset
-        Animated.timing(v, { toValue: 0, duration: 1, useNativeDriver: true }),
+        Animated.timing(v, {
+          toValue: 0,
+          duration: duration / 2,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
       ]),
     );
     loop.start();
     return () => loop.stop();
   }, [v, delay, duration]);
 
-  const scale = v.interpolate({ inputRange: [0, 1], outputRange: [0.20, 1.0] });
-  const opacity = v.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0] });
+  // Breathe scale 1.0 → 1.08 → 1.0
+  const scale = v.interpolate({ inputRange: [0, 1], outputRange: [1.0, 1.08] });
+
+  const ringSize = size * (1 - (insetPct * 2) / 100);
+  const offset = (size - ringSize) / 2;
+
   return (
     <Animated.View
       pointerEvents="none"
       style={{
         position: 'absolute',
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        borderWidth: 2,
-        borderColor: color,
+        left: offset,
+        top: offset,
+        width: ringSize,
+        height: ringSize,
+        borderRadius: ringSize / 2,
+        borderWidth: 1.25,
+        borderColor: `rgba(251,191,36,${borderOpacity})`,
+        backgroundColor: `rgba(251,191,36,${fillOpacity})`,
         transform: [{ scale }],
-        opacity,
+        zIndex,
+        // Web-only soft amber glow per ring — the platform splat below
+        // ignores shadow props on native so this is safe to keep at the
+        // top level (native skips shadowOpacity gracefully).
+        shadowColor: GOLD,
+        shadowOpacity: borderOpacity * 0.35,
+        shadowRadius: 18,
+        shadowOffset: { width: 0, height: 0 },
       }}
     />
   );
 }
 
-export function PremiumBlueprintLoader({ size = 160, testID = 'premium-loader' }: Props): React.ReactElement {
-  const dotPulse = useRef(new Animated.Value(0)).current;
+export function PremiumBlueprintLoader({
+  size = 240,
+  duration = 2000,
+  iconName = 'grid-outline',
+  testID = 'premium-loader',
+}: Props): React.ReactElement {
+  // Center icon color cross-fades between amber and near-white in sync
+  // with the outermost ring's breathing cycle.
+  const iconPulse = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(dotPulse, {
+        Animated.timing(iconPulse, {
           toValue: 1,
-          duration: 1100,
+          duration: duration / 2,
           easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
+          useNativeDriver: false, // color interpolation needs JS driver
         }),
-        Animated.timing(dotPulse, {
+        Animated.timing(iconPulse, {
           toValue: 0,
-          duration: 1100,
+          duration: duration / 2,
           easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
       ]),
     );
     loop.start();
     return () => loop.stop();
-  }, [dotPulse]);
+  }, [iconPulse, duration]);
 
-  const dotScale = dotPulse.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1.15] });
-  const dotOpacity = dotPulse.interpolate({ inputRange: [0, 1], outputRange: [0.78, 1] });
+  const iconColor = iconPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [GOLD, '#fef3c7'], // amber-300 → amber-50
+  });
+
+  const iconSize = size * 0.22;
 
   return (
     <View
       style={[styles.wrap, { width: size, height: size }]}
       testID={testID}
-      // @ts-ignore — aria valid on web
+      // @ts-ignore — accessibilityRole accepts 'progressbar' on web
       accessibilityRole="progressbar"
-      accessibilityLabel="Drew is analyzing your blueprint"
+      accessibilityLabel="Loading blueprint — Drew is preparing the canvas"
     >
-      {/* Four staggered pulse rings, expanding outward — canvas IS the background. */}
-      <PulseRing size={size} delay={0}    duration={2000} color={GOLD} />
-      <PulseRing size={size} delay={500}  duration={2000} color="rgba(251,191,36,0.78)" />
-      <PulseRing size={size} delay={1000} duration={2000} color="rgba(251,191,36,0.55)" />
-      <PulseRing size={size} delay={1500} duration={2000} color="rgba(251,191,36,0.35)" />
-      {/* Glowing center dot with breathing animation */}
-      <Animated.View
-        style={{
-          width: size * 0.18,
-          height: size * 0.18,
-          borderRadius: (size * 0.18) / 2,
-          backgroundColor: GOLD,
-          transform: [{ scale: dotScale }],
-          opacity: dotOpacity,
-          shadowColor: GOLD,
-          shadowOpacity: 0.85,
-          shadowRadius: 22,
-          shadowOffset: { width: 0, height: 0 },
-        }}
-      />
-      {/* Inner faint ring framing the dot — subtle premium detail */}
+      {RING_CONFIG.map((cfg, i) => (
+        <BreatheRing
+          key={i}
+          size={size}
+          insetPct={cfg.inset}
+          borderOpacity={cfg.borderOpacity}
+          fillOpacity={cfg.fillOpacity}
+          delay={cfg.delay}
+          duration={duration}
+          zIndex={cfg.z}
+        />
+      ))}
+      {/* Center icon — blueprint grid by default, pulses amber↔white in
+          the ring cadence. zIndex above all rings. */}
       <View
-        pointerEvents="none"
         style={{
           position: 'absolute',
-          width: size * 0.42,
-          height: size * 0.42,
-          borderRadius: (size * 0.42) / 2,
-          borderWidth: 1,
-          borderColor: 'rgba(251,191,36,0.18)',
+          zIndex: 100,
+          alignItems: 'center',
+          justifyContent: 'center',
         }}
-      />
+        pointerEvents="none"
+      >
+        <Animated.Text
+          style={{
+            color: iconColor,
+            fontSize: iconSize,
+            // Ionicons uses fontFamily — Animated.Text wraps it cleanly.
+            // The actual icon is rendered via the Ionicons component
+            // below; this Animated.Text drives the color tween.
+            includeFontPadding: false,
+          }}
+        >
+          <Ionicons name={iconName} size={iconSize} />
+        </Animated.Text>
+      </View>
     </View>
   );
 }
