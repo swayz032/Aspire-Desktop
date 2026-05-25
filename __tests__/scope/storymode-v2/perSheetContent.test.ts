@@ -71,4 +71,35 @@ describe('storyForSheet', () => {
     const elec = storyForSheet('plan', 'electrical', 'E-101', '');
     expect(plumb.whatThisSheetShows).not.toEqual(elec.whatThisSheetShows);
   });
+
+  it('produces a discipline-specific whatYouHaveToDo list for plan sheets', () => {
+    const plumb = storyForSheet('plan', 'plumbing', 'P-101', '');
+    const elec = storyForSheet('plan', 'electrical', 'E-101', '');
+    // Both have tasks
+    expect(plumb.whatYouHaveToDo.length).toBeGreaterThanOrEqual(3);
+    expect(elec.whatYouHaveToDo.length).toBeGreaterThanOrEqual(3);
+    // Discipline-specific verbs differ
+    expect(plumb.whatYouHaveToDo.join(' ').toLowerCase()).toMatch(/pipe|fixture|stub|rough/);
+    expect(elec.whatYouHaveToDo.join(' ').toLowerCase()).toMatch(/conduit|wire|box|circuit/);
+  });
+
+  it('produces a procurement task list for schedule sheets', () => {
+    const s = storyForSheet('schedule', 'plumbing', 'P-002', '');
+    expect(s.whatYouHaveToDo.length).toBeGreaterThanOrEqual(3);
+    expect(s.whatYouHaveToDo.join(' ').toLowerCase()).toMatch(/line item|manufacturer|model|quantit/);
+  });
+
+  it('produces a demo-specific task list for demolition sheets', () => {
+    const s = storyForSheet('demo', 'demolition', 'AD-101', '');
+    expect(s.whatYouHaveToDo.length).toBeGreaterThanOrEqual(3);
+    expect(s.whatYouHaveToDo.join(' ').toLowerCase()).toMatch(/tag|demo|contain|cutoff/);
+  });
+
+  it('returns whatYouHaveToDo for archetypes that do not drive procurement (read tasks)', () => {
+    // Cover sheets DO have read-tasks even though they have no buy-list.
+    const cover = storyForSheet('cover', 'general', 'G-000', '');
+    expect(cover.whatYouHaveToDo.length).toBeGreaterThanOrEqual(2);
+    const index = storyForSheet('index', 'general', 'G-001', '');
+    expect(index.whatYouHaveToDo.length).toBeGreaterThanOrEqual(2);
+  });
 });

@@ -209,6 +209,7 @@ describe('ChapterLeftPane', () => {
     expect(getByTestId('zone-sheet-shows')).toBeTruthy();
     expect(getByTestId('zone-sheet-whats-on-it')).toBeTruthy();
     expect(getByTestId('zone-sheet-when')).toBeTruthy();
+    expect(getByTestId('zone-sheet-tasks')).toBeTruthy();
     expect(getByTestId('zone-sheet-buy')).toBeTruthy();
     expect(getByTestId('zone-sheet-watchouts')).toBeTruthy();
     // Chapter zones do NOT render in sheet view

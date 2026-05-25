@@ -27,6 +27,11 @@ export interface PerSheetStory {
    *  don't drive procurement (cover, index, legend, notes-only). Always
    *  present so the SheetView can render the zone with empty-state copy. */
   whatToBuy: string[];
+  /** 2026-05-25 — Per-sheet field-work tasks (the contractor's
+   *  actionable to-do list). Sequential where order matters (numbered
+   *  in render). Always present; empty array for read-only sheets
+   *  (cover/index/legend) where the render layer shows empty-state copy. */
+  whatYouHaveToDo: string[];
 }
 
 /**
@@ -124,6 +129,12 @@ export function storyForSheet(
           'Local code amendments override the base code — confirm the AHJ accepted edition',
         ],
         whatToBuy: [],
+        whatYouHaveToDo: [
+          'Read the entire cover sheet before kickoff',
+          'Note every addendum date — verify you have the latest set',
+          'Confirm the applicable code editions match what your AHJ accepts',
+          'Brief the crew on project name, address, and owner contact',
+        ],
       };
     case 'index':
       return {
@@ -139,6 +150,11 @@ export function storyForSheet(
           'Bid the index, not just the sheets you remember — easy to forget a small schedule sheet',
         ],
         whatToBuy: [],
+        whatYouHaveToDo: [
+          'Cross-check the index against the sheets in your set — flag any missing',
+          'Use this as your bid checklist — price every sheet listed, not just the ones you remember',
+          'Mark sheets revised in the latest addendum so you re-read those first',
+        ],
       };
     case 'notes':
       return {
@@ -159,6 +175,12 @@ export function storyForSheet(
         whatToBuy: [
           `Approved-manufacturer ${n.domain} materials per the spec list on this sheet`,
           'Cross-reference the schedule sheet in this chapter — that\'s where the line-item buy list lives',
+        ],
+        whatYouHaveToDo: [
+          `Read every ${n.domain} note before pricing or starting work`,
+          'Keep this sheet open next to the plan sheets so you can chase hex-note references quickly',
+          'Brief every sub on the project-specific overrides — they beat the typical spec',
+          'Flag any note that contradicts the schedule and resolve with the architect before bid',
         ],
       };
     case 'schedule':
@@ -183,6 +205,13 @@ export function storyForSheet(
           'Substitutes only with architect approval — get it in writing before ordering',
           'Long-lead items first — flag anything with a lead time > 4 weeks for early-order',
         ],
+        whatYouHaveToDo: [
+          'Pull every line item by tag, manufacturer, and model into your buy-list',
+          'Verify quantities against the corresponding plan sheet (callout per tag)',
+          'Flag any owner-furnished items so you don\'t double-order',
+          'Submit substitution requests for unavailable items BEFORE ordering',
+          'Track long-lead items in a separate sheet so you can pull them forward in the schedule',
+        ],
       };
     case 'plan':
       return {
@@ -201,6 +230,7 @@ export function storyForSheet(
         // Per-discipline rough-in materials. The fixtures noun set already
         // names the major items — expand with the supporting hardware.
         whatToBuy: roughInBuyListFor(n),
+        whatYouHaveToDo: roughInTaskListFor(n),
       };
     case 'rcp':
       return {
@@ -223,6 +253,13 @@ export function storyForSheet(
           'Diffuser frames + flexible duct connections per HVAC schedule',
           'Wire hangers, anchors, and seismic clips per code',
         ],
+        whatYouHaveToDo: [
+          'Coordinate with MEP trades BEFORE drywall closes the ceiling — last chance to catch collisions',
+          'Set ceiling grid to the heights shown (overrides floor plan elevations)',
+          'Position light fixtures + diffusers per the tile module (don\'t freelance)',
+          'Hang and tie grid per seismic spec before tile install',
+          'Walk the ceiling with each MEP foreman to sign off on coordination',
+        ],
       };
     case 'detail':
       return {
@@ -243,6 +280,12 @@ export function storyForSheet(
           'Sealants, gaskets, and weatherstripping at every transition shown',
           'Backer rod + closure pieces at expansion joints',
           'Connection hardware (clips, brackets, angles) per the connection detail',
+        ],
+        whatYouHaveToDo: [
+          'Read the detail at the scale shown — don\'t assume from a smaller-scale plan',
+          'Follow the assembly sequence shown (substrate → membrane → fastener → finish)',
+          'Verify connection hardware matches the detail before installing',
+          'Apply sealants per the manufacturer cure time before closing the assembly',
         ],
       };
     case 'section':
@@ -265,6 +308,12 @@ export function storyForSheet(
           'Sound or fire batt insulation matching the section assembly',
           'Header materials at every opening shown',
         ],
+        whatYouHaveToDo: [
+          'Layout walls to the heights and thicknesses shown in this section',
+          'Confirm structural clearances above ceiling before MEP rough-in',
+          'Verify head and sill heights at every opening match the section',
+          'Set header sizes per the section before framing openings',
+        ],
       };
     case 'elevation':
       return {
@@ -285,6 +334,12 @@ export function storyForSheet(
           'Base, chair rail, and crown per linear footage shown',
           'Window and door trim — confirm profile and material against the elevation',
           'Signage and graphics callouts — coordinate with the signage vendor',
+        ],
+        whatYouHaveToDo: [
+          'Verify the elevation orientation (mirrored vs straight) before measuring',
+          'Confirm finish material against the finish schedule before ordering',
+          'Mark trim, base, and crown elevations on the wall before installing',
+          'Coordinate signage mounting and electrical with the vendor and EC',
         ],
       };
     case 'demo':
@@ -308,6 +363,13 @@ export function storyForSheet(
           'Floor protection (Ram Board, hardboard) for surfaces marked to stay',
           'Salvage crates / pallets for items marked to relocate or owner-return',
         ],
+        whatYouHaveToDo: [
+          'Walk the site with this sheet on Day 1 and tag every item to remove',
+          'Set up dust containment + floor protection on every surface marked to stay',
+          'Coordinate utility cutoffs with the building engineer BEFORE any cutting',
+          'Demo in the order shown — finishes first, then partitions, then MEP',
+          'Crate and label any salvage/relocate items before they leave the site',
+        ],
       };
     case 'lifesafety':
       return {
@@ -329,6 +391,13 @@ export function storyForSheet(
           'Rated door + frame assemblies with proper hardware (closer, panic bar, smoke seal)',
           'Firestop sleeves + intumescent sealant for any rated-wall penetration',
         ],
+        whatYouHaveToDo: [
+          'Build rated walls to the UL assembly listed — no substitutions',
+          'Frame corridors to the minimum egress width shown (drives partition layout)',
+          'Install exit signs and emergency lighting along the egress path',
+          'Sleeve and firestop every penetration through a rated wall — inspectors check this',
+          'Hang doors with the correct swing direction per the plan (egress fails wrong-direction swings)',
+        ],
       };
     case 'riser':
       return {
@@ -345,6 +414,7 @@ export function storyForSheet(
           'Pipe / conduit sizes change at each branch — read the entire riser, not just one floor',
         ],
         whatToBuy: riserBuyListFor(n),
+        whatYouHaveToDo: riserTaskListFor(n),
       };
     case 'legend':
       return {
@@ -361,6 +431,11 @@ export function storyForSheet(
           'Custom symbols vary per architect — don\'t assume the symbol means what it meant on the last project',
         ],
         whatToBuy: [],
+        whatYouHaveToDo: [
+          'Keep this sheet open while reading any discipline plan',
+          'Brief the crew on symbol meanings before pre-construction',
+          'Bookmark unusual symbols and confirm them with the architect',
+        ],
       };
     case 'sheet':
     default:
@@ -376,6 +451,10 @@ export function storyForSheet(
           'Drew is still extracting per-sheet structure — content here is generic until classification completes',
         ],
         whatToBuy: [],
+        whatYouHaveToDo: [
+          'Read the sheet title block for the architect\'s description',
+          'Cross-reference with the schedule and notes sheets in this chapter',
+        ],
       };
   }
 }
@@ -460,6 +539,83 @@ function roughInBuyListFor(n: DisciplineNouns): string[] {
 }
 
 /**
+ * Discipline-aware field-work tasks for plan-type sheets. Each list is
+ * sequential — the SheetView renders them as numbered steps so the
+ * rookie can work through them top-to-bottom.
+ */
+function roughInTaskListFor(n: DisciplineNouns): string[] {
+  switch (n.domain) {
+    case 'plumbing':
+      return [
+        'Mark fixture centerlines on the slab or framing per the plan layout',
+        'Set carriers and rough-in valves at the correct elevations',
+        'Run pipe from main to each fixture stub-out',
+        'Test the rough-in (pressure or fill) before closing the wall',
+        'Schedule rough-in inspection before drywall',
+      ];
+    case 'electrical':
+      return [
+        'Mark device + fixture locations on framing per the plan',
+        'Pull conduit from panel to each device box',
+        'Set boxes at correct mounting heights per spec',
+        'Pull and label wire to each box',
+        'Verify terminations before energizing the circuit',
+      ];
+    case 'mechanical (HVAC)':
+      return [
+        'Lay out equipment locations + ductwork routing per the plan',
+        'Set equipment supports and vibration isolators',
+        'Hang ductwork at the elevations shown',
+        'Install diffusers + grilles per RCP positions',
+        'Pressure-test ductwork before insulating',
+      ];
+    case 'fire-protection':
+      return [
+        'Lay out sprinkler head positions per the plan',
+        'Run pipe and install heads at the listed coverage spec',
+        'Install sway bracing + hangers per NFPA 13',
+        'Sleeve and firestop every wall/ceiling penetration',
+        'Complete hydrostatic test before sign-off',
+      ];
+    case 'architectural':
+      return [
+        'Lay out partitions per the dimensioned plan',
+        'Frame walls to the partition type shown (gauge, height, fire rating)',
+        'Install batt insulation per the partition type',
+        'Hang and finish drywall to the specified level',
+        'Set doors and hardware per the door schedule',
+      ];
+    case 'demolition':
+      return [
+        'Tag every item marked for removal on Day 1',
+        'Set up dust containment and floor protection',
+        'Disconnect utilities at cutoffs (confirm with engineer)',
+        'Demo in sequence: finishes → partitions → MEP',
+      ];
+    case 'structural':
+      return [
+        'Lay out columns and beams per the foundation plan',
+        'Set anchor bolts + base plates to the spec',
+        'Erect framing per the connection details',
+        'Schedule structural inspection before any cover-up',
+      ];
+    case 'civil / site':
+      return [
+        'Stake out the site per the civil plan',
+        'Install erosion control before any earthwork',
+        'Cut and fill to the grading plan elevations',
+        'Tie utilities to the lines shown on the plan',
+      ];
+    default:
+      return [
+        `Lay out work per the dimensions shown on this plan`,
+        'Cross-reference the schedule sheet for exact specs',
+        'Inspect installed work against the plan before closing up',
+      ];
+  }
+}
+
+/**
  * Vertical-system buy list per discipline for riser diagrams. Focuses on
  * the materials that vary with stack height + branching.
  */
@@ -496,6 +652,46 @@ function riserBuyListFor(n: DisciplineNouns): string[] {
       return [
         `Vertical ${n.fixtures.split(',')[0]} sized per the riser callouts`,
         'Supports + firestop at every floor penetration',
+      ];
+  }
+}
+
+/**
+ * Discipline-aware tasks for riser diagrams. Vertical-coordination focus.
+ */
+function riserTaskListFor(n: DisciplineNouns): string[] {
+  switch (n.domain) {
+    case 'plumbing':
+      return [
+        'Confirm vertical alignment of stacks across every floor',
+        'Install cleanouts at every floor + base of stack',
+        'Sleeve and firestop every floor penetration before closing',
+        'Hang riser supports per floor framing',
+      ];
+    case 'electrical':
+      return [
+        'Pull vertical conduit at the sizes shown each floor',
+        'Set pull boxes at every floor for wire pulls',
+        'Firestop every penetration before closing the chase',
+        'Verify circuit feeds reach the correct floor panel',
+      ];
+    case 'mechanical (HVAC)':
+      return [
+        'Hang vertical duct + insulation per the diagram',
+        'Install fire dampers at every rated-wall penetration',
+        'Verify duct supports + seismic bracing each floor',
+      ];
+    case 'fire-protection':
+      return [
+        'Run vertical riser pipe to the head count shown',
+        'Install standpipe valves + hose connections at each floor (if applicable)',
+        'Mount inspector\'s test + main drain at the base',
+        'Sway-brace per NFPA 13',
+      ];
+    default:
+      return [
+        'Confirm vertical alignment before closing any wall or floor',
+        'Firestop every penetration through floor assemblies',
       ];
   }
 }
