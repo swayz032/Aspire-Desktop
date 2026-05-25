@@ -142,8 +142,11 @@ function ZoneFrame({ testID, icon, title, accent, count, defaultExpanded = false
         ]}
         testID={`${testID}-toggle`}
       >
-        <Text style={[styles.zoneIcon, { color: accent }]}>{icon}</Text>
+        {/* Title leads; icon (when present) appears AFTER the title so it
+            reads naturally — "WHAT THIS IS ?" instead of "? WHAT THIS IS".
+            Count pill goes between icon and the right-aligned caret. */}
         <Text style={[styles.zoneTitle, { color: accent }]}>{title}</Text>
+        {icon ? <Text style={[styles.zoneIcon, { color: accent }]}>{icon}</Text> : null}
         {typeof count === 'number' ? (
           <View style={[styles.zoneCountPill, { borderColor: accent }]}>
             <Text style={[styles.zoneCountPillText, { color: accent }]}>{count}</Text>
@@ -187,8 +190,10 @@ function SheetView({
         <Text style={styles.sheetArchetypeChip}>{arch.label.toUpperCase()}</Text>
       </View>
 
-      {/* WHAT THIS SHEET SHOWS */}
-      <ZoneFrame testID="zone-sheet-shows" icon="?" title="WHAT THIS SHEET SHOWS" accent={WHITE_60} defaultExpanded>
+      {/* WHAT THIS SHEET SHOWS — primary content; amber accent so the
+          title reads at the same visual weight as IN SCOPE / WHAT TO BUY
+          (was greyed-out at WHITE_60 which made it look secondary). */}
+      <ZoneFrame testID="zone-sheet-shows" icon="?" title="WHAT THIS SHEET SHOWS" accent={AMBER} defaultExpanded>
         <SmartText style={styles.bodyText} onSheetJump={onSheetJump}>{story.whatThisSheetShows}</SmartText>
       </ZoneFrame>
 
@@ -205,6 +210,29 @@ function SheetView({
       {/* WHEN TO USE IT */}
       <ZoneFrame testID="zone-sheet-when" icon="⏱" title="WHEN TO USE THIS SHEET" accent={AMBER}>
         <SmartText style={styles.bodyText} onSheetJump={onSheetJump}>{story.whenToUseIt}</SmartText>
+      </ZoneFrame>
+
+      {/* WHAT TO BUY FOR THIS SHEET — purpose-specific procurement list.
+          Critical for a rookie: every sheet that drives field work has
+          materials you have to order. Empty-state copy renders when the
+          archetype doesn't drive procurement (cover/index/legend). */}
+      <ZoneFrame
+        testID="zone-sheet-buy"
+        icon="$"
+        title="WHAT TO BUY FOR THIS SHEET"
+        accent={AMBER}
+        count={story.whatToBuy.length > 0 ? story.whatToBuy.length : undefined}
+      >
+        {story.whatToBuy.length > 0 ? (
+          story.whatToBuy.map((item, i) => (
+            <View key={`sheetbuy-${i}`} style={styles.inScopeRow}>
+              <Text style={styles.amberDot}>·</Text>
+              <SmartText style={styles.bodyText} onSheetJump={onSheetJump}>{item}</SmartText>
+            </View>
+          ))
+        ) : (
+          <Text style={styles.emptyHint}>This sheet doesn&apos;t drive procurement on its own — the buy-list lives on the schedule or plan sheets in this chapter.</Text>
+        )}
       </ZoneFrame>
 
       {/* WATCH OUT FOR (this sheet) */}
@@ -348,8 +376,11 @@ export function ChapterLeftPane({
         </View>
       ) : null}
 
-      {/* Zone 1 — WHAT THIS IS (always renders) */}
-      <ZoneFrame testID="zone-what-this-is" icon="?" title="WHAT THIS IS" accent={WHITE_60} defaultExpanded>
+      {/* Zone 1 — WHAT THIS IS (always renders).
+          Amber accent so the title is full-weight instead of greyed-out
+          (was WHITE_60, which made it look secondary even though it's
+          the orientation zone every rookie reads first). */}
+      <ZoneFrame testID="zone-what-this-is" icon="?" title="WHAT THIS IS" accent={AMBER} defaultExpanded>
         {hasWhatThisIs ? (
           <SmartText style={styles.bodyText} onSheetJump={onSheetJump}>{zones.what_this_is}</SmartText>
         ) : (
@@ -612,7 +643,9 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontWeight: '700',
   },
-  zoneIcon: { fontSize: 12, marginRight: 8, fontWeight: '700' },
+  // Icon now sits AFTER the title (rookies read "WHAT THIS IS ?" instead
+  // of "? WHAT THIS IS"). Left margin gives it breathing room.
+  zoneIcon: { fontSize: 13, marginLeft: 6, fontWeight: '700' },
   zoneTitle: {
     fontSize: 11.5,
     letterSpacing: 1.4,

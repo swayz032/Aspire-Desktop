@@ -9,6 +9,26 @@ describe('storyForSheet', () => {
     expect(s.watchOutFor.length).toBeGreaterThanOrEqual(2);
     // Discipline-specific noun interpolation works.
     expect(s.whatThisSheetShows.toLowerCase()).toContain('plumbing');
+    // Plumbing plan should have a real procurement list.
+    expect(s.whatToBuy.length).toBeGreaterThanOrEqual(3);
+    expect(s.whatToBuy.join(' ').toLowerCase()).toMatch(/pipe|fitting/);
+  });
+
+  it('returns an empty whatToBuy array for archetypes that do not drive procurement', () => {
+    expect(storyForSheet('cover', 'general', 'G-000', '').whatToBuy).toEqual([]);
+    expect(storyForSheet('index', 'general', 'G-001', '').whatToBuy).toEqual([]);
+    expect(storyForSheet('legend', 'general', 'G-010', '').whatToBuy).toEqual([]);
+  });
+
+  it('produces an electrical-specific buy list for an electrical plan', () => {
+    const s = storyForSheet('plan', 'electrical', 'E-101', 'Lighting Plan');
+    expect(s.whatToBuy.length).toBeGreaterThanOrEqual(3);
+    expect(s.whatToBuy.join(' ').toLowerCase()).toMatch(/conduit|wire|breaker/);
+  });
+
+  it('produces a sheet-specific buy list for a schedule sheet', () => {
+    const s = storyForSheet('schedule', 'plumbing', 'P-002', 'Fixture Schedule');
+    expect(s.whatToBuy.length).toBeGreaterThanOrEqual(3);
   });
 
   it('produces a complete story for a schedule sheet', () => {
