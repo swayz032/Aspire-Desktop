@@ -39,7 +39,12 @@
     "dev:env": "node scripts/dev-env-sync.mjs"
   },
   "jest": {
-    "preset": "jest-expo"
+    "preset": "jest-expo",
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/_fixtures/",
+      "/.claude/worktrees/"
+    ]
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.139",
