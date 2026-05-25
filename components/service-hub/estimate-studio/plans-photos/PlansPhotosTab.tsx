@@ -138,14 +138,26 @@ export function PlansPhotosTab(): React.ReactElement {
           upload.phase === 'completing' ||
           upload.phase === 'ingesting' ||
           upload.phase === 'classifying';
+        // 2026-05-25 — Hold the loader until sheets actually arrive OR
+        // ingest hard-fails. Previous gating used `poll.isFirstLoad` which
+        // flipped false after the FIRST poll response — even when that
+        // response had 0 sheets and ingest was still running. That caused
+        // a 1-frame flicker to SheetCanvasView's internal empty state
+        // ("No sheets yet") between polls. New gating: keep the loader
+        // up while hasProject + 0 sheets, regardless of how many polls
+        // have completed, as long as ingest isn't `error`. The empty
+        // state only takes over when ingest fails (handled by the
+        // BlueprintFailureCard branch above).
+        const ingestStatus = poll.stageProgress?.ingest ?? 'pending';
+        const ingestHardFailed = ingestStatus === 'error';
         const awaitingFirstSheets =
-          hasProject && poll.sheets.length === 0 && poll.isFirstLoad;
+          hasProject && poll.sheets.length === 0 && !ingestHardFailed;
         if (uploadInFlight || awaitingFirstSheets) {
           return (
             <View style={styles.loaderHost} testID="plans-photos-bridging-loader">
-              <PremiumBlueprintLoader size={180} />
+              <PremiumBlueprintLoader size={240} />
               <Text style={styles.loaderTitle}>
-                {uploadInFlight ? 'Processing your blueprint…' : 'Loading sheets…'}
+                {uploadInFlight ? 'Processing your blueprint…' : 'Loading blueprints…'}
               </Text>
               <Text style={styles.loaderBody}>
                 Drew is preparing the canvas. This usually takes a few seconds.
