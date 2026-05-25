@@ -46,6 +46,7 @@ import {
 import type { RevisionChain } from '@/hooks/useBlueprintProjectPoll';
 import { getDisciplineStyle } from './disciplines';
 import { usePlansPhotosUi } from '@/lib/plansPhotosUiStore';
+import { HoverLens } from '@/components/ui/HoverLens';
 
 // 2026-05-18 lock: stat row + discipline filter strip moved to the Tim Rail
 // Context tab (`PlansPhotosContextPayload`). The canvas grid is now
@@ -139,11 +140,23 @@ function SheetCard({
       >
         <View style={styles.thumbSlot}>
           {sheet.thumbnail_url ? (
-            <Image
-              source={{ uri: sheet.thumbnail_url }}
-              style={styles.thumbImg}
-              resizeMode="cover"
-            />
+            // 2026-05-25 — HoverLens wraps the thumbnail on web (mouse) so
+            // the contractor can inspect small text on the sheet without
+            // opening it. Native + touch fall through to a plain <Image>
+            // (the Lens component renders children unchanged on those
+            // platforms).
+            <HoverLens
+              src={sheet.thumbnail_url}
+              zoom={2.5}
+              size={140}
+              testID={`sheet-thumb-lens-${sheet.id}`}
+            >
+              <Image
+                source={{ uri: sheet.thumbnail_url }}
+                style={styles.thumbImg}
+                resizeMode="cover"
+              />
+            </HoverLens>
           ) : (
             <View style={styles.thumbPlaceholder}>
               <Ionicons
