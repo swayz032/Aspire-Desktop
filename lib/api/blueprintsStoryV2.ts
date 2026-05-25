@@ -54,6 +54,10 @@ export interface BlueprintChapter {
   source_sheets: ChapterSource[];
   thumbnail_url: string | null;
   zones: ChapterZones;
+  // 2026-05-25 — DV wave: confidence tier classification + routing summary.
+  // Both optional; when absent the render layer renders no badge.
+  confidence_tier?: ConfidenceTier;
+  routing_summary?: { auto: number; review: number; open: number };
 }
 
 export interface ChapterSource {
@@ -61,6 +65,29 @@ export interface ChapterSource {
   sheet_title: string;
   page_number: number;
   render_url: string | null;
+  // 2026-05-25 — DV wave: per-source tier + routing decision metadata.
+  // All optional; pass-through only — adapter never fabricates these.
+  tier?: ConfidenceTier;
+  routing_action?: RoutingAction;
+  receipt_id?: string;
+  disqualifier_codes?: string[];
+}
+
+// 2026-05-25 — DV wave: locked confidence-tier + routing-action type aliases.
+export type ConfidenceTier = 'GREEN' | 'YELLOW' | 'RED';
+export type RoutingAction = 'AUTO_POPULATE' | 'REVIEW_PENDING' | 'OPEN_QUESTION';
+
+/** True iff tier is GREEN. Narrows undefined → false. */
+export function isGreen(tier: ConfidenceTier | undefined): boolean {
+  return tier === 'GREEN';
+}
+/** True iff tier is YELLOW. Narrows undefined → false. */
+export function isYellow(tier: ConfidenceTier | undefined): boolean {
+  return tier === 'YELLOW';
+}
+/** True iff tier is RED. Narrows undefined → false. */
+export function isRed(tier: ConfidenceTier | undefined): boolean {
+  return tier === 'RED';
 }
 
 export interface ChapterZones {
@@ -251,13 +278,24 @@ function phasesHaveNarrative(phases: BlueprintStory['phases']): boolean {
   });
 }
 
+/**
+ * 2026-05-25 — DV wave: pass through tier/routing fields when present;
+ * default-omit when absent. We never fabricate tier values in the adapter —
+ * the contract (§1.4) requires "render no badge when undefined".
+ */
 function sheetSource(s: BlueprintSheetRead, pageNumber: number): ChapterSource {
-  return {
+  const anyS = s as unknown as Record<string, unknown>;
+  const out: ChapterSource = {
     sheet_code: s.sheet_code ?? s.sheet_number ?? `Sheet ${pageNumber}`,
     sheet_title: s.sheet_title ?? s.discipline ?? '',
     page_number: pageNumber,
     render_url: s.thumbnail_url,
   };
+  if (anyS.tier !== undefined) out.tier = anyS.tier as ConfidenceTier;
+  if (anyS.routing_action !== undefined) out.routing_action = anyS.routing_action as RoutingAction;
+  if (anyS.receipt_id !== undefined) out.receipt_id = anyS.receipt_id as string;
+  if (anyS.disqualifier_codes !== undefined) out.disqualifier_codes = anyS.disqualifier_codes as string[];
+  return out;
 }
 
 /**
@@ -379,7 +417,10 @@ export function adaptLegacyStoryToV2(
       const start = idx * perChapter;
       const slice = sheets.slice(start, start + perChapter);
       const sources: ChapterSource[] = slice.map((s, i) => sheetSource(s, start + i + 1));
-      return {
+      // 2026-05-25 — DV wave: pass through tier/routing fields when present;
+      // default-omit when absent. Synthesized chapters never fabricate tier.
+      const anyP = p as unknown as Record<string, unknown>;
+      const chapter: BlueprintChapter = {
         key: p.key ?? `chapter-${idx + 1}`,
         ordinal: idx + 1,
         title: p.title ?? `Chapter ${idx + 1}`,
@@ -396,6 +437,9 @@ export function adaptLegacyStoryToV2(
           open_questions: [],
         },
       };
+      if (anyP.confidence_tier !== undefined) chapter.confidence_tier = anyP.confidence_tier as ConfidenceTier;
+      if (anyP.routing_summary !== undefined) chapter.routing_summary = anyP.routing_summary as { auto: number; review: number; open: number };
+      return chapter;
     });
   } else {
     // ─── Sheet-grouping fallback ──────────────────────────────────────────
