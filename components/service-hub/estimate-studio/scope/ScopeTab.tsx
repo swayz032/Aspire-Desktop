@@ -35,8 +35,12 @@ import { useBlueprintActions } from '@/hooks/useBlueprintActions';
 import { scopeUiActions, useScopeUi, type ScopeCardKey } from '@/lib/scopeUiStore';
 import { CanvasCardSwitcher } from '../shell/CanvasCardSwitcher';
 import { BottomChipStrip, type BottomChip } from '../shell/BottomChipStrip';
-import { StoryPanel } from './StoryPanel';
 import { StoryPanelV2 } from './StoryPanelV2';
+import type { BlueprintStoryV2 } from '@/lib/api/blueprintsApi';
+// 2026-05-25 — Legacy StoryPanel removed. V2 owns story mode end-to-end;
+// the empty-chapters branch of StoryPanelV2 renders the "Drew is reading
+// your blueprint" loading state so there's no flash between an empty V2
+// state and a populated one. See `StoryPanelV2.tsx` line 99-111.
 import { IncludedWorkCard } from './IncludedWorkCard';
 import { NotInBaseCard } from './NotInBaseCard';
 import { MissingInputsList } from './MissingInputsList';
@@ -220,25 +224,28 @@ export function ScopeTab(): React.ReactElement {
   }, [advancedMode, ui.activeCard]);
 
   const storyV2Chapters = story.storyV2?.chapters ?? [];
-  const shouldUseV2 = storyV2Chapters.length > 0;
+  // 2026-05-25 — Always render StoryPanelV2. When `story.storyV2` is null
+  // (pre-load) or has 0 chapters, StoryPanelV2's empty branch renders the
+  // "Drew is reading your blueprint" loading state. This kills the brief
+  // flash where the legacy StoryPanel rendered first then was replaced by
+  // V2 once chapters arrived.
+  const storyV2Safe: BlueprintStoryV2 =
+    story.storyV2 ??
+    ({
+      project_id: projectId ?? '',
+      mean_confidence: 0,
+      truth_distribution: { observed: 0, derived: 0, assumed: 0 },
+      chapters: [],
+      coverage: { sheets_total: 0, sheets_read: 0, pages_total: 0, pages_read: 0 },
+      updated_at: null,
+    } as unknown as BlueprintStoryV2);
 
   const cards: Record<ScopeCardKey, React.ReactNode> = {
-    story: shouldUseV2 && story.storyV2 ? (
+    story: (
       <StoryPanelV2
-        story={story.storyV2}
+        story={storyV2Safe}
         activeChapterKey={ui.activeChapterKey ?? storyV2Chapters[0]?.key ?? null}
         onSelectChapter={(key) => setActiveChapterKey(key)}
-      />
-    ) : (
-      <StoryPanel
-        story={story.story}
-        isPolling={story.isPolling}
-        onConfirmFact={(fact) => {
-          // Jump to Missing Inputs and let the user resolve it there.
-          if (fact.missing_input_id) {
-            setActiveCard('missing_inputs');
-          }
-        }}
       />
     ),
     included: <IncludedWorkCard assemblies={story.assemblies} />,
@@ -311,7 +318,7 @@ export function ScopeTab(): React.ReactElement {
         />
       </View>
 
-      {ui.activeCard !== 'story' || !shouldUseV2 ? (
+      {ui.activeCard !== 'story' ? (
         <BottomChipStrip
           chips={chips}
           activeKey={ui.activeCard}

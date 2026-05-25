@@ -212,26 +212,50 @@ function SheetView({
         <SmartText style={styles.bodyText} onSheetJump={onSheetJump}>{story.whenToUseIt}</SmartText>
       </ZoneFrame>
 
-      {/* WHAT TO BUY FOR THIS SHEET — purpose-specific procurement list.
+      {/* WHAT TO BUY FOR THIS SHEET — premium checklist card.
           Critical for a rookie: every sheet that drives field work has
-          materials you have to order. Empty-state copy renders when the
-          archetype doesn't drive procurement (cover/index/legend). */}
+          materials you have to order. Renders as an amber-tinted card
+          with check-circle rows (NOT a bullet list) so it reads as an
+          actionable shopping checklist instead of more body copy. */}
       <ZoneFrame
         testID="zone-sheet-buy"
         icon="$"
         title="WHAT TO BUY FOR THIS SHEET"
         accent={AMBER}
         count={story.whatToBuy.length > 0 ? story.whatToBuy.length : undefined}
+        defaultExpanded
       >
         {story.whatToBuy.length > 0 ? (
-          story.whatToBuy.map((item, i) => (
-            <View key={`sheetbuy-${i}`} style={styles.inScopeRow}>
-              <Text style={styles.amberDot}>·</Text>
-              <SmartText style={styles.bodyText} onSheetJump={onSheetJump}>{item}</SmartText>
+          <View style={styles.buyChecklistCard}>
+            <View style={styles.buyChecklistHeader}>
+              <Text style={styles.buyChecklistEyebrow}>SHOPPING LIST · {story.whatToBuy.length} ITEMS</Text>
             </View>
-          ))
+            {story.whatToBuy.map((item, i) => (
+              <View
+                key={`sheetbuy-${i}`}
+                style={[
+                  styles.buyChecklistRow,
+                  i === story.whatToBuy.length - 1 && styles.buyChecklistRowLast,
+                ]}
+                testID={`sheet-buy-row-${i}`}
+              >
+                <View style={styles.buyCheckbox}>
+                  <Text style={styles.buyCheckboxGlyph}>○</Text>
+                </View>
+                <View style={styles.buyChecklistTextWrap}>
+                  <SmartText style={styles.buyChecklistText} onSheetJump={onSheetJump}>{item}</SmartText>
+                </View>
+              </View>
+            ))}
+          </View>
         ) : (
-          <Text style={styles.emptyHint}>This sheet doesn&apos;t drive procurement on its own — the buy-list lives on the schedule or plan sheets in this chapter.</Text>
+          <View style={styles.buyEmptyCard}>
+            <Text style={styles.buyEmptyIcon}>$</Text>
+            <Text style={styles.buyEmptyTitle}>Not a procurement sheet</Text>
+            <Text style={styles.buyEmptyBody}>
+              This sheet doesn&apos;t drive procurement on its own — the buy-list lives on the schedule or plan sheets in this chapter.
+            </Text>
+          </View>
         )}
       </ZoneFrame>
 
@@ -718,6 +742,99 @@ const styles = StyleSheet.create({
   },
   disciplineTagText: { fontSize: 9, fontWeight: '700', letterSpacing: 0.8 },
 
+  // 2026-05-25 — Premium WHAT TO BUY checklist card (per-sheet zone).
+  // Amber-tinted card containing check-circle rows. Hairline divider
+  // between rows; last row has no divider. Visually distinct from the
+  // body-bullet "in scope" rows so the rookie reads it as an actionable
+  // shopping list, not more narrative.
+  buyChecklistCard: {
+    backgroundColor: 'rgba(251,191,36,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.30)',
+    borderRadius: 8,
+    paddingVertical: 4,
+    marginTop: 4,
+  },
+  buyChecklistHeader: {
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(251,191,36,0.18)',
+  },
+  buyChecklistEyebrow: {
+    fontSize: 9,
+    letterSpacing: 1.6,
+    color: AMBER,
+    fontWeight: '800',
+  },
+  buyChecklistRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.04)',
+  },
+  buyChecklistRowLast: {
+    borderBottomWidth: 0,
+  },
+  buyCheckbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: 'rgba(251,191,36,0.55)',
+    backgroundColor: 'rgba(11,13,18,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  buyCheckboxGlyph: {
+    color: AMBER,
+    fontSize: 12,
+    lineHeight: 14,
+    fontWeight: '700',
+  },
+  buyChecklistTextWrap: {
+    flex: 1,
+  },
+  buyChecklistText: {
+    color: WHITE_92,
+    fontSize: 13.5,
+    lineHeight: 19,
+    fontWeight: '500',
+  },
+  // Empty-state card (archetypes that don't drive procurement).
+  buyEmptyCard: {
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderWidth: 1,
+    borderColor: BORDER_SUBTLE,
+    borderStyle: 'dashed',
+    borderRadius: 8,
+    padding: 14,
+    alignItems: 'center',
+    gap: 4,
+  },
+  buyEmptyIcon: {
+    color: 'rgba(251,191,36,0.45)',
+    fontSize: 22,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  buyEmptyTitle: {
+    color: WHITE_85,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  buyEmptyBody: {
+    color: WHITE_60,
+    fontSize: 11,
+    lineHeight: 15,
+    textAlign: 'center',
+  },
   buyRow: {
     flexDirection: 'row',
     alignItems: 'center',
