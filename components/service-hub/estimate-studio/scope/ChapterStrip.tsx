@@ -12,7 +12,7 @@ import {
   Image, Platform, Pressable, ScrollView, StyleSheet, Text, View,
 } from 'react-native';
 import type { BlueprintChapter } from '@/lib/api/blueprintsApi';
-import { archetypeFor } from '@/lib/scope/archetype';
+import { sheetDisplayName } from '@/lib/scope/sheet-naming';
 
 // 2026-05-24 — Desktop-visible (premium amber), touch-invisible horizontal
 // scrollbar on the chapter strip. Same mouse-detection pattern as
@@ -89,16 +89,18 @@ export function ChapterStrip({ chapters, activeKey, onSelect }: Props): React.Re
                   testID={`chapter-card-${ch.key}-thumb-placeholder`}
                 />
               )}
-              {/* Archetype chip overlaid top-right of the thumb — gives the
-                  rookie a sheet-type orientation cue at a glance. Inferred
-                  from the first source sheet's code + title. */}
+              {/* Purpose-specific chip overlaid top-right of the thumb —
+                  rookie reads "Ceiling Plan" / "Door Schedule" instead of
+                  the file-format word ("RCP", "Schedule"). Inferred from
+                  the first source sheet's code + title via the shared
+                  sheet-naming util so every surface stays consistent. */}
               {ch.source_sheets.length > 0 ? (
                 <View
                   style={styles.archetypeChip}
                   testID={`chapter-card-${ch.key}-archetype`}
                 >
-                  <Text style={styles.archetypeChipText}>
-                    {archetypeFor(ch.source_sheets[0].sheet_code, ch.source_sheets[0].sheet_title).label}
+                  <Text style={styles.archetypeChipText} numberOfLines={1}>
+                    {sheetDisplayName(ch.source_sheets[0].sheet_code, ch.source_sheets[0].sheet_title).secondary}
                   </Text>
                 </View>
               ) : null}
@@ -168,7 +170,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 6,
     right: 6,
-    backgroundColor: 'rgba(11,13,18,0.85)',
+    maxWidth: '80%',
+    backgroundColor: 'rgba(11,13,18,0.88)',
     borderWidth: 1,
     borderColor: 'rgba(251,191,36,0.45)',
     paddingHorizontal: 6,
