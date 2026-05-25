@@ -68,6 +68,7 @@ import type {
   OpenQuestion,
 } from '@/lib/api/blueprintsApi';
 import { BlueprintZoomStage } from './BlueprintZoomStage';
+import { sheetDisplayName } from '@/lib/scope/sheet-naming';
 
 // ---------------------------------------------------------------------------
 // Public component
@@ -96,7 +97,24 @@ export function ChapterBlueprintPane({
   activeSheetCode: controlledActive,
   onActiveSheetCodeChange,
 }: ChapterBlueprintPaneProps): React.ReactElement {
-  const sheets = chapter.source_sheets;
+  // 2026-05-25 — Dedupe source_sheets by sheet_code so the tab bar never
+  // shows two cards with the same code (which made both look "active" at
+  // once because both matched the active-code comparison). First page
+  // wins. Drew's OCR sometimes emits the same sheet_code twice for
+  // multi-page sheets — we collapse those into one tab here.
+  const sheets = useMemo<ChapterSource[]>(() => {
+    const seen = new Set<string>();
+    const out: ChapterSource[] = [];
+    for (const s of chapter.source_sheets) {
+      const key = s.sheet_code.trim().toUpperCase();
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        out.push(s);
+      }
+    }
+    return out;
+  }, [chapter.source_sheets]);
+
   const [internalActive, setInternalActive] = useState<string | null>(
     sheets.length > 0 ? sheets[0].sheet_code : null,
   );
@@ -183,6 +201,16 @@ interface SheetTabBarProps {
 }
 
 function SheetTabBar({ sheets, activeSheetCode, onSelect }: SheetTabBarProps): React.ReactElement {
+  // Pre-compute display names once per render so the JSX stays tight.
+  const items = useMemo(
+    () =>
+      sheets.map((s) => ({
+        sheet: s,
+        display: sheetDisplayName(s.sheet_code, s.sheet_title),
+      })),
+    [sheets],
+  );
+
   return (
     <ScrollView
       horizontal
@@ -191,24 +219,29 @@ function SheetTabBar({ sheets, activeSheetCode, onSelect }: SheetTabBarProps): R
       contentContainerStyle={styles.tabBar}
       dataSet={Platform.OS === 'web' ? ({ chapterBlueprintTabbar: '1' } as Record<string, unknown>) : undefined}
     >
-      {sheets.map((s) => {
-        const isActive = s.sheet_code === activeSheetCode;
+      {items.map(({ sheet, display }) => {
+        const isActive = sheet.sheet_code === activeSheetCode;
         return (
           <Pressable
-            key={s.sheet_code}
-            testID={`sheet-tab-${s.sheet_code}`}
+            key={sheet.sheet_code}
+            testID={`sheet-tab-${sheet.sheet_code}`}
             accessibilityRole="tab"
-            accessibilityLabel={`Sheet ${s.sheet_code}, ${s.sheet_title}`}
+            accessibilityLabel={`Sheet ${display.primary}, ${display.secondary}`}
             accessibilityState={{ selected: isActive }}
-            onPress={() => onSelect(s.sheet_code)}
-            style={[styles.tab, isActive ? styles.tabActive : styles.tabIdle]}
+            onPress={() => onSelect(sheet.sheet_code)}
+            style={({ hovered }: { hovered?: boolean }) => [
+              styles.tab,
+              isActive ? styles.tabActive : styles.tabIdle,
+              !isActive && hovered ? styles.tabHover : null,
+            ]}
           >
-            <Text style={[styles.tabCode, isActive ? styles.tabCodeActive : null]}>
-              {s.sheet_code}
+            <Text style={[styles.tabCode, isActive ? styles.tabCodeActive : null]} numberOfLines={1}>
+              {display.primary}
             </Text>
             <Text style={[styles.tabTitle, isActive ? styles.tabTitleActive : null]} numberOfLines={1}>
-              {s.sheet_title}
+              {display.secondary}
             </Text>
+            {isActive ? <View style={styles.tabActiveBar} /> : null}
           </Pressable>
         );
       })}
@@ -267,46 +300,73 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(251,191,36,0.10)',
   },
+  // 2026-05-25 — Equal-width tab cards. flexBasis + minWidth + maxWidth
+  // gives every card the same shape regardless of label length, and the
+  // ScrollView still scrolls horizontally when total width exceeds the
+  // available pane. alignItems: 'stretch' would inflate tab height to
+  // match the tallest sibling — we want consistent intrinsic height from
+  // the explicit `tab.height` instead.
   tabBar: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 8,
     paddingHorizontal: 10,
     paddingTop: 10,
-    paddingBottom: 8,
+    paddingBottom: 10,
     alignItems: 'flex-start',
   },
   tab: {
-    paddingVertical: 6,
+    width: 140,
+    height: 52,
+    paddingVertical: 7,
     paddingHorizontal: 10,
     borderRadius: 8,
     borderWidth: 1,
-    minWidth: 96,
     flexShrink: 0,
+    flexGrow: 0,
+    position: 'relative',
+    overflow: 'hidden',
   },
   tabIdle: {
     backgroundColor: 'rgba(20,22,28,0.85)',
     borderColor: 'rgba(255,255,255,0.06)',
   },
+  tabHover: {
+    backgroundColor: 'rgba(30,32,40,0.95)',
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
   tabActive: {
-    backgroundColor: 'rgba(251,191,36,0.10)',
+    backgroundColor: 'rgba(251,191,36,0.12)',
     borderColor: '#fbbf24',
   },
   tabCode: {
     color: '#f5f5f5',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.4,
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
   tabCodeActive: {
     color: '#fbbf24',
   },
   tabTitle: {
     color: 'rgba(255,255,255,0.55)',
-    fontSize: 10,
-    marginTop: 2,
+    fontSize: 10.5,
+    marginTop: 3,
+    fontWeight: '500',
   },
   tabTitleActive: {
-    color: 'rgba(255,255,255,0.85)',
+    color: 'rgba(255,255,255,0.92)',
+    fontWeight: '600',
+  },
+  // 4px amber underline at the bottom of the active tab — premium visual
+  // anchor so the user can tell at a glance which sheet is selected even
+  // if hover state and active state look similar.
+  tabActiveBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 3,
+    backgroundColor: '#fbbf24',
   },
   // ─── Stage ───
   stage: {

@@ -37,6 +37,7 @@ import type {
 import { SmartText } from './SmartText';
 import { archetypeFor } from '@/lib/scope/archetype';
 import { storyForSheet, type PerSheetStory } from '@/lib/scope/per-sheet-content';
+import { sheetDisplayName } from '@/lib/scope/sheet-naming';
 
 interface Props {
   chapter: BlueprintChapter;
@@ -128,7 +129,7 @@ interface ZoneFrameProps {
 function ZoneFrame({ testID, icon, title, accent, count, defaultExpanded = false, children }: ZoneFrameProps) {
   const [expanded, setExpanded] = useState<boolean>(defaultExpanded);
   return (
-    <View testID={testID} style={styles.zone}>
+    <View testID={testID} style={[styles.zone, expanded && styles.zoneExpanded]}>
       <Pressable
         onPress={() => setExpanded((v) => !v)}
         accessibilityRole="button"
@@ -136,6 +137,7 @@ function ZoneFrame({ testID, icon, title, accent, count, defaultExpanded = false
         accessibilityState={{ expanded }}
         style={({ hovered }: { hovered?: boolean }) => [
           styles.zoneHeader,
+          expanded && styles.zoneHeaderActive,
           hovered && styles.zoneHeaderHover,
         ]}
         testID={`${testID}-toggle`}
@@ -143,8 +145,11 @@ function ZoneFrame({ testID, icon, title, accent, count, defaultExpanded = false
         <Text style={[styles.zoneIcon, { color: accent }]}>{icon}</Text>
         <Text style={[styles.zoneTitle, { color: accent }]}>{title}</Text>
         {typeof count === 'number' ? (
-          <Text style={[styles.zoneCount, { color: accent }]}>{count}</Text>
+          <View style={[styles.zoneCountPill, { borderColor: accent }]}>
+            <Text style={[styles.zoneCountPillText, { color: accent }]}>{count}</Text>
+          </View>
         ) : null}
+        <View style={styles.zoneSpacer} />
         <Text style={[styles.zoneCaret, { color: accent }]}>
           {expanded ? '▾' : '▸'}
         </Text>
@@ -246,59 +251,75 @@ export function ChapterLeftPane({
       showsVerticalScrollIndicator={false}
       dataSet={Platform.OS === 'web' ? ({ chapterLeftPane: '1' } as Record<string, unknown>) : undefined}
     >
-      {/* Header row — ordinal + "of N" + confidence */}
-      <View style={styles.headerRow}>
-        <Text testID="chapter-left-ordinal" style={styles.ordinal}>
-          {`CHAPTER ${ordinalStr} of ${typeof totalChapters === 'number' && totalChapters > 0 ? totalChapters : '—'}`}
-        </Text>
-        <View style={styles.spacer} />
-        <Text testID="chapter-left-confidence" style={styles.confidence}>
-          {`${confidencePct}%`}
-        </Text>
-      </View>
-
-      {/* View-mode toggle — [📖 Chapter] [📄 Sheet]. Sheet mode only
-          available when an activeSheet is provided. */}
-      {activeSheet ? (
-        <View style={styles.viewToggle} testID="chapter-left-view-toggle">
-          <Pressable
-            onPress={() => onViewModeChange?.('chapter')}
-            accessibilityRole="tab"
-            accessibilityLabel="Show chapter overview"
-            accessibilityState={{ selected: viewMode === 'chapter' }}
-            style={[styles.viewToggleBtn, viewMode === 'chapter' && styles.viewToggleBtnActive]}
-            testID="view-toggle-chapter"
-          >
-            <Text style={[styles.viewToggleText, viewMode === 'chapter' && styles.viewToggleTextActive]}>
-              📖 Chapter
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => onViewModeChange?.('sheet')}
-            accessibilityRole="tab"
-            accessibilityLabel={`Show story for sheet ${activeSheet.sheet_code}`}
-            accessibilityState={{ selected: viewMode === 'sheet' }}
-            style={[styles.viewToggleBtn, viewMode === 'sheet' && styles.viewToggleBtnActive]}
-            testID="view-toggle-sheet"
-          >
-            <Text style={[styles.viewToggleText, viewMode === 'sheet' && styles.viewToggleTextActive]}>
-              {`📄 ${activeSheet.sheet_code}`}
-            </Text>
-          </Pressable>
+      {/* Sticky header — orientation block stays visible while zones scroll.
+          Wrapper has position:sticky on web (`stickyHeaderWeb`); on native
+          it's just a regular View. Contains: ordinal/confidence + view
+          toggle + headline so the rookie never loses chapter context. */}
+      <View style={styles.stickyHeaderWeb}>
+        {/* Header row — ordinal + "of N" + confidence */}
+        <View style={styles.headerRow}>
+          <Text testID="chapter-left-ordinal" style={styles.ordinal}>
+            {`CHAPTER ${ordinalStr} of ${typeof totalChapters === 'number' && totalChapters > 0 ? totalChapters : '—'}`}
+          </Text>
+          <View style={styles.spacer} />
+          <Text testID="chapter-left-confidence" style={styles.confidence}>
+            {`${confidencePct}%`}
+          </Text>
         </View>
-      ) : null}
 
-      {/* Headline — chapter title in chapter mode; sheet code + title in sheet mode */}
-      {viewMode === 'sheet' && activeSheet ? (
-        <>
-          <Text style={styles.headline}>{activeSheet.sheet_code}</Text>
-          {activeSheet.sheet_title ? (
-            <Text style={styles.subHeadline}>{activeSheet.sheet_title}</Text>
-          ) : null}
-        </>
-      ) : (
-        <Text style={styles.headline}>{chapter.title}</Text>
-      )}
+        {/* View-mode toggle — [📖 Chapter] [📄 Sheet]. Sheet mode only
+            available when an activeSheet is provided. */}
+        {activeSheet ? (
+          <View style={styles.viewToggle} testID="chapter-left-view-toggle">
+            <Pressable
+              onPress={() => onViewModeChange?.('chapter')}
+              accessibilityRole="tab"
+              accessibilityLabel="Show chapter overview"
+              accessibilityState={{ selected: viewMode === 'chapter' }}
+              style={({ hovered }: { hovered?: boolean }) => [
+                styles.viewToggleBtn,
+                viewMode === 'chapter' && styles.viewToggleBtnActive,
+                viewMode !== 'chapter' && hovered ? styles.viewToggleBtnHover : null,
+              ]}
+              testID="view-toggle-chapter"
+            >
+              <Text style={[styles.viewToggleText, viewMode === 'chapter' && styles.viewToggleTextActive]}>
+                📖  Chapter
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => onViewModeChange?.('sheet')}
+              accessibilityRole="tab"
+              accessibilityLabel={`Show story for sheet ${activeSheet.sheet_code}`}
+              accessibilityState={{ selected: viewMode === 'sheet' }}
+              style={({ hovered }: { hovered?: boolean }) => [
+                styles.viewToggleBtn,
+                viewMode === 'sheet' && styles.viewToggleBtnActive,
+                viewMode !== 'sheet' && hovered ? styles.viewToggleBtnHover : null,
+              ]}
+              testID="view-toggle-sheet"
+            >
+              <Text style={[styles.viewToggleText, viewMode === 'sheet' && styles.viewToggleTextActive]}>
+                {`📄  ${activeSheet.sheet_code}`}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {/* Headline — chapter title in chapter mode; purpose-specific
+            sheet name in sheet mode (e.g. "PT-1 · Partition Schedule"
+            instead of just "PT-1"). */}
+        {viewMode === 'sheet' && activeSheet ? (
+          <>
+            <Text style={styles.headline}>{activeSheet.sheet_code}</Text>
+            <Text style={styles.subHeadline}>
+              {sheetDisplayName(activeSheet.sheet_code, activeSheet.sheet_title).secondary}
+            </Text>
+          </>
+        ) : (
+          <Text style={styles.headline}>{chapter.title}</Text>
+        )}
+      </View>
 
       {/* ─── SHEET VIEW — renders per-sheet story when toggle is in sheet mode ─── */}
       {viewMode === 'sheet' && activeSheet ? (
@@ -532,37 +553,88 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     letterSpacing: -0.4,
     fontFamily: SERIF_FAMILY,
-    marginBottom: 22,
+    marginBottom: 18,
   },
 
-  zone: { marginTop: 18 },
+  // 2026-05-25 — Sticky chapter header so the ordinal + view toggle +
+  // headline never scroll out of view. Web-only; on native, position
+  // 'sticky' is silently ignored (it renders as a plain block, which is
+  // the correct fallback).
+  stickyHeaderWeb:
+    Platform.OS === 'web'
+      ? (({
+          position: 'sticky',
+          top: 0,
+          zIndex: 5,
+          backgroundColor: 'rgba(8,10,14,0.94)',
+          paddingTop: 4,
+          paddingBottom: 12,
+          marginBottom: 4,
+          borderBottomWidth: 1,
+          borderBottomColor: BORDER_SUBTLE,
+        } as unknown) as ViewStyle)
+      : { marginBottom: 4 },
+
+  // 2026-05-25 — Premium zone polish.
+  //   • Bigger gap between zones (18→22) gives the eye more breathing room
+  //   • Expanded zones get a 3px amber left bar (zoneExpanded) so the
+  //     reader can see at a glance which sections they've opened
+  //   • Header row is taller and feels like a button (zoneHeader)
+  //   • Active/expanded header has a subtle dark fill (zoneHeaderActive)
+  zone: {
+    marginTop: 22,
+    paddingLeft: 0,
+    borderLeftWidth: 3,
+    borderLeftColor: 'transparent',
+  },
+  zoneExpanded: {
+    borderLeftColor: 'rgba(251,191,36,0.55)',
+    paddingLeft: 10,
+    marginLeft: -10,
+  },
   zoneHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
-    paddingVertical: 4,
-    paddingHorizontal: 4,
-    marginHorizontal: -4,
-    borderRadius: 4,
+    marginBottom: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    marginHorizontal: -10,
+    borderRadius: 6,
+  },
+  zoneHeaderActive: {
+    backgroundColor: 'rgba(255,255,255,0.025)',
   },
   zoneHeaderHover: {
-    backgroundColor: 'rgba(251,191,36,0.04)',
+    backgroundColor: 'rgba(251,191,36,0.06)',
   },
   zoneCaret: {
-    fontSize: 10,
+    fontSize: 14,
     marginLeft: 8,
     fontWeight: '700',
   },
-  zoneIcon: { fontSize: 11, marginRight: 6, fontWeight: '700' },
+  zoneIcon: { fontSize: 12, marginRight: 8, fontWeight: '700' },
   zoneTitle: {
-    fontSize: 10,
-    letterSpacing: 1.3,
-    fontWeight: '700',
+    fontSize: 11.5,
+    letterSpacing: 1.4,
+    fontWeight: '800',
   },
-  zoneCount: {
-    marginLeft: 8,
-    fontSize: 10,
-    fontWeight: '700',
+  zoneSpacer: { flex: 1 },
+  // Count rendered as a small amber-bordered pill — premium "badge" look
+  // instead of the previous bare number that read as a typo.
+  zoneCountPill: {
+    marginLeft: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 9,
+    borderWidth: 1,
+    minWidth: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoneCountPillText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    letterSpacing: 0.4,
     fontVariant: ['tabular-nums'],
   },
   zoneBody: { gap: 6 },
@@ -623,26 +695,33 @@ const styles = StyleSheet.create({
   buyName: { flex: 1 },
   takeoffHint: { color: WHITE_45, fontSize: 11, letterSpacing: 0.4 },
   // ─── View toggle (Chapter / Sheet) ─────────────────────────────────
+  // 2026-05-25 — Bigger premium pills. Active pill gets amber fill (not
+  // just border) so the toggle reads as a real product affordance instead
+  // of a tiny tag.
   viewToggle: {
     flexDirection: 'row',
     gap: 6,
-    marginTop: 8,
-    marginBottom: 4,
+    marginTop: 10,
+    marginBottom: 6,
   },
   viewToggleBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: BORDER_SUBTLE,
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  viewToggleBtnHover: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(255,255,255,0.18)',
   },
   viewToggleBtnActive: {
-    backgroundColor: 'rgba(251,191,36,0.12)',
-    borderColor: BORDER_AMBER,
+    backgroundColor: 'rgba(251,191,36,0.16)',
+    borderColor: AMBER,
   },
   viewToggleText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: WHITE_60,
     letterSpacing: 0.3,
