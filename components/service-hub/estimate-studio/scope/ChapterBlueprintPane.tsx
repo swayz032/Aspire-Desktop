@@ -79,6 +79,12 @@ export interface ChapterBlueprintPaneProps {
   openQuestions?: OpenQuestion[];
   hoverRegionKey: string | null;
   onHoverRegion: (key: string | null) => void;
+  /** Optional controlled mode — when both props are supplied, the parent
+   *  drives sheet switching (e.g. so a SmartText chip in the left pane
+   *  can jump to a referenced sheet). When omitted, the pane manages its
+   *  own internal state. */
+  activeSheetCode?: string | null;
+  onActiveSheetCodeChange?: (code: string) => void;
 }
 
 export function ChapterBlueprintPane({
@@ -87,15 +93,31 @@ export function ChapterBlueprintPane({
   openQuestions = [],
   hoverRegionKey,
   onHoverRegion,
+  activeSheetCode: controlledActive,
+  onActiveSheetCodeChange,
 }: ChapterBlueprintPaneProps): React.ReactElement {
   const sheets = chapter.source_sheets;
-  const [activeSheetCode, setActiveSheetCode] = useState<string | null>(
+  const [internalActive, setInternalActive] = useState<string | null>(
     sheets.length > 0 ? sheets[0].sheet_code : null,
   );
 
-  // Reset active sheet whenever the chapter switches.
+  // Controlled mode wins when the parent provides both props.
+  const isControlled = controlledActive !== undefined && typeof onActiveSheetCodeChange === 'function';
+  const activeSheetCode = isControlled ? controlledActive : internalActive;
+  const setActiveSheetCode = (code: string): void => {
+    if (isControlled) {
+      onActiveSheetCodeChange!(code);
+    } else {
+      setInternalActive(code);
+    }
+  };
+
+  // Reset internal active sheet whenever the chapter switches (uncontrolled
+  // mode only — controlled mode is the parent's responsibility).
   useEffect(() => {
-    setActiveSheetCode(sheets.length > 0 ? sheets[0].sheet_code : null);
+    if (!isControlled) {
+      setInternalActive(sheets.length > 0 ? sheets[0].sheet_code : null);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chapter.key]);
 

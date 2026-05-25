@@ -14,7 +14,7 @@
  * Empty state: shown when Drew hasn't produced any chapters yet. The chapter
  * strip is also hidden — there's nothing to scroll.
  */
-import React, { useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { BlueprintStoryV2 } from '@/lib/api/blueprintsApi';
@@ -59,6 +59,17 @@ export function StoryPanelV2({ story, activeChapterKey, onSelectChapter }: Props
     [active],
   );
 
+  // 2026-05-24 — Active-sheet selection per chapter, lifted up so an inline
+  // SmartText sheet-code chip in the left pane can jump the right pane to
+  // the referenced sheet. Stored as a per-chapter map so switching chapters
+  // remembers each chapter's last-viewed sheet.
+  const [sheetByChapter, setSheetByChapter] = useState<Record<string, string>>({});
+  const setSheetForChapter = useCallback((chapterKey: string, sheetCode: string) => {
+    setSheetByChapter((prev) =>
+      prev[chapterKey] === sheetCode ? prev : { ...prev, [chapterKey]: sheetCode },
+    );
+  }, []);
+
   if (story.chapters.length === 0 || !active) {
     return (
       <View style={styles.empty} testID="story-panel-v2-empty">
@@ -82,6 +93,7 @@ export function StoryPanelV2({ story, activeChapterKey, onSelectChapter }: Props
               chapter={active}
               hoverBulletKey={annotations.hoverBulletKey}
               onHoverBullet={annotations.setHoverBulletKey}
+              onSheetJump={(code) => setSheetForChapter(active.key, code)}
             />
           </View>
           <View style={styles.rightSlot}>
@@ -90,6 +102,8 @@ export function StoryPanelV2({ story, activeChapterKey, onSelectChapter }: Props
               regions={regions}
               hoverRegionKey={annotations.hoverRegionKey}
               onHoverRegion={annotations.setHoverRegionKey}
+              activeSheetCode={sheetByChapter[active.key] ?? null}
+              onActiveSheetCodeChange={(code) => setSheetForChapter(active.key, code)}
             />
           </View>
         </View>

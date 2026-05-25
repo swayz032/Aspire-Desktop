@@ -34,11 +34,16 @@ import type {
   OpenQuestion,
   ScopeItem,
 } from '@/lib/api/blueprintsApi';
+import { SmartText } from './SmartText';
 
 interface Props {
   chapter: BlueprintChapter;
   hoverBulletKey: string | null;
   onHoverBullet: (key: string | null) => void;
+  /** Optional. Fired when the user taps an inline sheet-code chip in any
+   *  zone body (e.g. "see A-101"). Wires through SmartText. Parent (StoryPanelV2)
+   *  routes this to its activeSheetCode setter. No-op if omitted. */
+  onSheetJump?: (sheetCode: string) => void;
 }
 
 const AMBER = '#fbbf24';
@@ -134,7 +139,7 @@ function ZoneFrame({ testID, icon, title, accent, count, defaultExpanded = false
   );
 }
 
-export function ChapterLeftPane({ chapter, hoverBulletKey, onHoverBullet }: Props) {
+export function ChapterLeftPane({ chapter, hoverBulletKey, onHoverBullet, onSheetJump }: Props) {
   const { zones } = chapter;
   const ordinalStr = String(chapter.ordinal).padStart(2, '0');
   const confidencePct = Math.round(chapter.confidence * 100);
@@ -173,7 +178,7 @@ export function ChapterLeftPane({ chapter, hoverBulletKey, onHoverBullet }: Prop
       {/* Zone 1 — WHAT THIS IS (always renders) */}
       <ZoneFrame testID="zone-what-this-is" icon="?" title="WHAT THIS IS" accent={WHITE_60} defaultExpanded>
         {hasWhatThisIs ? (
-          <Text style={styles.bodyText}>{zones.what_this_is}</Text>
+          <SmartText style={styles.bodyText} onSheetJump={onSheetJump}>{zones.what_this_is}</SmartText>
         ) : (
           <Text style={styles.emptyHint}>Drew has not summarized this chapter yet — a plain-English overview will appear here once classification completes.</Text>
         )}
@@ -186,7 +191,7 @@ export function ChapterLeftPane({ chapter, hoverBulletKey, onHoverBullet }: Prop
             {zones.in_scope.map((item: ScopeItem, i: number) => (
               <View key={`in-${i}`} style={styles.inScopeRow}>
                 <Text style={styles.amberDot}>·</Text>
-                <Text style={styles.bodyText}>{item.text_md}</Text>
+                <SmartText style={styles.bodyText} onSheetJump={onSheetJump}>{item.text_md}</SmartText>
               </View>
             ))}
             {zones.not_in_scope.length > 0 ? (
@@ -194,7 +199,7 @@ export function ChapterLeftPane({ chapter, hoverBulletKey, onHoverBullet }: Prop
                 {zones.not_in_scope.map((item: ScopeItem, i: number) => (
                   <View key={`out-${i}`} style={styles.notInScopeRow}>
                     <Text style={styles.redX}>✗</Text>
-                    <Text style={styles.mutedBody}>{item.text_md}</Text>
+                    <SmartText style={styles.mutedBody} onSheetJump={onSheetJump}>{item.text_md}</SmartText>
                   </View>
                 ))}
               </View>
@@ -230,7 +235,7 @@ export function ChapterLeftPane({ chapter, hoverBulletKey, onHoverBullet }: Prop
               >
                 <View style={[styles.checkbox, hovered && styles.checkboxHovered]} />
                 <View style={styles.taskTextWrap}>
-                  <Text style={styles.bodyText}>{task.text_md}</Text>
+                  <SmartText style={styles.bodyText} onSheetJump={onSheetJump}>{task.text_md}</SmartText>
                   <View style={[styles.disciplineTag, { backgroundColor: tag.bg }]}>
                     <Text style={[styles.disciplineTagText, { color: tag.fg }]}>{tag.label}</Text>
                   </View>
@@ -278,7 +283,7 @@ export function ChapterLeftPane({ chapter, hoverBulletKey, onHoverBullet }: Prop
               <Text style={styles.questionWarn}>⚠</Text>
               <View style={styles.questionTextWrap}>
                 <Text style={styles.questionTitle}>{q.title}</Text>
-                <Text style={styles.questionBody}>{q.body_md}</Text>
+                <SmartText style={styles.questionBody} onSheetJump={onSheetJump}>{q.body_md}</SmartText>
               </View>
             </View>
           ))
