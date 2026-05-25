@@ -22,6 +22,7 @@
  * Law #7: pure types + pure adapter. No fetching, no state.
  */
 import type { BlueprintStory, BlueprintSheetRead } from './blueprintsApi';
+import { contentForChapter } from '@/lib/scope/discipline-content';
 
 export interface BlueprintStoryV2 {
   project_id: string;
@@ -69,6 +70,15 @@ export interface ChapterZones {
   tasks: ChapterTask[];
   buy_list: ChapterMaterial[];
   open_questions: OpenQuestion[];
+  /** Rookie-trap warnings rendered in the WATCH OUT FOR zone. Plain strings;
+   *  paragraph-style. Optional — adapter may omit when content is unknown. */
+  common_mistakes?: string[];
+  /** Numbered field-work sequence rendered in the ORDER OF OPERATIONS zone.
+   *  Plain strings; rendered as a numbered list. Optional. */
+  order_of_ops?: string[];
+  /** 3-bullet skim shown pinned at the top of the left pane. Optional.
+   *  When empty/missing, the TL;DR header is hidden. */
+  tldr?: string[];
 }
 
 export interface ScopeItem {
@@ -278,19 +288,18 @@ function chaptersFromSheetGrouping(
   return ordered.map((group, idx) => {
     const sources = group.entries.map((e) => sheetSource(e.sheet, e.pageNumber));
 
-    // Paraphrase sheet titles as scope-style bullets (drop the raw code,
-    // lead with the title content). When the title is missing, fall back
-    // to a friendly version of the sheet code.
-    const inScope: ScopeItem[] = sources.map((src) => {
-      const trimmedTitle = src.sheet_title.trim();
-      const body = trimmedTitle.length > 0
-        ? `${capitalizeFirst(trimmedTitle)} — per **${src.sheet_code}**`
-        : `Per **${src.sheet_code}**`;
-      return { text_md: body, evidence_sheet: src.sheet_code };
-    });
+    // 2026-05-24 — IN SCOPE bullets now come from the per-discipline static
+    // content library (`lib/scope/discipline-content.ts`) instead of
+    // enumerating sheet codes. Sheet codes already live in DREW READ; IN
+    // SCOPE should answer "what's covered" not "what sheets are here."
+    const content = contentForChapter(group.meta.key);
+    const inScope: ScopeItem[] = content.scopeItems.map((item) => ({
+      text_md: item,
+      evidence_sheet: sources[0]?.sheet_code,
+    }));
 
-    // Generic per-discipline tasks. Once Drew's REASON stage emits real
-    // tasks, the narrative path takes over and these are unused.
+    // Per-discipline tasks templates merged with the discipline meta tags so
+    // the WHAT YOU HAVE TO DO zone shows the right discipline pill.
     const evidenceSheetCodes = sources.map((s) => s.sheet_code);
     const tasks: ChapterTask[] = group.meta.taskTemplates.map((tpl) => ({
       text_md: tpl,
@@ -302,6 +311,15 @@ function chaptersFromSheetGrouping(
       ? `1 sheet (${sources[0].sheet_code})`
       : `${sources.length} sheets covering ${sources[0].sheet_code}–${sources[sources.length - 1].sheet_code}`;
     const whatThisIs = `${group.meta.blurb} Drew classified ${sheetSummary} into this chapter.`;
+
+    // 3-bullet TL;DR pinned at the top of the left pane. Built from real
+    // chapter data (count + first scope item + first common-mistake) so
+    // the rookie can skim in 5 seconds.
+    const tldr: string[] = [
+      sheetSummary.charAt(0).toUpperCase() + sheetSummary.slice(1),
+      content.scopeItems[0],
+      content.commonMistakes[0] ? `Watch out: ${content.commonMistakes[0]}` : '',
+    ].filter((b): b is string => Boolean(b));
 
     return {
       key: group.meta.key,
@@ -318,6 +336,9 @@ function chaptersFromSheetGrouping(
         tasks,
         buy_list: [],
         open_questions: [],
+        common_mistakes: content.commonMistakes,
+        order_of_ops: content.orderOfOps,
+        tldr,
       },
     };
   });

@@ -12,6 +12,7 @@ import {
   Image, Platform, Pressable, ScrollView, StyleSheet, Text, View,
 } from 'react-native';
 import type { BlueprintChapter } from '@/lib/api/blueprintsApi';
+import { archetypeFor } from '@/lib/scope/archetype';
 
 // 2026-05-24 — Desktop-visible (premium amber), touch-invisible horizontal
 // scrollbar on the chapter strip. Same mouse-detection pattern as
@@ -88,6 +89,19 @@ export function ChapterStrip({ chapters, activeKey, onSelect }: Props): React.Re
                   testID={`chapter-card-${ch.key}-thumb-placeholder`}
                 />
               )}
+              {/* Archetype chip overlaid top-right of the thumb — gives the
+                  rookie a sheet-type orientation cue at a glance. Inferred
+                  from the first source sheet's code + title. */}
+              {ch.source_sheets.length > 0 ? (
+                <View
+                  style={styles.archetypeChip}
+                  testID={`chapter-card-${ch.key}-archetype`}
+                >
+                  <Text style={styles.archetypeChipText}>
+                    {archetypeFor(ch.source_sheets[0].sheet_code, ch.source_sheets[0].sheet_title).label}
+                  </Text>
+                </View>
+              ) : null}
             </View>
             <View style={styles.meta}>
               <Text
@@ -149,7 +163,24 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(251,191,36,0.10)',
     borderColor: '#fbbf24',
   },
-  thumb: { height: 92, backgroundColor: '#fff', overflow: 'hidden' },
+  thumb: { height: 92, backgroundColor: '#fff', overflow: 'hidden', position: 'relative' },
+  archetypeChip: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    backgroundColor: 'rgba(11,13,18,0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.45)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 3,
+  },
+  archetypeChipText: {
+    color: '#fbbf24',
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
   thumbImg: { width: '100%', height: '100%' },
   thumbPlaceholder: {
     flex: 1,

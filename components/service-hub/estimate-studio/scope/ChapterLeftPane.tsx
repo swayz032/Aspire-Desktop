@@ -175,6 +175,21 @@ export function ChapterLeftPane({ chapter, hoverBulletKey, onHoverBullet, onShee
       {/* Headline */}
       <Text style={styles.headline}>{chapter.title}</Text>
 
+      {/* TL;DR — 3-bullet skim pinned right under the headline. Renders only
+          when the adapter supplied tldr content. Not collapsible — the
+          rookie should always see the skim first. */}
+      {zones.tldr && zones.tldr.length > 0 ? (
+        <View style={styles.tldrBlock} testID="zone-tldr">
+          <Text style={styles.tldrLabel}>SKIM IN 5 SECONDS</Text>
+          {zones.tldr.map((b, i) => (
+            <View key={`tldr-${i}`} style={styles.tldrRow}>
+              <Text style={styles.tldrBullet}>·</Text>
+              <SmartText style={styles.tldrText} onSheetJump={onSheetJump}>{b}</SmartText>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
       {/* Zone 1 — WHAT THIS IS (always renders) */}
       <ZoneFrame testID="zone-what-this-is" icon="?" title="WHAT THIS IS" accent={WHITE_60} defaultExpanded>
         {hasWhatThisIs ? (
@@ -209,6 +224,26 @@ export function ChapterLeftPane({ chapter, hoverBulletKey, onHoverBullet, onShee
           <Text style={styles.emptyHint}>Scope items appear here as Drew identifies them — typically one bullet per fixture group, partition, or major assembly.</Text>
         )}
       </ZoneFrame>
+
+      {/* Zone — ORDER OF OPERATIONS (numbered field-work sequence).
+          Renders only when the adapter supplied order_of_ops. Collapsed
+          by default; the rookie expands when they need the WHEN. */}
+      {zones.order_of_ops && zones.order_of_ops.length > 0 ? (
+        <ZoneFrame
+          testID="zone-order-of-ops"
+          icon="→"
+          title="ORDER OF OPERATIONS"
+          accent={AMBER}
+          count={zones.order_of_ops.length}
+        >
+          {zones.order_of_ops.map((step, i) => (
+            <View key={`oop-${i}`} style={styles.opsRow}>
+              <Text style={styles.opsNumber}>{i + 1}</Text>
+              <SmartText style={styles.bodyText} onSheetJump={onSheetJump}>{step}</SmartText>
+            </View>
+          ))}
+        </ZoneFrame>
+      ) : null}
 
       {/* Zone 3 — WHAT YOU HAVE TO DO (always renders) */}
       <ZoneFrame
@@ -268,6 +303,26 @@ export function ChapterLeftPane({ chapter, hoverBulletKey, onHoverBullet, onShee
           <Text style={styles.emptyHint}>Materials for this chapter appear here as Drew identifies them. The master list across all chapters lives in Takeoff → Materials.</Text>
         )}
       </ZoneFrame>
+
+      {/* Zone — WATCH OUT FOR (rookie traps per discipline). Renders only
+          when the adapter supplied common_mistakes. Collapsed by default;
+          rookie expands when they want the trap-avoidance brief. */}
+      {zones.common_mistakes && zones.common_mistakes.length > 0 ? (
+        <ZoneFrame
+          testID="zone-common-mistakes"
+          icon="⚠"
+          title="WATCH OUT FOR"
+          accent={RED}
+          count={zones.common_mistakes.length}
+        >
+          {zones.common_mistakes.map((mistake, i) => (
+            <View key={`miss-${i}`} style={styles.mistakeRow}>
+              <Text style={styles.mistakeIcon}>⚠</Text>
+              <SmartText style={styles.bodyText} onSheetJump={onSheetJump}>{mistake}</SmartText>
+            </View>
+          ))}
+        </ZoneFrame>
+      ) : null}
 
       {/* Zone 5 — WHAT'S STILL UNCLEAR (always renders) */}
       <ZoneFrame
@@ -428,6 +483,55 @@ const styles = StyleSheet.create({
   buyQty: { color: AMBER, fontSize: 13, fontWeight: '700', fontVariant: ['tabular-nums'], minWidth: 28 },
   buyName: { flex: 1 },
   takeoffHint: { color: WHITE_45, fontSize: 11, letterSpacing: 0.4 },
+  // ─── TL;DR header (pinned skim) ────────────────────────────────────
+  tldrBlock: {
+    backgroundColor: 'rgba(251,191,36,0.05)',
+    borderLeftWidth: 2,
+    borderLeftColor: 'rgba(251,191,36,0.55)',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    marginTop: 12,
+    marginBottom: 14,
+  },
+  tldrLabel: {
+    fontSize: 9,
+    letterSpacing: 2,
+    color: AMBER,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  tldrRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 4 },
+  tldrBullet: { color: AMBER, fontSize: 14, lineHeight: 18, marginRight: 8 },
+  tldrText: { color: WHITE_85, fontSize: 12.5, lineHeight: 18, flex: 1 },
+  // ─── Order of Operations rows ──────────────────────────────────────
+  opsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER_SUBTLE,
+  },
+  opsNumber: {
+    color: AMBER,
+    fontSize: 13,
+    fontWeight: '800',
+    lineHeight: 18,
+    width: 24,
+    fontVariant: ['tabular-nums'],
+  },
+  // ─── Common mistakes rows ──────────────────────────────────────────
+  mistakeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 6,
+  },
+  mistakeIcon: {
+    color: RED,
+    fontSize: 13,
+    lineHeight: 18,
+    width: 24,
+  },
   // Empty-state copy inside a zone — italic, dim, slightly smaller than body.
   emptyHint: {
     color: WHITE_60,
