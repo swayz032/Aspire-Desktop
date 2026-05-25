@@ -212,6 +212,52 @@ function SheetView({
         <SmartText style={styles.bodyText} onSheetJump={onSheetJump}>{story.whenToUseIt}</SmartText>
       </ZoneFrame>
 
+      {/* WHAT YOU HAVE TO DO — sequential field-work tasks for this
+          sheet. Renders as a premium numbered-step card so the rookie
+          reads it as actionable work, not narrative. Default-expanded
+          because this is the contractor's daily to-do list. */}
+      <ZoneFrame
+        testID="zone-sheet-tasks"
+        icon="✓"
+        title="WHAT YOU HAVE TO DO"
+        accent={AMBER}
+        count={story.whatYouHaveToDo.length > 0 ? story.whatYouHaveToDo.length : undefined}
+        defaultExpanded
+      >
+        {story.whatYouHaveToDo.length > 0 ? (
+          <View style={styles.taskStepCard}>
+            <View style={styles.taskStepHeader}>
+              <Text style={styles.taskStepEyebrow}>FIELD-WORK STEPS · {story.whatYouHaveToDo.length}</Text>
+            </View>
+            {story.whatYouHaveToDo.map((task, i) => (
+              <View
+                key={`sheettask-${i}`}
+                style={[
+                  styles.taskStepRow,
+                  i === story.whatYouHaveToDo.length - 1 && styles.taskStepRowLast,
+                ]}
+                testID={`sheet-task-row-${i}`}
+              >
+                <View style={styles.taskStepNumber}>
+                  <Text style={styles.taskStepNumberText}>{i + 1}</Text>
+                </View>
+                <View style={styles.taskStepTextWrap}>
+                  <SmartText style={styles.taskStepText} onSheetJump={onSheetJump}>{task}</SmartText>
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <View style={styles.buyEmptyCard}>
+            <Text style={styles.buyEmptyIcon}>✓</Text>
+            <Text style={styles.buyEmptyTitle}>No field-work for this sheet</Text>
+            <Text style={styles.buyEmptyBody}>
+              This is a reference sheet — read it, but no install steps apply.
+            </Text>
+          </View>
+        )}
+      </ZoneFrame>
+
       {/* WHAT TO BUY FOR THIS SHEET — premium checklist card.
           Critical for a rookie: every sheet that drives field work has
           materials you have to order. Renders as an amber-tinted card
@@ -742,6 +788,69 @@ const styles = StyleSheet.create({
   },
   disciplineTagText: { fontSize: 9, fontWeight: '700', letterSpacing: 0.8 },
 
+  // 2026-05-25 — Premium WHAT YOU HAVE TO DO numbered-step card (per-sheet).
+  // Distinct from the buy checklist (round amber check vs square numeric
+  // pill) so the rookie can tell tasks from materials at a glance.
+  taskStepCard: {
+    backgroundColor: 'rgba(255,255,255,0.025)',
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.25)',
+    borderRadius: 8,
+    paddingVertical: 4,
+    marginTop: 4,
+  },
+  taskStepHeader: {
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(251,191,36,0.18)',
+  },
+  taskStepEyebrow: {
+    fontSize: 9,
+    letterSpacing: 1.6,
+    color: AMBER,
+    fontWeight: '800',
+  },
+  taskStepRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.04)',
+  },
+  taskStepRowLast: {
+    borderBottomWidth: 0,
+  },
+  taskStepNumber: {
+    width: 22,
+    height: 22,
+    borderRadius: 5,
+    backgroundColor: 'rgba(251,191,36,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  taskStepNumberText: {
+    color: AMBER,
+    fontSize: 11,
+    lineHeight: 13,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+  },
+  taskStepTextWrap: {
+    flex: 1,
+  },
+  taskStepText: {
+    color: WHITE_92,
+    fontSize: 13.5,
+    lineHeight: 19,
+    fontWeight: '500',
+  },
   // 2026-05-25 — Premium WHAT TO BUY checklist card (per-sheet zone).
   // Amber-tinted card containing check-circle rows. Hairline divider
   // between rows; last row has no divider. Visually distinct from the
