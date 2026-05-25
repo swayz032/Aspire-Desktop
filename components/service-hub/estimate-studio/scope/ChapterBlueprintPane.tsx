@@ -20,18 +20,43 @@ import {
   View,
 } from 'react-native';
 
-// 2026-05-23 — Belt-and-suspenders for invisible scrollbar on web inside
-// the sheet tab bar's horizontal ScrollView (RN-Web's
-// `showsHorizontalScrollIndicator={false}` doesn't always bind to the
-// underlying browser scrollbar).
+// 2026-05-24 — Desktop-visible, touch-invisible horizontal scrollbar.
+//
+// Touch devices (phones, tablets) hide the scrollbar so the canvas reads
+// clean. Desktop browsers with a real pointer get a premium amber scrollbar
+// so mouse users have a visible scroll affordance for the sheet tab bar.
+// `(hover: hover) and (pointer: fine)` is the canonical mouse-capable
+// media query — true for mouse, false for touch + stylus.
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
-  const STYLE_ID = 'chapter-blueprint-pane-tabbar-scrollbar-hide';
+  const STYLE_ID = 'chapter-blueprint-pane-tabbar-scrollbar';
   if (!document.getElementById(STYLE_ID)) {
     const styleEl = document.createElement('style');
     styleEl.id = STYLE_ID;
     styleEl.textContent = `
+      /* Touch / unknown — hide. */
       [data-chapter-blueprint-tabbar="1"] { scrollbar-width: none; -ms-overflow-style: none; }
       [data-chapter-blueprint-tabbar="1"]::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+      /* Desktop with mouse — premium amber scrollbar. */
+      @media (hover: hover) and (pointer: fine) {
+        [data-chapter-blueprint-tabbar="1"] {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(251,191,36,0.45) transparent;
+        }
+        [data-chapter-blueprint-tabbar="1"]::-webkit-scrollbar {
+          height: 6px;
+          width: 6px;
+          display: block;
+        }
+        [data-chapter-blueprint-tabbar="1"]::-webkit-scrollbar-track { background: transparent; }
+        [data-chapter-blueprint-tabbar="1"]::-webkit-scrollbar-thumb {
+          background: rgba(251,191,36,0.35);
+          border-radius: 3px;
+        }
+        [data-chapter-blueprint-tabbar="1"]::-webkit-scrollbar-thumb:hover {
+          background: rgba(251,191,36,0.65);
+        }
+      }
     `;
     document.head.appendChild(styleEl);
   }

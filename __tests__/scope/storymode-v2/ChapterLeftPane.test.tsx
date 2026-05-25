@@ -1,7 +1,15 @@
 import React from 'react';
-import { render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import { ChapterLeftPane } from '@/components/service-hub/estimate-studio/scope/ChapterLeftPane';
 import type { BlueprintChapter } from '@/lib/api/blueprintsApi';
+
+// 2026-05-24 — Zones 3-5 (tasks/buy-list/open-questions) collapse by default.
+// Helper expands a zone via its `-toggle` Pressable so tests can assert body
+// content. Zones 1-2 (what-this-is/in-scope) default expanded, no helper needed.
+function expandZone(toggleTestID: string, pressEl: { getByTestId: (id: string) => unknown }): void {
+  const toggle = pressEl.getByTestId(toggleTestID);
+  fireEvent.press(toggle as Parameters<typeof fireEvent.press>[0]);
+}
 
 const baseChapter: BlueprintChapter = {
   key: 'restrooms', ordinal: 6, title: "The new restrooms & Mother's Room", confidence: 0.94,
@@ -60,22 +68,25 @@ describe('ChapterLeftPane', () => {
     expect(getByText(/Drew has not summarized this chapter yet/)).toBeTruthy();
   });
 
-  it('renders empty-state copy in the buy-list zone when buy_list is empty', () => {
+  it('renders empty-state copy in the buy-list zone when buy_list is empty (after expand)', () => {
     const ch = { ...baseChapter, zones: { ...baseChapter.zones, buy_list: [] } };
-    const { queryByTestId, getByText } = render(
+    const screen = render(
       <ChapterLeftPane chapter={ch} hoverBulletKey={null} onHoverBullet={() => {}} />
     );
-    expect(queryByTestId('zone-buy-list')).toBeTruthy();
-    expect(getByText(/Materials for this chapter appear here/)).toBeTruthy();
+    expect(screen.queryByTestId('zone-buy-list')).toBeTruthy();
+    // Zone is collapsed by default — expand to see empty-state copy.
+    expandZone('zone-buy-list-toggle', screen);
+    expect(screen.getByText(/Materials for this chapter appear here/)).toBeTruthy();
   });
 
-  it('renders empty-state copy in the open-questions zone when open_questions is empty', () => {
+  it('renders empty-state copy in the open-questions zone when open_questions is empty (after expand)', () => {
     const ch = { ...baseChapter, zones: { ...baseChapter.zones, open_questions: [] } };
-    const { queryByTestId, getByText } = render(
+    const screen = render(
       <ChapterLeftPane chapter={ch} hoverBulletKey={null} onHoverBullet={() => {}} />
     );
-    expect(queryByTestId('zone-open-questions')).toBeTruthy();
-    expect(getByText(/0 open questions/)).toBeTruthy();
+    expect(screen.queryByTestId('zone-open-questions')).toBeTruthy();
+    expandZone('zone-open-questions-toggle', screen);
+    expect(screen.getByText(/0 open questions/)).toBeTruthy();
   });
 
   it('renders empty-state copy in the in-scope zone when both scope arrays empty', () => {
@@ -83,17 +94,19 @@ describe('ChapterLeftPane', () => {
     const { queryByTestId, getByText } = render(
       <ChapterLeftPane chapter={ch} hoverBulletKey={null} onHoverBullet={() => {}} />
     );
+    // In-scope defaults expanded.
     expect(queryByTestId('zone-in-scope')).toBeTruthy();
     expect(getByText(/Scope items appear here/)).toBeTruthy();
   });
 
-  it('renders empty-state copy in the tasks zone when tasks empty', () => {
+  it('renders empty-state copy in the tasks zone when tasks empty (after expand)', () => {
     const ch = { ...baseChapter, zones: { ...baseChapter.zones, tasks: [] } };
-    const { queryByTestId, getByText } = render(
+    const screen = render(
       <ChapterLeftPane chapter={ch} hoverBulletKey={null} onHoverBullet={() => {}} />
     );
-    expect(queryByTestId('zone-tasks')).toBeTruthy();
-    expect(getByText(/Drew is still pulling tasks/)).toBeTruthy();
+    expect(screen.queryByTestId('zone-tasks')).toBeTruthy();
+    expandZone('zone-tasks-toggle', screen);
+    expect(screen.getByText(/Drew is still pulling tasks/)).toBeTruthy();
   });
 
   it('renders one source chip per source sheet', () => {
@@ -103,20 +116,50 @@ describe('ChapterLeftPane', () => {
     expect(getAllByTestId(/^source-chip-/)).toHaveLength(3);
   });
 
-  it('renders discipline tags on tasks', () => {
-    const { getByText } = render(
+  it('renders discipline tags on tasks (after expand)', () => {
+    const screen = render(
       <ChapterLeftPane chapter={baseChapter} hoverBulletKey={null} onHoverBullet={() => {}} />
     );
-    expect(getByText('DEMO')).toBeTruthy();
-    expect(getByText('PLUMB')).toBeTruthy();
+    expandZone('zone-tasks-toggle', screen);
+    expect(screen.getByText('DEMO')).toBeTruthy();
+    expect(screen.getByText('PLUMB')).toBeTruthy();
   });
 
-  it('renders buy list rows with quantity + name + Takeoff hint', () => {
+  it('renders buy list rows with quantity + name + Takeoff hint (after expand)', () => {
+    const screen = render(
+      <ChapterLeftPane chapter={baseChapter} hoverBulletKey={null} onHoverBullet={() => {}} />
+    );
+    expandZone('zone-buy-list-toggle', screen);
+    expect(screen.getByText('2×')).toBeTruthy();
+    expect(screen.getByText('Floor-mount toilet')).toBeTruthy();
+  });
+
+  it('zones 1-2 (what-this-is + in-scope) are expanded by default', () => {
     const { getByText } = render(
       <ChapterLeftPane chapter={baseChapter} hoverBulletKey={null} onHoverBullet={() => {}} />
     );
-    expect(getByText('2×')).toBeTruthy();
-    expect(getByText('Floor-mount toilet')).toBeTruthy();
-    // 'Takeoff' hint appears twice (one per buy row)
+    // what-this-is body visible without any toggle press
+    expect(getByText('A bathroom build-out.')).toBeTruthy();
+    // in-scope first item visible without any toggle press
+    expect(getByText('3 new restroom enclosures')).toBeTruthy();
+  });
+
+  it('zones 3-5 (tasks + buy-list + open-questions) are collapsed by default', () => {
+    const { queryByText } = render(
+      <ChapterLeftPane chapter={baseChapter} hoverBulletKey={null} onHoverBullet={() => {}} />
+    );
+    // Body content of zones 3-5 should NOT be visible until expanded
+    expect(queryByText('Demo existing partitions')).toBeNull();
+    expect(queryByText('Floor-mount toilet')).toBeNull();
+    expect(queryByText('Floor finish')).toBeNull();
+  });
+
+  it('expanding a zone reveals its body content', () => {
+    const screen = render(
+      <ChapterLeftPane chapter={baseChapter} hoverBulletKey={null} onHoverBullet={() => {}} />
+    );
+    expect(screen.queryByText('Floor-mount toilet')).toBeNull();
+    expandZone('zone-buy-list-toggle', screen);
+    expect(screen.getByText('Floor-mount toilet')).toBeTruthy();
   });
 });
