@@ -13,6 +13,8 @@ import {
 } from 'react-native';
 import type { BlueprintChapter } from '@/lib/api/blueprintsApi';
 import { sheetDisplayName } from '@/lib/scope/sheet-naming';
+import { TierDot } from '@/components/ui/TierDot';
+import { RoutingSummaryBadge } from '@/components/ui/RoutingSummaryBadge';
 
 // 2026-05-24 — Desktop-visible (premium amber), touch-invisible horizontal
 // scrollbar on the chapter strip. Same mouse-detection pattern as
@@ -89,6 +91,17 @@ export function ChapterStrip({ chapters, activeKey, onSelect }: Props): React.Re
                   testID={`chapter-card-${ch.key}-thumb-placeholder`}
                 />
               )}
+              {/* DV wave — tier dot mirrors archetype chip placement on the
+                  opposite corner so confidence is glanceable without crowding
+                  the purpose chip. Affordance-free when tier is absent. */}
+              {ch.confidence_tier !== undefined ? (
+                <View style={styles.tierDotCorner}>
+                  <TierDot
+                    tier={ch.confidence_tier}
+                    testID={`chapter-card-${ch.key}-tier-dot`}
+                  />
+                </View>
+              ) : null}
               {/* Purpose-specific chip overlaid top-right of the thumb —
                   rookie reads "Ceiling Plan" / "Door Schedule" instead of
                   the file-format word ("RCP", "Schedule"). Inferred from
@@ -118,6 +131,18 @@ export function ChapterStrip({ chapters, activeKey, onSelect }: Props): React.Re
               >
                 {ch.title}
               </Text>
+              {/* DV wave — routing summary badge (AUTO/AVA/BLOCK). Skip the
+                  wrapper entirely when undefined or sum === 0 so legacy
+                  chapters render no neutral artifact. */}
+              {ch.routing_summary !== undefined &&
+              ch.routing_summary.auto + ch.routing_summary.review + ch.routing_summary.open > 0 ? (
+                <View style={styles.metaBadgeRow}>
+                  <RoutingSummaryBadge
+                    summary={ch.routing_summary}
+                    testID={`chapter-card-${ch.key}-routing-summary`}
+                  />
+                </View>
+              ) : null}
             </View>
           </Pressable>
         );
@@ -205,4 +230,14 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   titleActive: { color: '#fff', fontWeight: '700' },
+  tierDotCorner: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    // no zIndex needed; renders in normal stacking
+  },
+  metaBadgeRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+  },
 });
