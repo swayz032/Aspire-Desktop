@@ -131,9 +131,11 @@ export function ChapterStrip({ chapters, activeKey, onSelect }: Props): React.Re
               >
                 {ch.title}
               </Text>
-              {/* DV wave — routing summary badge (AUTO/AVA/BLOCK). Skip the
+              {/* DV wave — routing summary badge (AUTO/TIM/BLOCK). Skip the
                   wrapper entirely when undefined or sum === 0 so legacy
-                  chapters render no neutral artifact. */}
+                  chapters render no neutral artifact. TIM = Service Hub
+                  Manager helper (not yet built); REVIEW_PENDING routes
+                  queue waiting for Tim. NOT Ava (frontstage receptionist). */}
               {ch.routing_summary !== undefined &&
               ch.routing_summary.auto + ch.routing_summary.review + ch.routing_summary.open > 0 ? (
                 <View style={styles.metaBadgeRow}>

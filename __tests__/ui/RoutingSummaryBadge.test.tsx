@@ -36,7 +36,7 @@ describe('RoutingSummaryBadge', () => {
     );
     expect(getByTestId('rsb-one')).toBeTruthy();
     expect(queryByText('AUTO 5')).toBeTruthy();
-    expect(queryByText('AVA 0')).toBeNull();
+    expect(queryByText('TIM 0')).toBeNull();
     expect(queryByText('BLOCK 0')).toBeNull();
   });
 
@@ -48,7 +48,7 @@ describe('RoutingSummaryBadge', () => {
       />,
     );
     expect(queryByText('AUTO 99+')).toBeTruthy();
-    expect(queryByText('AVA 99+')).toBeTruthy();
+    expect(queryByText('TIM 99+')).toBeTruthy();
   });
 
   it('a11y label uses raw counts', () => {

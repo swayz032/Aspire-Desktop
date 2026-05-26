@@ -159,7 +159,7 @@ describe('MaterialStoryPanel', () => {
       <MaterialStoryPanel projectId="proj_1" sheetId="A-101" sheetCode="A-101" />,
     );
     expect(getByTestId('material-story-panel-unknown-review')).toBeTruthy();
-    expect(getByText(/2 symbols awaiting AVA review on this sheet/)).toBeTruthy();
+    expect(getByText(/2 symbols awaiting Tim review on this sheet/)).toBeTruthy();
     // populated path NOT rendered
     expect(queryByTestId('material-story-panel-header')).toBeNull();
   });
@@ -172,7 +172,7 @@ describe('MaterialStoryPanel', () => {
     const { getByText } = render(
       <MaterialStoryPanel projectId="proj_1" sheetId="A-101" sheetCode="A-101" />,
     );
-    expect(getByText(/1 symbol awaiting AVA review on this sheet/)).toBeTruthy();
+    expect(getByText(/1 symbol awaiting Tim review on this sheet/)).toBeTruthy();
   });
 
   it('renders error state when hook returns an error', () => {
