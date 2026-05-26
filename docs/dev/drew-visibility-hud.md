@@ -14,8 +14,12 @@ Floating bottom-right card on the Scope route. Five sections:
 - **Tier distribution** — counts of chapters by `confidence_tier`. Chapters
   with no tier bucket under `—`.
 - **Routing rollup** — sum of `routing_summary.{auto, review, open}` across
-  chapters. Labeled `AUTO / AVA / BLOCK` to mirror the routing language used
-  in the chapter pane.
+  chapters. Labeled `AUTO / TIM / BLOCK` to mirror the routing language
+  used in the chapter pane. **TIM** is the Service Hub Manager helper
+  assistant Drew routes pending-review work to. Tim is not yet built;
+  the label forward-declares the destination so the UI is correct once
+  Tim ships. Do not relabel as AVA — Ava is the frontstage receptionist,
+  not part of Estimate Studio.
 - **Materials** — total `MaterialInstance` count + how many are bound
   (`tier === 'GREEN'`) + how many remain unresolved
   (`resolution_source === 'unknown'`).

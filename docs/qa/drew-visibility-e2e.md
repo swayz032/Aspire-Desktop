@@ -65,7 +65,11 @@ clean the visual layer looks.
 8. For each chapter card on the bottom strip, verify:
    - **Tier dot** (top-left of the thumbnail) renders in GREEN / YELLOW / RED.
      Element testID: `chapter-card-{key}-tier-dot`.
-   - **Routing summary badge** in card meta reads `"AUTO N · AVA N · BLOCK N"`.
+   - **Routing summary badge** in card meta reads `"AUTO N · TIM N · BLOCK N"`.
+     (TIM = Service Hub Manager helper assistant; routes here wait for
+     Tim review. Tim is not yet built — the label forward-declares the
+     destination so the wiring is correct when Tim ships. Not "AVA" —
+     Ava is the frontstage receptionist, NOT part of Estimate Studio.)
      Element testID: `chapter-card-{key}-routing-summary`.
    - **Both omitted** on any chapter without `confidence_tier` (legacy data
      shape — the badge area collapses cleanly with no visible gap).

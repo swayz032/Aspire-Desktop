@@ -108,7 +108,11 @@ export function MaterialStoryPanel(props: MaterialStoryPanelProps): React.ReactE
         <View testID={`${rootTestID}-unknown-review`} style={styles.unknownCard}>
           <Text style={styles.unknownIcon}>?</Text>
           <Text style={styles.unknownTitle}>
-            {`${materials.length} ${materials.length === 1 ? 'symbol' : 'symbols'} awaiting AVA review on this sheet`}
+            {/* 2026-05-26 — Tim, not Ava. Drew routes pending-review */}
+            {/* work to Tim (Service Hub Manager helper). Tim isn't built */}
+            {/* yet — label forward-declares the destination. Ava is the */}
+            {/* frontstage receptionist, NOT part of Estimate Studio. */}
+            {`${materials.length} ${materials.length === 1 ? 'symbol' : 'symbols'} awaiting Tim review on this sheet`}
           </Text>
         </View>
       </View>

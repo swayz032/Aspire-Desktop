@@ -217,7 +217,7 @@ export function DrewVisibilityHUD(
 
         <Text style={styles.section}>Routing rollup:</Text>
         <Text style={styles.line} testID="drew-visibility-hud-routing">
-          {`  AUTO ${routing.auto} · AVA ${routing.review} · BLOCK ${routing.open}`}
+          {`  AUTO ${routing.auto} · TIM ${routing.review} · BLOCK ${routing.open}`}
         </Text>
 
         <Text style={styles.section}>Materials:</Text>

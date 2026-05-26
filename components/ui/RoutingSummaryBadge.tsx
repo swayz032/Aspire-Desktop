@@ -7,8 +7,15 @@ interface RoutingSummaryBadgeProps {
   testID?: string;
 }
 
+// 2026-05-26 — Routing destinations.
+// Drew (Estimate Studio's blueprint compiler) answers to Tim, the Service
+// Hub Manager helper assistant. Tim is not yet built — until he ships,
+// `REVIEW_PENDING` routes queue waiting for Tim. Display label is "TIM"
+// to forward-declare the destination so the UI is correct once Tim ships.
+// Ava is the frontstage receptionist/voice agent — NOT part of Estimate
+// Studio. Do not rename TIM back to AVA.
 const COLOR_AUTO = '#22c55e';
-const COLOR_AVA = '#fbbf24';
+const COLOR_TIM = '#fbbf24';
 const COLOR_BLOCK = '#ef4444';
 
 function fmt(n: number): string {
@@ -28,7 +35,7 @@ export function RoutingSummaryBadge({
 
   const segments: Array<{ key: string; label: string; color: string; n: number }> = [];
   if (auto > 0) segments.push({ key: 'auto', label: 'AUTO', color: COLOR_AUTO, n: auto });
-  if (review > 0) segments.push({ key: 'review', label: 'AVA', color: COLOR_AVA, n: review });
+  if (review > 0) segments.push({ key: 'review', label: 'TIM', color: COLOR_TIM, n: review });
   if (open > 0) segments.push({ key: 'open', label: 'BLOCK', color: COLOR_BLOCK, n: open });
 
   const a11yLabel = `Routing: ${auto} auto-populated, ${review} pending review, ${open} open questions`;

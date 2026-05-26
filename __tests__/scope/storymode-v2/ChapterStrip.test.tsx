@@ -109,7 +109,7 @@ describe('ChapterStrip', () => {
     expect(mixedBadge.props.accessibilityLabel).toMatch(/auto-populated/);
     expect(mixedBadge.props.accessibilityLabel).toMatch(/pending review/);
     expect(mixedBadge.props.accessibilityLabel).toMatch(/open questions/);
-    // Red chapter has auto=0, review=1, open=3 → must surface AVA + BLOCK.
+    // Red chapter has auto=0, review=1, open=3 → must surface TIM + BLOCK.
     const redBadge = getByTestId(`chapter-card-${redChapter.key}-routing-summary`);
     expect(redBadge).toBeTruthy();
   });
