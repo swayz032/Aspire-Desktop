@@ -246,6 +246,7 @@ export function ScopeTab(): React.ReactElement {
         story={storyV2Safe}
         activeChapterKey={ui.activeChapterKey ?? storyV2Chapters[0]?.key ?? null}
         onSelectChapter={(key) => setActiveChapterKey(key)}
+        projectId={projectId ?? null}
       />
     ),
     included: <IncludedWorkCard assemblies={story.assemblies} />,
