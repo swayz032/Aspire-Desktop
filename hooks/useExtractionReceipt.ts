@@ -28,6 +28,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import type { ExtractionReceipt } from '@/lib/api/blueprintsStoryV2';
+import { pushReceiptLatency } from '@/hooks/__internal/receiptLatencyLog';
 
 // ---------------------------------------------------------------------------
 // Custom error — surfaces HTTP status distinctly so callers can branch on
@@ -68,10 +69,17 @@ async function fetchReceipt(
   if (existing) return existing;
 
   const url = `/v1/blueprints/projects/${encodeURIComponent(projectId)}/receipts/${encodeURIComponent(receiptId)}`;
+  const startedAt = Date.now();
   const promise = (async (): Promise<ExtractionReceipt> => {
     try {
       const resp = await authenticatedFetch(url, { signal });
       if (!resp.ok) {
+        if (__DEV__) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[DV] useExtractionReceipt fetch error (${resp.status}) — ${receiptId}`,
+          );
+        }
         throw new ReceiptFetchError(
           `Receipt fetch failed: ${resp.status}`,
           resp.status,
@@ -80,7 +88,24 @@ async function fetchReceipt(
       }
       const body = (await resp.json()) as ExtractionReceipt;
       receiptCache.set(receiptId, body);
+      const latencyMs = Date.now() - startedAt;
+      if (__DEV__) {
+        pushReceiptLatency(latencyMs);
+        // eslint-disable-next-line no-console
+        console.log(
+          `[DV] useExtractionReceipt fetch ok (${latencyMs}ms) — ${receiptId}`,
+        );
+      }
       return body;
+    } catch (err) {
+      if (__DEV__ && !(err instanceof ReceiptFetchError)) {
+        // Network/abort etc — surface as a single warn with no body content.
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[DV] useExtractionReceipt fetch error (network) — ${receiptId}`,
+        );
+      }
+      throw err;
     } finally {
       inFlight.delete(receiptId);
     }

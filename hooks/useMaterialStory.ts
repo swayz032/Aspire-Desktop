@@ -80,10 +80,17 @@ async function fetchMaterialStory(
   if (existing) return existing;
 
   const url = `/v1/blueprints/projects/${encodeURIComponent(projectId)}/material-story`;
+  const startedAt = Date.now();
   const promise = (async (): Promise<MaterialStoryResponse> => {
     try {
       const resp = await authenticatedFetch(url, { signal });
       if (!resp.ok) {
+        if (__DEV__) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[DV] useMaterialStory fetch error (${resp.status}) — ${projectId}`,
+          );
+        }
         throw new MaterialStoryFetchError(
           `Material story fetch failed: ${resp.status}`,
           resp.status,
@@ -92,7 +99,22 @@ async function fetchMaterialStory(
       }
       const body = (await resp.json()) as MaterialStoryResponse;
       storyCache.set(projectId, { story: body, fetchedAt: Date.now() });
+      if (__DEV__) {
+        const latencyMs = Date.now() - startedAt;
+        // eslint-disable-next-line no-console
+        console.log(
+          `[DV] useMaterialStory fetch ok (${latencyMs}ms) — ${projectId}`,
+        );
+      }
       return body;
+    } catch (err) {
+      if (__DEV__ && !(err instanceof MaterialStoryFetchError)) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[DV] useMaterialStory fetch error (network) — ${projectId}`,
+        );
+      }
+      throw err;
     } finally {
       inFlight.delete(projectId);
     }
