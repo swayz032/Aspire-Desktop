@@ -48,6 +48,9 @@ import { AlternatesCard } from './AlternatesCard';
 import { TariffExposureCard } from './TariffExposureCard';
 import { TruthDistributionChart } from './TruthDistributionChart';
 import { useAdvancedMode } from '@/hooks/useAdvancedMode';
+import { DrewVisibilityHUD } from '@/components/dev/DrewVisibilityHUD';
+import { useMaterialStory } from '@/hooks/useMaterialStory';
+import { getReceiptLatencies } from '@/hooks/__internal/receiptLatencyLog';
 
 const EMPTY_STATE_COPY = 'Drop a plan set in Plans & Photos to see the story here.';
 
@@ -75,6 +78,10 @@ export function ScopeTab(): React.ReactElement {
     null;
   const story = useBlueprintStory(projectId);
   const actions = useBlueprintActions();
+  // DV Pass 5 — material story powers the HUD's BOUND/UNKNOWN counters. Cheap
+  // (TTL-cached; returns empty maps when projectId is null) so we always call
+  // it at hook-top to keep React happy with Rules of Hooks.
+  const materialStory = useMaterialStory(projectId);
   const ui = useScopeUi();
   const { setActiveCard, setActiveChapterKey } = scopeUiActions();
 
@@ -327,6 +334,15 @@ export function ScopeTab(): React.ReactElement {
           testID="scope-chip-strip"
         />
       ) : null}
+
+      {/* DV Pass 5 — dev-only floating HUD, gated on `?dv=1`. Position
+          absolute (declared in DrewVisibilityHUD styles) so it floats over
+          the canvas without affecting layout. */}
+      <DrewVisibilityHUD
+        story={story.storyV2}
+        materialsBySheet={materialStory.materialsBySheet}
+        receiptFetchLatenciesMs={getReceiptLatencies()}
+      />
     </View>
   );
 }
