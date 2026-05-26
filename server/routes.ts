@@ -20,16 +20,16 @@ const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_R
   : null;
 
 const router = Router();
-// 2026-05-21: rotated from 58f82b89-… because that persona had a legacy
-// `voiceSpeed: 1` field (now a new Anam setting). Anam's engine threw
-// "Cannot set properties of undefined (setting 'speed')" on every session
-// start, and PUT /v1/personas validates voiceSpeed as a number — there's
-// no way to unset it on the old persona. New persona created via POST has
-// voiceSpeed: null by default and engine starts cleanly. Old persona
-// 58f82b89-8ae7-43cc-930d-be8def14dff3 left in place as rollback for ~24h
-// then can be DELETEd. Mirror change in buildPersonaPutPayload to set
-// voiceSpeed: null on future syncs so this can't recur.
-const CANONICAL_ANAM_AVA_PERSONA_ID = 'c0de05b7-45f9-4475-8f90-ba597d6a0314';
+// 2026-05-26: reverted from c0de05b7 — that persona was never created on
+// Anam (the 2026-05-21 "rotation" only updated local files, never POSTed),
+// so prod's engine/session calls returned 404 once the rotation deployed.
+// Real root cause is an Anam engine bug: when persona.voiceSpeed is
+// truthy, the engine throws "Cannot set properties of undefined (setting
+// 'speed')" trying to set .speed on an undefined voice-generation object.
+// Fix: keep voiceSpeed=0 on this persona (matches Finn, which works).
+// The field is the SPEED slider in lab.anam.ai — leftmost position = 0.
+// Smoke test 2026-05-26: PUT voiceSpeed=0 → mint → engine/session = 200.
+const CANONICAL_ANAM_AVA_PERSONA_ID = '58f82b89-8ae7-43cc-930d-be8def14dff3';
 const CONFIGURED_ANAM_AVA_PERSONA_ID = process.env.ANAM_AVA_PERSONA_ID?.trim() || CANONICAL_ANAM_AVA_PERSONA_ID;
 const CANONICAL_ANAM_AVA_TOOL_NAMES = [
   'ava_get_context',
