@@ -3973,6 +3973,13 @@ router.post('/api/telemetry/canvas', async (req: Request, res: Response) => {
  * - Correlation ID forwarding — Gate 2: Observability
  */
 const ORCHESTRATOR_TIMEOUT_MS = 90_000;
+// Anam's engine waits ~5s for the LLM webhook to start streaming before it
+// emits its hardcoded fallback narration ("I'm having trouble thinking…").
+// The webhook MUST flush its first SSE chunk and complete inside this budget
+// — anything slower triggers the engine fallback and Ava sounds broken to
+// the user. Pre-flush a heartbeat chunk before calling the orchestrator,
+// then race the orchestrator against this timeout. See /v1/chat/completions.
+const ANAM_LLM_WEBHOOK_TIMEOUT_MS = 4_500;
 const CIRCUIT_BREAKER_THRESHOLD = 3;
 const CIRCUIT_BREAKER_RESET_MS = 60_000;
 let orchestratorConsecutiveFailures = 0;
@@ -5966,83 +5973,117 @@ router.post('/v1/chat/completions', async (req: Request, res: Response) => {
       return res.status(503).json({ error: { message: 'Orchestrator not configured', type: 'server_error' } });
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), ORCHESTRATOR_TIMEOUT_MS);
-
-    const orchResponse = await fetch(`${ORCHESTRATOR_URL}/v1/intents`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Suite-Id': suiteId,
-        'X-Office-Id': officeId || suiteId,
-        'X-Actor-Id': userId,
-        'X-Correlation-Id': correlationId,
-      },
-      body: JSON.stringify({
-        text: utterance,
-        agent: agentName,
-        requested_agent: agentName,
-        channel: 'avatar',
-        message_history: history,
-        user_profile: profileContext,
-      }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    let responseText = "I'm here to help. Could you repeat that?";
-    if (orchResponse.ok) {
-      const data = await orchResponse.json();
-      responseText = data.text || data.message || responseText;
-    } else {
-      const errorText = await orchResponse.text();
-      logger.error('Anam LLM: orchestrator error', { correlationId, status: orchResponse.status, error: errorText.substring(0, 200) });
-      responseText = 'Let me try that again in a moment.';
-    }
-
-    // Step 5: Return response in OpenAI Chat Completions format
     const completionId = `chatcmpl-${correlationId}`;
     const created = Math.floor(Date.now() / 1000);
+    const startedAt = Date.now();
 
-    if (stream) {
-      // SSE streaming format (what Anam expects)
+    // Pre-flush SSE headers + heartbeat BEFORE calling the orchestrator.
+    // Anam's engine emits "I'm having trouble thinking" if no SSE chunk
+    // arrives within ~5s. A heartbeat chunk with empty content keeps the
+    // stream alive without making Ava say anything until real content lands.
+    let sseFlushed = false;
+    const flushSseHeaders = () => {
+      if (sseFlushed) return;
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
-
-      // Send the full response as one chunk (orchestrator is non-streaming)
-      // Anam's TTS processes this into speech — chunking adds unnecessary latency.
+      res.setHeader('X-Accel-Buffering', 'no');
+      // Heartbeat: role-only delta keeps the SSE channel open. Anam treats
+      // empty content as "still generating" and does NOT emit its fallback.
+      const heartbeat = {
+        id: completionId,
+        object: 'chat.completion.chunk',
+        created,
+        model: 'aspire-orchestrator',
+        choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }],
+      };
+      res.write(`data: ${JSON.stringify(heartbeat)}\n\n`);
+      if (typeof (res as any).flush === 'function') (res as any).flush();
+      sseFlushed = true;
+    };
+    const writeContentAndFinish = (content: string) => {
       const chunk = {
         id: completionId,
         object: 'chat.completion.chunk',
         created,
         model: 'aspire-orchestrator',
-        choices: [{
-          index: 0,
-          delta: { role: 'assistant', content: responseText },
-          finish_reason: null,
-        }],
+        choices: [{ index: 0, delta: { content }, finish_reason: null }],
       };
       res.write(`data: ${JSON.stringify(chunk)}\n\n`);
-
-      // Send finish chunk
       const finishChunk = {
         id: completionId,
         object: 'chat.completion.chunk',
         created,
         model: 'aspire-orchestrator',
-        choices: [{
-          index: 0,
-          delta: {},
-          finish_reason: 'stop',
-        }],
+        choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
       };
       res.write(`data: ${JSON.stringify(finishChunk)}\n\n`);
       res.write('data: [DONE]\n\n');
       res.end();
+    };
+
+    if (stream) flushSseHeaders();
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), ANAM_LLM_WEBHOOK_TIMEOUT_MS);
+
+    let responseText = "I'm here to help. Could you repeat that?";
+    let orchOutcome: 'ok' | 'error' | 'timeout' = 'ok';
+    let orchStatus: number | null = null;
+    try {
+      const orchResponse = await fetch(`${ORCHESTRATOR_URL}/v1/intents`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Suite-Id': suiteId,
+          'X-Office-Id': officeId || suiteId,
+          'X-Actor-Id': userId,
+          'X-Correlation-Id': correlationId,
+        },
+        body: JSON.stringify({
+          text: utterance,
+          agent: agentName,
+          requested_agent: agentName,
+          channel: 'avatar',
+          message_history: history,
+          user_profile: profileContext,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      orchStatus = orchResponse.status;
+      if (orchResponse.ok) {
+        const data = await orchResponse.json();
+        responseText = data.text || data.message || responseText;
+      } else {
+        const errorText = await orchResponse.text();
+        logger.error('Anam LLM: orchestrator error', { correlationId, status: orchResponse.status, error: errorText.substring(0, 200) });
+        orchOutcome = 'error';
+        responseText = 'Let me try that again in a moment.';
+      }
+    } catch (fetchErr) {
+      clearTimeout(timeoutId);
+      const isAbort = fetchErr instanceof Error && fetchErr.name === 'AbortError';
+      if (isAbort) {
+        orchOutcome = 'timeout';
+        // Graceful filler — Anam speaks THIS instead of its own fallback.
+        responseText = 'Let me look into that — give me one moment.';
+        logger.warn('Anam LLM: orchestrator exceeded Anam webhook budget', {
+          correlationId, budget_ms: ANAM_LLM_WEBHOOK_TIMEOUT_MS, elapsed_ms: Date.now() - startedAt,
+        });
+      } else {
+        orchOutcome = 'error';
+        responseText = 'Let me try that again in a moment.';
+        logger.error('Anam LLM: orchestrator fetch failed', {
+          correlationId, error: fetchErr instanceof Error ? fetchErr.message : 'unknown',
+        });
+      }
+    }
+
+    // Step 5: Return response in OpenAI Chat Completions format
+    if (stream) {
+      writeContentAndFinish(responseText);
     } else {
-      // Non-streaming response
       res.json({
         id: completionId,
         object: 'chat.completion',
@@ -6062,15 +6103,40 @@ router.post('/v1/chat/completions', async (req: Request, res: Response) => {
       suiteId,
       agent: agentName,
       stream: !!stream,
+      outcome: orchOutcome,
+      orch_status: orchStatus,
+      elapsed_ms: Date.now() - startedAt,
       responseLength: responseText.length,
     });
   } catch (error: unknown) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      logger.error('Anam LLM: orchestrator timeout', { correlationId });
-      return res.status(504).json({ error: { message: 'Request timeout', type: 'server_error' } });
-    }
     logger.error('Anam LLM endpoint error', { correlationId, error: error instanceof Error ? error.message : 'unknown' });
-    return res.status(500).json({ error: { message: 'Internal server error', type: 'server_error' } });
+    if (!res.headersSent) {
+      return res.status(500).json({ error: { message: 'Internal server error', type: 'server_error' } });
+    }
+    // Headers already flushed (SSE) — send graceful filler so Ava speaks
+    // something instead of the engine's hardcoded "trouble thinking".
+    try {
+      const completionId = `chatcmpl-${correlationId}`;
+      const created = Math.floor(Date.now() / 1000);
+      const fallbackChunk = {
+        id: completionId,
+        object: 'chat.completion.chunk',
+        created,
+        model: 'aspire-orchestrator',
+        choices: [{ index: 0, delta: { content: 'Let me try that again in a moment.' }, finish_reason: null }],
+      };
+      res.write(`data: ${JSON.stringify(fallbackChunk)}\n\n`);
+      const finishChunk = {
+        id: completionId,
+        object: 'chat.completion.chunk',
+        created,
+        model: 'aspire-orchestrator',
+        choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+      };
+      res.write(`data: ${JSON.stringify(finishChunk)}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+    } catch { /* best-effort */ }
   }
 });
 
