@@ -129,6 +129,7 @@ export function StoryPanelV2({ story, activeChapterKey, onSelectChapter, project
               viewMode={viewMode}
               activeSheet={activeSheetObj ? { sheet_code: activeSheetObj.sheet_code, sheet_title: activeSheetObj.sheet_title } : null}
               onViewModeChange={setViewMode}
+              projectId={projectId}
             />
           </View>
           <View style={styles.rightSlot}>

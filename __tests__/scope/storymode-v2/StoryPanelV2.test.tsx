@@ -7,6 +7,18 @@ import { render } from '@testing-library/react-native';
 jest.mock('@/hooks/useExtractionReceipt', () => ({
   useExtractionReceipt: () => ({ receipt: null, isLoading: false, error: null }),
 }));
+// 2026-05-25 — DV Pass 4: ChapterLeftPane's SheetView now mounts
+// MaterialStoryPanel which calls useMaterialStory(). Mock it so the
+// transitive supabase env-guard doesn't trip while loading this bundle.
+jest.mock('@/hooks/useMaterialStory', () => ({
+  useMaterialStory: () => ({
+    story: null,
+    materialsBySheet: new Map(),
+    materialsByChapter: new Map(),
+    isLoading: false,
+    error: null,
+  }),
+}));
 import { StoryPanelV2 } from '@/components/service-hub/estimate-studio/scope/StoryPanelV2';
 import type { BlueprintStoryV2 } from '@/lib/api/blueprintsApi';
 

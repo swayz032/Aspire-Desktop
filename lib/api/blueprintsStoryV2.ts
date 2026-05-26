@@ -182,6 +182,53 @@ export interface BlueprintRegion {
   kind: 'primary' | 'secondary';
 }
 
+// ---------------------------------------------------------------------------
+// 2026-05-25 — DV Pass 4: Material Story types.
+//
+// MaterialInstance is a single resolved material occurrence on a sheet,
+// bound to a legend symbol with provenance metadata (which cluster matched,
+// which motif hash, how resolution happened, and the immutable receipt id
+// that proves the binding). Grouped into chapters for the panel UI.
+// ---------------------------------------------------------------------------
+
+export type MaterialResolutionSource =
+  | 'topology_match'
+  | 'cluster_propagation'
+  | 'vlm_verified'
+  | 'unknown';
+
+export interface MaterialInstance {
+  // Identity
+  instance_id: string;
+  sheet_id: string;
+  sheet_code: string;  // denormalized for UI display
+  // Binding
+  symbol_name: string;            // 'Single-pole switch', 'Toilet — wall hung'
+  legend_label: string;           // 'S1' / 'WC-2'
+  legend_specification: string;   // 'Kohler K-3998, elongated, 1.28 GPF'
+  // Provenance
+  cluster_id: string;
+  motif_hash: string;
+  resolution_source: MaterialResolutionSource;
+  confidence: number;             // 0..1
+  // Quantity
+  instance_count: number;
+  // Trust
+  tier: ConfidenceTier;
+  receipt_id: string;
+}
+
+export interface MaterialStoryChapter {
+  key: string;
+  materials: MaterialInstance[];
+}
+
+export interface MaterialStoryResponse {
+  project_id: string;
+  chapters: MaterialStoryChapter[];
+  updated_at: string | null;
+}
+
 export function _assertBlueprintStoryV2(value: unknown): asserts value is BlueprintStoryV2 {
   if (value == null || typeof value !== 'object') {
     throw new Error('BlueprintStoryV2: expected object');
