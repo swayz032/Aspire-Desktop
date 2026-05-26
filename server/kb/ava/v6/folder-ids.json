@@ -1,7 +1,7 @@
 {
   "_comment": "Canonical Anam KB folder IDs for Ava persona. LOCKED — do not rename folders without updating ANAM_AVA_PROMPT_CONTRACT.md and validator. Captured 2026-05-07.",
-  "personaId": "58f82b89-8ae7-43cc-930d-be8def14dff3",
-  "knowledgeToolId": "af247cb8-d1ce-4721-9ebe-d0ec397ba9eb",
+  "personaId": "c0de05b7-45f9-4475-8f90-ba597d6a0314",
+  "knowledgeToolId": "daf87c46-8a47-4ee0-a03a-c8b799174e8f",
   "knowledgeToolName": "Knowledge_Ava",
   "folders": {
     "ava_voice_rules": {
