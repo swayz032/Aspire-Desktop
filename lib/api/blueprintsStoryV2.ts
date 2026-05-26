@@ -77,6 +77,46 @@ export interface ChapterSource {
 export type ConfidenceTier = 'GREEN' | 'YELLOW' | 'RED';
 export type RoutingAction = 'AUTO_POPULATE' | 'REVIEW_PENDING' | 'OPEN_QUESTION';
 
+/**
+ * 2026-05-25 — DV wave: full ExtractionReceipt shape returned by the backend
+ * ledger endpoint `/v1/blueprints/projects/{projectId}/receipts/{receiptId}`.
+ *
+ * Receipts are IMMUTABLE (Law #2). Once minted by the backend they never
+ * change — clients can cache them forever within a session.
+ *
+ * Lazy-loaded by the SheetReceiptDrawer via `useExtractionReceipt(...)`.
+ */
+export interface ExtractionReceipt {
+  receipt_id: string;
+  sheet_id: string;
+  doc_hash: string;
+  pipeline_version: string;
+  tier: ConfidenceTier;
+  routing_action: RoutingAction;
+  disqualifier_codes: string[];
+
+  // Evidence
+  evidence_ocr_tokens: Array<{
+    text: string;
+    confidence: number;
+    bbox: [number, number, number, number]; // x, y, w, h
+  }>;
+  cluster_bbox?: [number, number, number, number];
+  iou?: number;
+  primitive_recall?: number;
+  primitive_precision?: number;
+
+  // Pipeline metadata
+  ocr_engine: string;
+  runtime_ms: number;
+  cost_usd: number;
+  trajectory_class?: 'FOLLOW' | 'STAY' | 'DRIFT_NEAR' | 'SPLIT_CLUSTER' | 'THIRD_REGION' | 'NULL_COLLAPSE';
+
+  // Audit
+  audit_trail: string; // path/URL to JSONL
+  created_at: string; // ISO 8601
+}
+
 /** True iff tier is GREEN. Narrows undefined → false. */
 export function isGreen(tier: ConfidenceTier | undefined): boolean {
   return tier === 'GREEN';

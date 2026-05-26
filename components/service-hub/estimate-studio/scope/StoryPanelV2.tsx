@@ -21,15 +21,20 @@ import type { BlueprintStoryV2 } from '@/lib/api/blueprintsApi';
 import { ChapterLeftPane } from './ChapterLeftPane';
 import { ChapterBlueprintPane } from './ChapterBlueprintPane';
 import { ChapterStrip } from './ChapterStrip';
+import { SheetReceiptDrawer } from './SheetReceiptDrawer';
 import { useChapterAnnotations } from './useChapterAnnotations';
 
 interface Props {
   story: BlueprintStoryV2;
   activeChapterKey: string | null;
   onSelectChapter: (key: string) => void;
+  /** 2026-05-25 — DV Pass 3: passed through to SheetReceiptDrawer so the
+   *  provenance lookup can scope its receipt fetch by project. Optional —
+   *  legacy callers (and the empty-state path) work without it. */
+  projectId?: string | null;
 }
 
-export function StoryPanelV2({ story, activeChapterKey, onSelectChapter }: Props): React.ReactElement {
+export function StoryPanelV2({ story, activeChapterKey, onSelectChapter, projectId = null }: Props): React.ReactElement {
   // All hooks must be called unconditionally before any early return —
   // hence we compute `active` (with a fallback shim when empty) up front,
   // even though the empty branch below doesn't use it.
@@ -137,6 +142,11 @@ export function StoryPanelV2({ story, activeChapterKey, onSelectChapter }: Props
             />
           </View>
         </View>
+        {activeSheetObj ? (
+          <View style={styles.drawerSlot}>
+            <SheetReceiptDrawer projectId={projectId} sheet={activeSheetObj} />
+          </View>
+        ) : null}
         <ChapterStrip
           chapters={story.chapters}
           activeKey={active.key}
@@ -160,6 +170,7 @@ const styles = StyleSheet.create({
   split: { flexDirection: 'row', flex: 1, minHeight: 0 },
   leftSlot: { width: 440, minHeight: 0 },
   rightSlot: { flex: 1, minHeight: 0 },
+  drawerSlot: { paddingHorizontal: 12, paddingVertical: 8 },
   empty: {
     flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 28,
   },

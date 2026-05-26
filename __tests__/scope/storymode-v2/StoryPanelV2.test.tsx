@@ -1,5 +1,12 @@
 import React from 'react';
 import { render } from '@testing-library/react-native';
+// 2026-05-25 — DV Pass 3: StoryPanelV2 now mounts SheetReceiptDrawer which
+// transitively imports `lib/authenticatedFetch` -> supabase at module-load
+// time. Mock the hook before the tree imports it so Jest doesn't trip the
+// "Missing EXPO_PUBLIC_SUPABASE_URL" guard while loading this test bundle.
+jest.mock('@/hooks/useExtractionReceipt', () => ({
+  useExtractionReceipt: () => ({ receipt: null, isLoading: false, error: null }),
+}));
 import { StoryPanelV2 } from '@/components/service-hub/estimate-studio/scope/StoryPanelV2';
 import type { BlueprintStoryV2 } from '@/lib/api/blueprintsApi';
 
