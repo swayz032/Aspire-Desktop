@@ -71,6 +71,16 @@ import { BlueprintZoomStage } from './BlueprintZoomStage';
 import { sheetDisplayName } from '@/lib/scope/sheet-naming';
 
 // ---------------------------------------------------------------------------
+// DV wave — tier color map for active-tab bar tinting.
+// Undefined `sheet.tier` keeps the legacy amber bar (backward-compatible).
+// ---------------------------------------------------------------------------
+const TIER_COLORS = {
+  GREEN: '#22c55e',
+  YELLOW: '#fbbf24',
+  RED: '#ef4444',
+} as const;
+
+// ---------------------------------------------------------------------------
 // Public component
 // ---------------------------------------------------------------------------
 
@@ -241,7 +251,22 @@ function SheetTabBar({ sheets, activeSheetCode, onSelect }: SheetTabBarProps): R
             <Text style={[styles.tabTitle, isActive ? styles.tabTitleActive : null]} numberOfLines={1}>
               {display.secondary}
             </Text>
-            {isActive ? <View style={styles.tabActiveBar} /> : null}
+            {sheet.disqualifier_codes && sheet.disqualifier_codes.length > 0 ? (
+              <View
+                style={styles.tabDisqualifierBadge}
+                testID={`sheet-tab-disqualifier-${sheet.sheet_code}`}
+              >
+                <Text style={styles.tabDisqualifierBadgeText}>{sheet.disqualifier_codes.length}</Text>
+              </View>
+            ) : null}
+            {isActive ? (
+              <View
+                style={[
+                  styles.tabActiveBar,
+                  sheet.tier ? { backgroundColor: TIER_COLORS[sheet.tier] } : null,
+                ]}
+              />
+            ) : null}
           </Pressable>
         );
       })}
@@ -367,6 +392,28 @@ const styles = StyleSheet.create({
     bottom: 0,
     height: 3,
     backgroundColor: '#fbbf24',
+  },
+  // DV wave — small red disqualifier count pill in tab's top-right corner.
+  tabDisqualifierBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    minWidth: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#ef4444',
+    borderWidth: 1,
+    borderColor: 'rgba(11,13,18,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  tabDisqualifierBadgeText: {
+    color: '#fff',
+    fontSize: 8,
+    fontWeight: '800',
+    lineHeight: 10,
+    fontVariant: ['tabular-nums'],
   },
   // ─── Stage ───
   stage: {

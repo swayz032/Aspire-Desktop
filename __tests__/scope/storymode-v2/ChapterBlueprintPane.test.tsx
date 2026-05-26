@@ -2,6 +2,7 @@ import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import { ChapterBlueprintPane } from '@/components/service-hub/estimate-studio/scope/ChapterBlueprintPane';
 import type { BlueprintChapter, BlueprintRegion } from '@/lib/api/blueprintsApi';
+import { mixedChapter, redChapter, greenChapter } from './_fixtures/tieredChapters';
 
 const region: BlueprintRegion = {
   sheet_code: 'A-403', x: 0.3, y: 0.3, w: 0.1, h: 0.1, label: 'X', kind: 'primary',
@@ -80,5 +81,52 @@ describe('ChapterBlueprintPane', () => {
     );
     expect(getByTestId('blueprint-pane-no-sheets')).toBeTruthy();
     expect(queryAllByTestId(/^sheet-tab-/)).toHaveLength(0);
+  });
+
+  // ─── DV wave: tier-tinted active bar + disqualifier badge ───
+  describe('DV tier surface', () => {
+    it('renders tier-tinted active bar when sheet has tier', () => {
+      const ch = mixedChapter as unknown as BlueprintChapter;
+      const { getByTestId, UNSAFE_getAllByType } = render(
+        <ChapterBlueprintPane chapter={ch} regions={[]} hoverRegionKey={null} onHoverRegion={() => {}} />
+      );
+      // Activate a YELLOW sheet (M-201).
+      fireEvent.press(getByTestId('sheet-tab-M-201'));
+      // The active bar is the View nested inside the active Pressable whose
+      // resolved style has `height: 3`. Flatten and look for our injected
+      // tier color override (#fbbf24 = YELLOW).
+      const { View: RNView } = require('react-native');
+      const views = UNSAFE_getAllByType(RNView);
+      const hasYellowBar = views.some((v: any) => {
+        const s = Array.isArray(v.props.style)
+          ? Object.assign({}, ...v.props.style.filter(Boolean))
+          : v.props.style || {};
+        return s.height === 3 && s.backgroundColor === '#fbbf24';
+      });
+      expect(hasYellowBar).toBe(true);
+    });
+
+    it('renders disqualifier badge when sheet has disqualifier_codes', () => {
+      const ch = redChapter as unknown as BlueprintChapter;
+      const { getByTestId } = render(
+        <ChapterBlueprintPane chapter={ch} regions={[]} hoverRegionKey={null} onHoverRegion={() => {}} />
+      );
+      // P-201 has 2 disqualifier codes; P-301 has 4.
+      const badge201 = getByTestId('sheet-tab-disqualifier-P-201');
+      expect(badge201).toBeTruthy();
+      const badge301 = getByTestId('sheet-tab-disqualifier-P-301');
+      expect(badge301).toBeTruthy();
+    });
+
+    it('omits disqualifier badge when no disqualifier_codes', () => {
+      const ch = greenChapter as unknown as BlueprintChapter;
+      const { queryByTestId } = render(
+        <ChapterBlueprintPane chapter={ch} regions={[]} hoverRegionKey={null} onHoverRegion={() => {}} />
+      );
+      // greenChapter A-101 is GREEN with no disqualifier_codes field at all.
+      expect(queryByTestId('sheet-tab-disqualifier-A-101')).toBeNull();
+      // A-401 has disqualifier_codes: [] (empty) — also no badge.
+      expect(queryByTestId('sheet-tab-disqualifier-A-401')).toBeNull();
+    });
   });
 });
