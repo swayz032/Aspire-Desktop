@@ -35,6 +35,7 @@ import type {
   ScopeItem,
 } from '@/lib/api/blueprintsApi';
 import { SmartText } from './SmartText';
+import { MaterialStoryPanel } from './MaterialStoryPanel';
 import { archetypeFor } from '@/lib/scope/archetype';
 import { storyForSheet, type PerSheetStory } from '@/lib/scope/per-sheet-content';
 import { sheetDisplayName } from '@/lib/scope/sheet-naming';
@@ -60,6 +61,11 @@ interface Props {
    *  switch. Lifted to StoryPanelV2 so external state (sheet tab clicks)
    *  can stay in sync. No-op if omitted. */
   onViewModeChange?: (mode: 'chapter' | 'sheet') => void;
+  /** 2026-05-25 — DV Pass 4: passed through to MaterialStoryPanel inside
+   *  SheetView so the per-project material story can be fetched and the
+   *  per-sheet materials zone can render. Optional — legacy callers (and
+   *  the chapter-view path) work without it. */
+  projectId?: string | null;
 }
 
 const AMBER = '#fbbf24';
@@ -175,10 +181,12 @@ function SheetView({
   sheet,
   chapterKey,
   onSheetJump,
+  projectId,
 }: {
   sheet: { sheet_code: string; sheet_title: string };
   chapterKey: string;
   onSheetJump?: (sheetCode: string) => void;
+  projectId?: string | null;
 }): React.ReactElement {
   const arch = archetypeFor(sheet.sheet_code, sheet.sheet_title);
   const story: PerSheetStory = storyForSheet(arch.archetype, chapterKey, sheet.sheet_code, sheet.sheet_title);
@@ -305,6 +313,18 @@ function SheetView({
         )}
       </ZoneFrame>
 
+      {/* MATERIALS ON THIS SHEET — DV Pass 4. Renders the resolved
+          MaterialInstance rows for this sheet pulled from the per-project
+          material story. The panel handles its own loading / empty /
+          unknown-review / error states so SheetView stays declarative.
+          TODO(material-story v2): wire onReceiptClick to the existing
+          SheetReceiptDrawer once per-material receipts hang off it. */}
+      <MaterialStoryPanel
+        projectId={projectId ?? null}
+        sheetId={sheet.sheet_code}
+        sheetCode={sheet.sheet_code}
+      />
+
       {/* WATCH OUT FOR (this sheet) */}
       <ZoneFrame testID="zone-sheet-watchouts" icon="⚠" title="WATCH OUT FOR (this sheet)" accent={RED} count={story.watchOutFor.length}>
         {story.watchOutFor.map((m, i) => (
@@ -327,6 +347,7 @@ export function ChapterLeftPane({
   viewMode = 'chapter',
   activeSheet,
   onViewModeChange,
+  projectId,
 }: Props) {
   const { zones } = chapter;
   const ordinalStr = String(chapter.ordinal).padStart(2, '0');
@@ -425,6 +446,7 @@ export function ChapterLeftPane({
           sheet={activeSheet}
           chapterKey={chapter.key}
           onSheetJump={onSheetJump}
+          projectId={projectId}
         />
       ) : null}
 

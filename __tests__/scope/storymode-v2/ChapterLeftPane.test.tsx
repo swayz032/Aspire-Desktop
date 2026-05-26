@@ -3,6 +3,19 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { ChapterLeftPane } from '@/components/service-hub/estimate-studio/scope/ChapterLeftPane';
 import type { BlueprintChapter } from '@/lib/api/blueprintsApi';
 
+// 2026-05-25 — DV Pass 4: SheetView now mounts MaterialStoryPanel which calls
+// useMaterialStory(). Mock the hook so existing chapter-view tests don't try
+// to hit the network.
+jest.mock('@/hooks/useMaterialStory', () => ({
+  useMaterialStory: jest.fn(() => ({
+    story: null,
+    materialsBySheet: new Map(),
+    materialsByChapter: new Map(),
+    isLoading: false,
+    error: null,
+  })),
+}));
+
 // 2026-05-24 — Zones 3-5 (tasks/buy-list/open-questions) collapse by default.
 // Helper expands a zone via its `-toggle` Pressable so tests can assert body
 // content. Zones 1-2 (what-this-is/in-scope) default expanded, no helper needed.
@@ -214,6 +227,54 @@ describe('ChapterLeftPane', () => {
     expect(getByTestId('zone-sheet-watchouts')).toBeTruthy();
     // Chapter zones do NOT render in sheet view
     expect(queryByTestId('zone-what-this-is')).toBeNull();
+  });
+
+  it('mounts MaterialStoryPanel in sheet view between WHAT TO BUY and WATCH OUT FOR', () => {
+    const screen = render(
+      <ChapterLeftPane
+        chapter={baseChapter}
+        hoverBulletKey={null}
+        onHoverBullet={() => {}}
+        activeSheet={{ sheet_code: 'A-403', sheet_title: 'Restroom Plan' }}
+        viewMode="sheet"
+        onViewModeChange={() => {}}
+        projectId="proj_test_1"
+      />,
+    );
+    // Panel mounts inside sheet view.
+    expect(screen.getByTestId('material-story-panel')).toBeTruthy();
+    // The 3 surrounding zones still render.
+    expect(screen.getByTestId('zone-sheet-buy')).toBeTruthy();
+    expect(screen.getByTestId('zone-sheet-watchouts')).toBeTruthy();
+
+    // Order assertion: walk the full rendered tree, collecting every testID
+    // in render-traversal order, then assert relative positions. Reading from
+    // root.toJSON() gives us the deterministic render-order snapshot.
+    const root = screen.toJSON();
+    const order: string[] = [];
+    const walk = (node: unknown): void => {
+      if (!node || typeof node !== 'object') return;
+      // toJSON can return arrays at the root level.
+      if (Array.isArray(node)) {
+        node.forEach(walk);
+        return;
+      }
+      const n = node as {
+        props?: { testID?: string };
+        children?: unknown;
+      };
+      if (n.props?.testID) order.push(n.props.testID);
+      const kids = n.children;
+      if (Array.isArray(kids)) kids.forEach(walk);
+      else if (kids) walk(kids);
+    };
+    walk(root);
+    const buyIdx = order.indexOf('zone-sheet-buy');
+    const matIdx = order.indexOf('material-story-panel');
+    const watchIdx = order.indexOf('zone-sheet-watchouts');
+    expect(buyIdx).toBeGreaterThanOrEqual(0);
+    expect(matIdx).toBeGreaterThan(buyIdx);
+    expect(watchIdx).toBeGreaterThan(matIdx);
   });
 
   it('toggling from chapter to sheet calls onViewModeChange with the new mode', () => {
