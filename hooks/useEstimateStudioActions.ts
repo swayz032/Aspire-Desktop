@@ -16,6 +16,7 @@
 import { useCallback } from 'react';
 import { resetBlueprintUpload } from '@/lib/blueprintUploadStore';
 import { setActiveSheetId } from '@/lib/activeSheetStore';
+import { clearBlueprintProjectPollCache } from '@/hooks/useBlueprintProjectPoll';
 
 interface EstimateStudioActions {
   onUpload: () => void;
@@ -52,6 +53,14 @@ export function useEstimateStudioActions(): EstimateStudioActions {
     }
     try {
       setActiveSheetId(null);
+    } catch {
+      /* noop */
+    }
+    // 2026-05-26 — Also drop the project poll cache so a remove-then-upload
+    // sequence on the same project_id can't surface stale sheets while the
+    // new ingest runs.
+    try {
+      clearBlueprintProjectPollCache();
     } catch {
       /* noop */
     }
