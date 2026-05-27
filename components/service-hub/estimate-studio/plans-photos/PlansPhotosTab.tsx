@@ -28,6 +28,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useBlueprintUpload } from '@/hooks/useBlueprintUpload';
 import { useBlueprintProjectPoll } from '@/hooks/useBlueprintProjectPoll';
+import { STAGE_TERMINAL } from '@/lib/api/blueprintsApi';
 import { useBlueprintUploadSnapshot } from '@/lib/blueprintUploadStore';
 import {
   plansPhotosUiActions,
@@ -147,18 +148,33 @@ export function PlansPhotosTab(): React.ReactElement {
   // phase OR has a project but no sheets yet. UploadDropZone now only
   // renders in the truly-idle and error states, eliminating all
   // intermediate flashes.
+  // 2026-05-26 — `upload.phase === 'success'` REMOVED from the in-flight set.
+  // Reason: once the backend has accepted the upload, the canvas tracks the
+  // project via the poll hook, not the upload hook's local phase. The upload
+  // hook only auto-resets to 'idle' after the poll reports all stages
+  // terminal. The known `stage_progress.see` controller bug (see/not_started
+  // when SEE produces zero symbols on non-MEP) means `success` can stick
+  // forever for civil/residential/structural blueprints, holding the
+  // bridging loader open even though sheets are ready to render.
   const uploadInFlight =
     upload.phase === 'reading' ||
     upload.phase === 'init' ||
     upload.phase === 'uploading' ||
     upload.phase === 'completing' ||
     upload.phase === 'ingesting' ||
-    upload.phase === 'classifying' ||
-    upload.phase === 'success';
+    upload.phase === 'classifying';
   const ingestStatus = poll.stageProgress?.ingest ?? 'pending';
   const ingestHardFailed = ingestStatus === 'error';
+  // Only treat "no sheets yet" as bridging if ingest hasn't finished. Once
+  // ingest is terminal and sheets are still empty, the empty-state card
+  // handles it (genuine no-sheets-found). And if sheets DO arrive, we drop
+  // the loader regardless of upload.phase.
+  const ingestTerminal = STAGE_TERMINAL.has(ingestStatus);
   const awaitingFirstSheets =
-    hasProject && poll.sheets.length === 0 && !ingestHardFailed;
+    hasProject &&
+    poll.sheets.length === 0 &&
+    !ingestHardFailed &&
+    !ingestTerminal;
   const showBridgingLoader = uploadInFlight || awaitingFirstSheets;
 
   const card = useMemo<React.ReactNode>(() => {
