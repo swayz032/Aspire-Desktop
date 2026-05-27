@@ -148,34 +148,41 @@ export function PlansPhotosTab(): React.ReactElement {
   // phase OR has a project but no sheets yet. UploadDropZone now only
   // renders in the truly-idle and error states, eliminating all
   // intermediate flashes.
-  // 2026-05-26 — `upload.phase === 'success'` REMOVED from the in-flight set.
-  // Reason: once the backend has accepted the upload, the canvas tracks the
-  // project via the poll hook, not the upload hook's local phase. The upload
-  // hook only auto-resets to 'idle' after the poll reports all stages
-  // terminal. The known `stage_progress.see` controller bug (see/not_started
-  // when SEE produces zero symbols on non-MEP) means `success` can stick
-  // forever for civil/residential/structural blueprints, holding the
-  // bridging loader open even though sheets are ready to render.
-  const uploadInFlight =
+  // 2026-05-26 — Bridging loader rule, simplified.
+  //
+  // Prior versions tried to gate on `upload.phase`, but the upload hook never
+  // transitions OUT of 'ingesting' on its own — it stays there for the rest
+  // of the session because nothing wires poll state back to phase. That made
+  // the loader stick forever as soon as one upload was queued, even though
+  // sheets had long since rendered.
+  //
+  // Correct rule: the loader is ONLY a bridge between (a) the user clicking
+  // upload and (b) the project's sheets becoming visible. The moment sheets
+  // arrive in the poll, drop the loader — the user has visible content,
+  // there's nothing to bridge to. If sheets is still empty AND ingest hasn't
+  // finished, keep the loader. If sheets is empty AND ingest IS terminal,
+  // that's the empty-state card's job, not the loader's.
+  const ingestStatus = poll.stageProgress?.ingest ?? 'pending';
+  const ingestHardFailed = ingestStatus === 'error';
+  const ingestTerminal = STAGE_TERMINAL.has(ingestStatus);
+  // Pre-handoff window: the file is being read/uploaded/initialised, before
+  // the backend has accepted it. There is no project yet, no sheets to show.
+  const preHandoff =
     upload.phase === 'reading' ||
     upload.phase === 'init' ||
     upload.phase === 'uploading' ||
-    upload.phase === 'completing' ||
-    upload.phase === 'ingesting' ||
-    upload.phase === 'classifying';
-  const ingestStatus = poll.stageProgress?.ingest ?? 'pending';
-  const ingestHardFailed = ingestStatus === 'error';
-  // Only treat "no sheets yet" as bridging if ingest hasn't finished. Once
-  // ingest is terminal and sheets are still empty, the empty-state card
-  // handles it (genuine no-sheets-found). And if sheets DO arrive, we drop
-  // the loader regardless of upload.phase.
-  const ingestTerminal = STAGE_TERMINAL.has(ingestStatus);
+    upload.phase === 'completing';
+  // Post-handoff: project exists, but no sheets yet and ingest still running.
   const awaitingFirstSheets =
     hasProject &&
     poll.sheets.length === 0 &&
     !ingestHardFailed &&
     !ingestTerminal;
-  const showBridgingLoader = uploadInFlight || awaitingFirstSheets;
+  // Sheets in poll == content ready. Never bridge over visible content.
+  const showBridgingLoader =
+    poll.sheets.length === 0 && (preHandoff || awaitingFirstSheets);
+  // Kept for the loader copy switch below (was the original boolean name).
+  const uploadInFlight = preHandoff;
 
   const card = useMemo<React.ReactNode>(() => {
     // Unconditional loader bridge — wins over the activeCard switch.
