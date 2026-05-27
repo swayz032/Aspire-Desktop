@@ -123,6 +123,25 @@ const EMPTY_STAGE: StageProgress = {
 
 const STAGE_KEYS = ['ingest', 'classify', 'see', 'reason', 'procure'] as const;
 
+// 2026-05-26 — Cross-mount cache so tab switches into Plans & Photos don't
+// re-show the bridging loader for the entire first poll round. Keyed by
+// projectId. Updated on every successful sheets fetch. Cleared by
+// `clearBlueprintProjectPollCache(projectId)` when a project is removed.
+//
+// Why module-scoped: React Native navigation tabs unmount/remount the route
+// component on every switch, so per-hook state resets to empty. Without
+// this cache the PlansPhotosTab bridging loader runs ~2-5s every time the
+// user returns to the tab even though the project hasn't changed.
+const _projectPollCache: Map<
+  string,
+  { project: BlueprintProject | null; sheets: BlueprintSheetRead[]; status: BlueprintProjectStatusResponse | null }
+> = new Map();
+
+export function clearBlueprintProjectPollCache(projectId?: string): void {
+  if (projectId) _projectPollCache.delete(projectId);
+  else _projectPollCache.clear();
+}
+
 // ---------------------------------------------------------------------------
 // Cadence helpers
 // ---------------------------------------------------------------------------
@@ -261,17 +280,24 @@ export function useBlueprintProjectPoll(
   const tenantCtx = useTenant();
   const officeId = tenantCtx.tenant?.officeId ?? '';
 
-  const [project, setProject] = useState<BlueprintProject | null>(null);
-  const [sheets, setSheets] = useState<BlueprintSheetRead[]>([]);
-  const [statusResp, setStatusResp] = useState<BlueprintProjectStatusResponse | null>(null);
+  // 2026-05-26 — Seed hook state from the module cache so a tab remount on
+  // an already-polled project renders sheets immediately, avoiding the
+  // bridging-loader replay.
+  const _seed = projectId ? _projectPollCache.get(projectId) : undefined;
+  const [project, setProject] = useState<BlueprintProject | null>(_seed?.project ?? null);
+  const [sheets, setSheets] = useState<BlueprintSheetRead[]>(_seed?.sheets ?? []);
+  const [statusResp, setStatusResp] = useState<BlueprintProjectStatusResponse | null>(
+    _seed?.status ?? null,
+  );
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isPolling, setIsPolling] = useState<boolean>(false);
   // True until the very first successful poll response is received for the
   // current projectId.  Resets to true whenever projectId changes.  Controls
   // whether SheetThumbnailGrid renders the shimmer (first load) vs. retaining
-  // the last-known data between subsequent polls.
-  const [isFirstLoad, setIsFirstLoad] = useState<boolean>(true);
+  // the last-known data between subsequent polls. If we hydrated from cache,
+  // we already have data so we are NOT in a first-load state.
+  const [isFirstLoad, setIsFirstLoad] = useState<boolean>(!_seed);
   // Wave 9e (P2-8) — per-stage completion timestamps. Sticky once set; reset
   // to all-null when projectId changes (handled in the reset effect below).
   const [stageCompletedAt, setStageCompletedAt] = useState<
@@ -308,7 +334,9 @@ export function useBlueprintProjectPoll(
     setTick((t) => t + 1);
   }, []);
 
-  // Reset state when projectId changes.
+  // Reset state when projectId changes. 2026-05-26: if the new projectId
+  // already has a cache entry (returning to a project we've polled before),
+  // hydrate from cache so the bridging loader doesn't replay.
   useEffect(() => {
     abortRef.current?.abort();
     abortRef.current = null;
@@ -316,14 +344,17 @@ export function useBlueprintProjectPoll(
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-    setProject(null);
-    setSheets([]);
-    setStatusResp(null);
+    const cached = projectId ? _projectPollCache.get(projectId) : undefined;
+    setProject(cached?.project ?? null);
+    setSheets(cached?.sheets ?? []);
+    setStatusResp(cached?.status ?? null);
     setError(null);
     setIsLoading(false);
     setIsPolling(false);
-    // Mark as first load so shimmer shows immediately for the new project.
-    setIsFirstLoad(true);
+    // Cache hit means we already have visible content — skip the shimmer.
+    // Cache miss falls back to original behavior (shimmer while first poll
+    // populates).
+    setIsFirstLoad(!cached);
     setStageCompletedAt({
       ingest: null,
       classify: null,
@@ -409,6 +440,15 @@ export function useBlueprintProjectPoll(
           consecutiveErrorCount = 0;
           setError(null);
           setIsFirstLoad(false);
+          // 2026-05-26 — persist freshest snapshot to the module cache so
+          // subsequent mounts can render immediately without the loader.
+          if (projectId) {
+            _projectPollCache.set(projectId, {
+              project: projRes.status === 'fulfilled' ? projRes.value : freshProject,
+              sheets: sheetRes.status === 'fulfilled' ? sheetRes.value : (projectId ? (_projectPollCache.get(projectId)?.sheets ?? []) : []),
+              status: statRes.status === 'fulfilled' ? statRes.value : (projectId ? (_projectPollCache.get(projectId)?.status ?? null) : null),
+            });
+          }
         } else {
           // All three failed. Bubble first error to UI; decide whether to stop.
           consecutiveErrorCount += 1;
