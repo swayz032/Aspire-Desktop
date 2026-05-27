@@ -212,9 +212,16 @@ export function _shouldStopOnError(
 /** Pick the next poll interval in ms. Null = stop polling. */
 function _nextIntervalMs(p: StageProgress | null): number | null {
   if (!p) return 2_000; // still booting — try again soon
-  // Fail-closed: once ANY stage has errored, stop polling. Burning requests
-  // on a dead project is what made the user stare at a spinner for 8 minutes.
-  if (_firstFailedStage(p) !== null) return null;
+  // 2026-05-27 — on stage failure, KEEP POLLING at the 10s tail (was: stop).
+  // The prior fail-closed behavior burned the user when backend transiently
+  // wrote stage=failed during a wrap-up race then recovered to done; the FE
+  // saw the failed snapshot, stopped polling, and showed the failure card
+  // forever even though the project finished cleanly. The 10s tail makes
+  // the failure UI auto-recover the moment the backend state flips back.
+  // Auth/network "hard stop" cases (POLL_AUTH_LOST / POLL_NOT_FOUND etc.)
+  // still terminate polling via _shouldStopOnError above — this only loosens
+  // the stage_progress=error branch.
+  if (_firstFailedStage(p) !== null) return 10_000;
   if (_isStageRunning(p)) return 2_000;
   if (_isProcureDone(p)) return 10_000;
   if (_isAllTerminal(p)) return null; // all done, no procure expected
