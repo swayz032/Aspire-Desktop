@@ -23,7 +23,7 @@
  *
  * Law #7: render layer only. All polling decisions in the hook.
  */
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useBlueprintUpload } from '@/hooks/useBlueprintUpload';
@@ -72,25 +72,18 @@ export function PlansPhotosTab(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasProject, ui.activeCard]);
 
-  // 2026-05-26 — Listen for global remove/new-project events from the Tim
-  // Rail Controls tab. Without this, `useBlueprintUpload.response` retains
-  // the dead project's id even after the snapshot store resets, so
-  // `projectId` resolves truthy and the bridging loader stays forever.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const onRemove = (): void => {
-      upload.reset();
-      setActiveCard('upload');
-    };
-    window.addEventListener('estimate-studio:remove-project', onRemove);
-    window.addEventListener('estimate-studio:new-project', onRemove);
-    return () => {
-      window.removeEventListener('estimate-studio:remove-project', onRemove);
-      window.removeEventListener('estimate-studio:new-project', onRemove);
-    };
-    // upload.reset + setActiveCard are stable; safe to exclude.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // 2026-05-26 — A previous version of this file listened to global
+  // `estimate-studio:remove-project` / `:new-project` events and called
+  // `upload.reset()` + `setActiveCard('upload')` inside the listener. The
+  // listener was suspected of triggering React error #300 (Maximum update
+  // depth exceeded) under specific click sequences — `upload.reset()` and
+  // `setActiveCard()` both notify external stores, which in turn fan out
+  // setState calls across multiple subscribers; combined with the
+  // auto-jump effect below, the cascade could re-enter under certain
+  // timings. Removed in favor of letting the poll cache invalidation +
+  // the `poll.sheets.length === 0` loader gate handle remove cleanup
+  // (see below). If a future bug shows the dead-project-id sticking,
+  // re-introduce as a snap.projectId watcher instead of a DOM event.
 
   // 2026-05-25 — Effective card override: if a project is active, never
   // render 'upload' even if the store hasn't been corrected yet by the
